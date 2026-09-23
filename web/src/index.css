@@ -164,3 +164,15 @@ p {
     animation: none;
   }
 }
+
+/* The theme button animates its own icon, so keep it out of the page crossfade: no frozen
+   copy of the old icon, just the live sun/moon turn. */
+.cz-theme-toggle {
+  view-transition-name: theme-toggle;
+}
+::view-transition-old(theme-toggle) {
+  display: none;
+}
+::view-transition-new(theme-toggle) {
+  animation: none;
+}

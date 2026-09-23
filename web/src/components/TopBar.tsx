@@ -58,11 +58,25 @@ export function TopBar({ page }: { page: Page }) {
         <button
           type="button"
           onClick={() => switchTheme(theme === 'dark' ? 'light' : 'dark')}
-          className="grid h-9 w-9 place-items-center rounded-lg text-ink-muted transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
+          className="cz-theme-toggle grid h-9 w-9 place-items-center rounded-lg text-ink-muted transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
           aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
           title={theme === 'dark' ? 'Light theme' : 'Dark theme'}
         >
-          {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+          {/* Both icons stay mounted; the switch turns one out and the other in (compositor-only properties). */}
+          <span className="relative grid h-[18px] w-[18px] place-items-center" aria-hidden>
+            <Sun
+              size={18}
+              className={`absolute transition-[opacity,rotate,scale] duration-[420ms] ease-out-quart ${
+                theme === 'dark' ? 'scale-100 rotate-0 opacity-100' : 'scale-50 -rotate-90 opacity-0'
+              }`}
+            />
+            <Moon
+              size={18}
+              className={`absolute transition-[opacity,rotate,scale] duration-[420ms] ease-out-quart ${
+                theme === 'light' ? 'scale-100 rotate-0 opacity-100' : 'scale-50 rotate-90 opacity-0'
+              }`}
+            />
+          </span>
         </button>
       </div>
     </header>
