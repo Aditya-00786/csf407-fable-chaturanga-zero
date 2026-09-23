@@ -1,0 +1,242 @@
+import { FlipVertical2, Pause, Play, RotateCcw, Undo2 } from 'lucide-react'
+import { useEffect, useMemo, useRef } from 'react'
+import type { Color, GameView } from '../lib/api'
+import { colorName, describeMove, squareName } from '../lib/board'
+import { useGame, type Mode, type Pace } from '../state/game'
+import { useSettings } from '../state/settings'
+import { PieceGlyph } from './PieceGlyph'
+import { Button, SectionTitle, Segmented, Switch } from './ui'
+
+const AGENTS = [
+  { value: 'greedy', label: 'Greedy', title: 'Looks two plies ahead: grabs material, avoids losing pieces' },
+  { value: 'random', label: 'Random', title: 'Plays a random legal move' },
+]
+
+const VALUE: Record<number, number> = { 1: 1, 2: 3, 3: 1.5, 4: 5, 5: 1.5, 6: 0 }
+
+function Swatch({ color }: { color: Color }) {
+  return (
+    <span
+      aria-hidden
+      className={`inline-block h-3.5 w-3.5 shrink-0 rounded-full ring-1 ${
+        color === 1 ? 'bg-[#f1e6cc] ring-[#8a6a45]' : 'bg-[#2b1e19] ring-[#c9a14c]'
+      }`}
+    />
+  )
+}
+
+function Status({ view }: { view: GameView | null }) {
+  const { mode, humanColor, status, reviewPly } = useGame()
+  if (!view) {
+    return (
+      <div aria-busy="true">
+        <div className="h-8 w-44 animate-pulse rounded-md bg-surface-2" />
+        <div className="mt-2 h-4 w-60 animate-pulse rounded bg-surface-2" />
+      </div>
+    )
+  }
+  const side = view.side
+  let title = `${colorName(side)} to move`
+  let detail: string
+  let tone = 'text-ink-muted'
+  if (view.outcome) {
+    title = 'Game over'
+    detail = view.outcome.winner === null ? 'The game is drawn.' : `${colorName(view.outcome.winner)} wins.`
+  } else if (reviewPly !== null) {
+    detail = `Reviewing the position after ${reviewPly} ${reviewPly === 1 ? 'ply' : 'plies'}.`
+  } else if (status === 'thinking') {
+    detail = 'The computer is thinking…'
+  } else if (view.in_check) {
+    detail = `Check: the ${colorName(side)} Raja is attacked and must be saved.`
+    tone = 'text-danger'
+  } else if (mode === 'hvc') {
+    detail = side === humanColor ? 'Your move. Select a piece to see where it can go.' : "The computer's move."
+  } else if (mode === 'cvc') {
+    detail = 'Computer against computer.'
+  } else {
+    detail = 'Select a piece to see where it can go.'
+  }
+  const last = view.history[view.history.length - 1]
+  return (
+    <div>
+      <p className="flex items-center gap-2.5 font-serif text-[26px] leading-tight font-semibold text-ink">
+        {!view.outcome && <Swatch color={side} />}
+        {title}
+      </p>
+      <p className={`mt-1.5 text-sm ${tone}`}>{detail}</p>
+      <p className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[12.5px] text-ink-faint tabular-nums">
+        <span>Move {Math.floor(view.ply / 2) + 1}</span>
+        <span title="Plies since the last capture or Padati move. At 140 the game is drawn.">
+          Quiet plies {view.no_progress}/140
+        </span>
+        {view.repetition > 1 && <span className="text-ink-muted">Position repeated {view.repetition}×</span>}
+      </p>
+      <p className="sr-only" aria-live="polite">{last ? `${last.piece > 0 ? 'White' : 'Black'} played ${describeMove(last)}` : ''}</p>
+    </div>
+  )
+}
+
+function MoveList({ view }: { view: GameView | null }) {
+  const { reviewPly, review } = useGame()
+  const history = view?.history ?? []
+  const listRef = useRef<HTMLOListElement>(null)
+  useEffect(() => {
+    if (reviewPly === null) listRef.current?.scrollTo({ top: listRef.current.scrollHeight })
+  }, [history.length, reviewPly])
+  const current = reviewPly ?? history.length
+  if (history.length === 0) {
+    return <p className="text-sm text-ink-muted">No moves yet. White opens the game.</p>
+  }
+  const rows: number[] = []
+  for (let i = 0; i < history.length; i += 2) rows.push(i)
+  return (
+    <ol ref={listRef} className="max-h-64 overflow-y-auto pr-1 lg:max-h-[min(40vh,22rem)]">
+      {rows.map((i) => (
+        <li key={i} className="grid grid-cols-[2.2rem_1fr_1fr] items-center gap-1 text-[13px]">
+          <span className="text-ink-faint tabular-nums">{i / 2 + 1}.</span>
+          {[i, i + 1].map((j) =>
+            j < history.length ? (
+              <button
+                key={j}
+                type="button"
+                onClick={() => review(j + 1 === history.length ? null : j + 1)}
+                className={`flex h-7 items-center gap-1.5 rounded-md px-1.5 text-left tabular-nums transition-colors duration-150 ${
+                  current === j + 1 ? 'bg-accent-soft text-ink' : 'text-ink-muted hover:bg-surface-2 hover:text-ink'
+                }`}
+                aria-label={`Move ${j + 1}: ${describeMove(history[j])}`}
+                aria-current={current === j + 1 ? 'step' : undefined}
+              >
+                <PieceGlyph piece={history[j].piece} size={16} />
+                <span>
+                  {squareName(history[j].from)}
+                  {history[j].captured ? '×' : '–'}
+                  {squareName(history[j].to)}
+                  {history[j].promotion ? '=M' : ''}
+                  {history[j].check ? '+' : ''}
+                </span>
+              </button>
+            ) : (
+              <span key={j} />
+            ),
+          )}
+        </li>
+      ))}
+    </ol>
+  )
+}
+
+function Captured({ view }: { view: GameView | null }) {
+  const taken = useMemo(() => {
+    const byWhite: number[] = []
+    const byBlack: number[] = []
+    for (const h of view?.history ?? []) {
+      if (h.captured > 0) byBlack.push(h.captured)
+      if (h.captured < 0) byWhite.push(h.captured)
+    }
+    const sort = (a: number, b: number) => VALUE[Math.abs(b)] - VALUE[Math.abs(a)]
+    return { byWhite: byWhite.sort(sort), byBlack: byBlack.sort(sort) }
+  }, [view])
+  const score = (l: number[]) => l.reduce((s, p) => s + VALUE[Math.abs(p)], 0)
+  const diff = score(taken.byWhite) - score(taken.byBlack)
+  const row = (label: string, list: number[], lead: number) => (
+    <div className="flex min-h-7 items-center gap-3">
+      <span className="w-24 shrink-0 text-[13px] text-ink-muted">{label}</span>
+      <span className="flex flex-wrap items-center gap-0.5">
+        {list.length === 0 ? <span className="text-[13px] text-ink-faint">Nothing yet</span> :
+          list.map((p, i) => <PieceGlyph key={i} piece={p} size={20} />)}
+        {lead > 0 && <span className="ml-1.5 text-[12.5px] font-medium text-ink-muted tabular-nums">+{lead}</span>}
+      </span>
+    </div>
+  )
+  return (
+    <div className="space-y-1">
+      {row('Taken by White', taken.byWhite, diff)}
+      {row('Taken by Black', taken.byBlack, -diff)}
+    </div>
+  )
+}
+
+export function PlayPanel({ view }: { view: GameView | null }) {
+  const g = useGame()
+  const settings = useSettings()
+  const busy = g.status === 'connecting'
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex-1 space-y-7 overflow-y-auto p-5 sm:p-6">
+        <Status view={view} />
+
+        <section aria-label="Game mode" className="space-y-3.5">
+          <Segmented<Mode>
+            label="Mode"
+            value={g.mode}
+            onChange={g.setMode}
+            options={[
+              { value: 'hvh', label: 'Two players', title: 'Two people take turns on this screen' },
+              { value: 'hvc', label: 'Vs computer' },
+              { value: 'cvc', label: 'Computers', title: 'Computer against computer' },
+            ]}
+          />
+          {g.mode === 'hvc' && (
+            <div className="grid grid-cols-2 gap-3">
+              <Segmented<Color> label="You play" value={g.humanColor} onChange={g.setHumanColor} size="sm"
+                options={[{ value: 1, label: 'White' }, { value: -1, label: 'Black' }]} />
+              <Segmented label="Opponent" value={g.opponent} onChange={g.setOpponent} size="sm" options={AGENTS} />
+            </div>
+          )}
+          {g.mode === 'cvc' && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <Segmented label="White" value={g.whiteAgent} onChange={(v) => g.setAgent(1, v)} size="sm" options={AGENTS} />
+                <Segmented label="Black" value={g.blackAgent} onChange={(v) => g.setAgent(-1, v)} size="sm" options={AGENTS} />
+              </div>
+              <div className="flex items-end gap-3">
+                <div className="flex-1">
+                  <Segmented<Pace> label="Pace" value={g.pace} onChange={g.setPace} size="sm"
+                    options={[{ value: 'slow', label: 'Slow' }, { value: 'normal', label: 'Normal' }, { value: 'fast', label: 'Fast' }]} />
+                </div>
+                <Button size="sm" onClick={() => g.setRunning(!g.running)} disabled={!!view?.outcome}
+                  icon={g.running ? <Pause size={15} /> : <Play size={15} />}>
+                  {g.running ? 'Pause' : 'Resume'}
+                </Button>
+              </div>
+            </div>
+          )}
+        </section>
+
+        <section aria-labelledby="moves-title">
+          <SectionTitle aside={view && view.ply > 0 ? `${view.ply} plies` : undefined}>
+            <span id="moves-title">Moves</span>
+          </SectionTitle>
+          <MoveList view={g.game} />
+        </section>
+
+        <section aria-labelledby="captured-title">
+          <SectionTitle><span id="captured-title">Captured</span></SectionTitle>
+          <Captured view={view} />
+        </section>
+
+        <section aria-label="Display" className="space-y-3.5">
+          <SectionTitle>Display</SectionTitle>
+          <div className="grid grid-cols-2 gap-3">
+            <Segmented label="View" value={settings.view} onChange={settings.setView} size="sm"
+              options={[{ value: '3d', label: '3D' }, { value: 'flat', label: 'Flat' }]} />
+            <Segmented label="Piece names" value={settings.labels} onChange={settings.setLabels} size="sm"
+              options={[
+                { value: 'off', label: 'Off' },
+                { value: 'english', label: 'Latin', title: 'Transliterated Sanskrit names' },
+                { value: 'sanskrit', label: <span className="font-deva text-[14px]" lang="sa">देव</span>, title: 'Devanagari' },
+              ]} />
+          </div>
+          <Switch label="Sound" checked={settings.sound} onChange={settings.setSound} />
+        </section>
+      </div>
+
+      <div className="flex flex-wrap gap-2 border-t border-line bg-surface p-4 sm:px-6">
+        <Button variant="primary" onClick={g.newGame} disabled={busy} icon={<RotateCcw size={16} />}>New game</Button>
+        <Button onClick={g.undo} disabled={busy || g.moves.length === 0 || g.status === 'thinking' && g.mode !== 'cvc'}
+          icon={<Undo2 size={16} />}>Undo</Button>
+        <Button variant="ghost" onClick={g.flip} icon={<FlipVertical2 size={16} />} aria-label="Rotate the board">Rotate</Button>
+      </div>
+    </div>
+  )
+}

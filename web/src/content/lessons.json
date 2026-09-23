@@ -1,0 +1,168 @@
+[
+  {
+    "id": "board",
+    "group": "Basics",
+    "title": "The board and the goal",
+    "piece": null,
+    "fen": "rngkmgnr/pppppppp/8/8/8/8/PPPPPPPP/RNGMKGNR w",
+    "body": [
+      "Chaturanga is played on the Ashtapada, an uncheckered board of 8×8 squares. The brass crosses are the traditional markings. They are decoration only and have no effect on play.",
+      "Each side has a Raja (king), a Mantri (minister), two Rathas (chariots), two Gajas (elephants), two Ashvas (horses) and eight Padatis (foot soldiers). The two Rajas do not face each other: White's stands on e1 and Black's on d8.",
+      "There are three ways to win: checkmate the enemy Raja, strip away every enemy piece except the Raja, or get yourself stalemated. White moves first."
+    ],
+    "facts": ["White moves first", "Raja e1 vs d8", "Three ways to win"],
+    "task": null,
+    "emphasis": ["e1", "d8"],
+    "source": "Murray (1913) p. 64; Wikipedia, \"Chaturanga\""
+  },
+  {
+    "id": "raja",
+    "group": "Pieces",
+    "title": "Raja",
+    "piece": 6,
+    "fen": "7k/p7/2p5/8/3Kp3/8/P7/8 w",
+    "body": [
+      "The Raja steps one square in any direction, like a chess king. There is no castling.",
+      "It may never move onto a square the enemy attacks. Here the Padati on c6 guards d5 and b5, so those squares are closed to it."
+    ],
+    "facts": ["1 step, any direction", "No castling", "Never into attack"],
+    "task": { "prompt": "Capture the undefended Padati.", "type": "move", "moves": ["d4e4"], "hint": "Look for the black Padati that nothing protects." },
+    "emphasis": [],
+    "source": "Wikipedia, \"Chaturanga\"; Chess.com, \"Chaturanga\""
+  },
+  {
+    "id": "mantri",
+    "group": "Pieces",
+    "title": "Mantri",
+    "piece": 5,
+    "fen": "7k/p7/1p6/2p1p3/3M4/8/P7/K7 w",
+    "body": [
+      "The Mantri, the king's minister, steps exactly one square diagonally. It is the ancestor of the modern queen, but far weaker.",
+      "A Padati that reaches the far side of the board becomes a Mantri."
+    ],
+    "facts": ["1 step diagonally", "Ancestor of the queen", "Padatis promote to it"],
+    "task": { "prompt": "Take the Padati that is not defended.", "type": "move", "moves": ["d4e5"], "hint": "The Padati on c5 is guarded by the one on b6." },
+    "emphasis": [],
+    "source": "Murray (1913) p. 64; Wikipedia, \"Chaturanga\""
+  },
+  {
+    "id": "ratha",
+    "group": "Pieces",
+    "title": "Ratha",
+    "piece": 4,
+    "fen": "3g3k/p7/3P4/8/3R3r/8/P7/K7 w",
+    "body": [
+      "The Ratha, the war chariot, moves any number of squares along a rank or file, like a rook. It is the strongest piece in the army.",
+      "It cannot jump: anything in its path, friend or enemy, stops it."
+    ],
+    "facts": ["Any distance, straight lines", "Cannot jump", "Strongest piece"],
+    "task": { "prompt": "Capture the black Ratha.", "type": "move", "moves": ["d4h4"], "hint": "Your own Padati blocks the way to the Gaja on d8." },
+    "emphasis": [],
+    "source": "Wikipedia, \"Chaturanga\"; Chess.com, \"Chaturanga\""
+  },
+  {
+    "id": "gaja",
+    "group": "Pieces",
+    "title": "Gaja",
+    "piece": 3,
+    "fen": "7k/p7/5p2/4p3/3G4/8/P7/K7 w",
+    "body": [
+      "The Gaja, the elephant, jumps exactly two squares diagonally, leaping over whatever stands between. This is the oldest and most widely recorded of its moves.",
+      "Because it always jumps two, each Gaja can only ever reach 8 squares of the board, and no two Gajas can ever meet."
+    ],
+    "facts": ["Exactly 2 diagonally", "Jumps the middle square", "Reaches only 8 squares"],
+    "task": { "prompt": "Jump over the Padati on e5 and capture the one behind it.", "type": "move", "moves": ["d4f6"], "hint": "The Gaja leaps: e5 is no obstacle." },
+    "emphasis": [],
+    "source": "Murray (1913) pp. 59–60"
+  },
+  {
+    "id": "ashva",
+    "group": "Pieces",
+    "title": "Ashva",
+    "piece": 2,
+    "fen": "1k3r2/p7/8/4N3/8/8/P7/K7 w",
+    "body": [
+      "The Ashva, the horse, moves in an L: two squares one way and one to the side, exactly like a chess knight. It jumps over anything in between.",
+      "A horse can attack two pieces at once. That is called a fork."
+    ],
+    "facts": ["L-shaped leap", "Jumps over pieces", "Great at forks"],
+    "task": { "prompt": "Fork: check the Raja and attack the Ratha with one move.", "type": "move", "moves": ["e5d7"], "hint": "Find the square a knight's move from both b8 and f8." },
+    "emphasis": [],
+    "source": "Wikipedia, \"Chaturanga\""
+  },
+  {
+    "id": "padati",
+    "group": "Pieces",
+    "title": "Padati",
+    "piece": 1,
+    "fen": "7k/2P4p/8/8/8/8/4P3/K7 w",
+    "body": [
+      "The Padati, the foot soldier, steps one square straight forward and captures one square diagonally forward. Unlike a chess pawn it never moves two squares, so there is no en passant.",
+      "When a Padati reaches the last rank it is promoted to a Mantri at once. Sources disagree on promotion; most support the Mantri, including the oldest two-player Indian text."
+    ],
+    "facts": ["1 step forward", "Captures diagonally", "Promotes to Mantri"],
+    "task": { "prompt": "Promote the Padati on c7.", "type": "move", "moves": ["c7c8"], "hint": "Just step it forward." },
+    "emphasis": ["c8"],
+    "source": "Nilakantha, in Murray (1913) p. 64; docs/RULES.md §6.2"
+  },
+  {
+    "id": "checkmate",
+    "group": "Winning and drawing",
+    "title": "Check and checkmate",
+    "piece": null,
+    "fen": "k7/7p/1K6/8/8/8/8/6R1 w",
+    "body": [
+      "A Raja that is attacked is in check, and its side must get it out of danger at once: move it, block the attack, or capture the attacker.",
+      "If there is no way out, it is checkmate and the game is over."
+    ],
+    "facts": ["Check must be answered", "No way out = checkmate"],
+    "task": { "prompt": "Deliver checkmate in one move.", "type": "outcome", "reason": "checkmate", "hint": "Your Raja already guards a7 and b7. Cut off the back rank." },
+    "emphasis": [],
+    "source": "docs/RULES.md §4"
+  },
+  {
+    "id": "bare-king",
+    "group": "Winning and drawing",
+    "title": "Bare king",
+    "piece": null,
+    "fen": "8/8/1k6/g7/8/8/8/R3K3 w",
+    "body": [
+      "If you capture every enemy piece except the Raja, you win on the spot. This is called baring the king.",
+      "In Chaturanga this holds even if the lone Raja could capture your last piece straight back. The Persian game treated that case as a draw; the Indian rule did not."
+    ],
+    "facts": ["Only the Raja left = loss", "No capture back for a draw"],
+    "task": { "prompt": "Bare the black Raja.", "type": "outcome", "reason": "bare_king", "hint": "The Gaja on a5 is Black's last piece." },
+    "emphasis": [],
+    "source": "al-Adli, in Murray (1913) p. 61"
+  },
+  {
+    "id": "stalemate",
+    "group": "Winning and drawing",
+    "title": "Stalemate: the twist",
+    "piece": null,
+    "fen": "7k/7p/4K2P/8/8/8/8/R7 w",
+    "body": [
+      "A player who is not in check but has no legal move is stalemated. In modern chess that is a draw. In Chaturanga the stalemated player wins.",
+      "So when you are winning, be careful not to leave your opponent without a move."
+    ],
+    "facts": ["No legal move, not in check", "The stalemated side wins"],
+    "task": { "prompt": "Win with checkmate, not a stalemate. One natural move here hands Black the game.", "type": "outcome", "reason": "checkmate", "hint": "Moving your Raja to f7 would leave Black with no moves at all." },
+    "emphasis": [],
+    "source": "al-Adli, in Murray (1913) pp. 60–61"
+  },
+  {
+    "id": "draws",
+    "group": "Winning and drawing",
+    "title": "Draws",
+    "piece": null,
+    "fen": "rngkmgnr/pppppppp/8/8/8/8/PPPPPPPP/RNGMKGNR w",
+    "body": [
+      "A game is drawn if the same position appears three times with the same player to move, or if 70 moves each pass with no capture and no Padati move. Both rules come from shatranj, Chaturanga's successor.",
+      "Our engine also stops a game at 300 plies (single moves by either side). No historical source has this limit; it guarantees that the AI's practice games always end."
+    ],
+    "facts": ["Threefold repetition", "70 quiet moves each", "300-ply engine limit"],
+    "task": null,
+    "emphasis": [],
+    "source": "Murray (1913) p. 229; docs/RULES.md §5"
+  }
+]
