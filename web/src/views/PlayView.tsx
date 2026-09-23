@@ -1,9 +1,11 @@
 import { AlertTriangle, ChevronLeft, ChevronRight, History, Maximize, Minimize, PanelRight, RotateCcw, Undo2, X } from 'lucide-react'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { PlayPanel, Status } from '../components/PlayPanel'
+import { Drawer, DrawerToggle, Floating, ToolButton } from '../components/stage'
 import { Button } from '../components/ui'
 import type { Color } from '../lib/api'
 import { captures, explainOutcome, INITIAL_BOARD } from '../lib/board'
+import { useFullscreen } from '../lib/useFullscreen'
 import { useGame } from '../state/game'
 import { prefersReducedMotion, useDetail } from '../state/settings'
 import { BoardScene } from '../three/BoardScene'
@@ -42,25 +44,6 @@ function GameEnd() {
   )
 }
 
-/** Toolbar button over the board: always an icon, with a text label on wider screens. */
-function ToolButton({ label, icon, onClick, disabled }: {
-  label: string; icon: ReactNode; onClick: () => void; disabled?: boolean
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      title={label}
-      aria-label={label}
-      className="inline-flex h-10 items-center gap-2 rounded-lg px-2.5 text-sm font-medium text-ink-muted transition-colors duration-150 hover:bg-surface-2 hover:text-ink disabled:pointer-events-none disabled:opacity-45 sm:px-3"
-    >
-      {icon}
-      <span className="hidden md:inline">{label}</span>
-    </button>
-  )
-}
-
 /**
  * The side shown at the bottom, plus a manual "rotate". In a two-player game the board turns to
  * face the side to move shortly after each move (or new game / undo). A manual rotate only
@@ -82,22 +65,6 @@ function useBoardOrientation(): [Color, () => void] {
   const rotate = () => (following ? setShown((s) => (s === 1 ? -1 : 1)) : flip())
   return [following ? shown : orientation, rotate]
 }
-
-function useFullscreen(): [boolean, () => void, boolean] {
-  const [on, setOn] = useState(() => !!document.fullscreenElement)
-  useEffect(() => {
-    const sync = () => setOn(!!document.fullscreenElement)
-    document.addEventListener('fullscreenchange', sync)
-    return () => document.removeEventListener('fullscreenchange', sync)
-  }, [])
-  const toggle = () => {
-    if (document.fullscreenElement) void document.exitFullscreen()
-    else void document.documentElement.requestFullscreen?.().catch(() => {})
-  }
-  return [on, toggle, !!document.fullscreenEnabled]
-}
-
-const FLOAT = 'rounded-xl border border-line bg-surface/92 shadow-[0_12px_32px_-18px_rgb(0_0_0/0.6)]'
 
 export function PlayView() {
   const g = useGame()
@@ -161,10 +128,10 @@ export function PlayView() {
 
       {/* Floating status card and toolbar keep the board full-screen. */}
       <div className="pointer-events-none absolute inset-x-0 top-0 z-[var(--z-stage-overlay)] flex items-start justify-between gap-3 p-3 sm:p-4">
-        <div className={`pointer-events-auto max-w-[min(360px,52vw)] px-4 py-3 ${FLOAT}`}>
+        <Floating className="max-w-[min(360px,52vw)] px-4 py-3">
           <Status view={view} />
-        </div>
-        <div className={`pointer-events-auto flex shrink-0 items-center gap-0.5 p-1 ${FLOAT}`}>
+        </Floating>
+        <Floating className="flex shrink-0 items-center gap-0.5 p-1">
           {quickOpen && (
             <div id="quick-actions" className="cz-slide-in flex items-center gap-0.5">
               <ToolButton label="Undo" icon={<Undo2 size={17} />} onClick={g.undo}
@@ -188,29 +155,24 @@ export function PlayView() {
           >
             {quickOpen ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
           </button>
-          <button
+          <DrawerToggle
             ref={toggleRef}
-            type="button"
+            open={panelOpen}
+            controls="game-panel"
             onClick={() => {
               setPanelOpen((open) => !open)
               setQuickOpen(false)
             }}
-            aria-expanded={panelOpen}
-            aria-controls="game-panel"
+            icon={<PanelRight size={17} />}
+            label="Game"
             title="Mode, moves and display"
-            className={`inline-flex h-10 items-center gap-2 rounded-lg px-2.5 text-sm font-medium transition-colors duration-150 sm:px-3 ${
-              panelOpen ? 'bg-accent text-accent-ink hover:bg-accent-hover' : 'text-ink hover:bg-surface-2'
-            }`}
-          >
-            <PanelRight size={17} />
-            <span className="hidden sm:inline">Game</span>
-            {!panelOpen && g.moves.length > 0 && (
+            badge={g.moves.length > 0 && (
               <span className="rounded-md bg-surface-2 px-1.5 text-[11.5px] text-ink-muted tabular-nums" aria-label={`${g.moves.length} moves played`}>
                 {g.moves.length}
               </span>
             )}
-          </button>
-        </div>
+          />
+        </Floating>
       </div>
 
       {g.status === 'error' && (
@@ -234,17 +196,9 @@ export function PlayView() {
       <GameEnd />
 
       {/* Game panel: a drawer over the board, closed by default. */}
-      <aside
-        id="game-panel"
-        ref={panelRef}
-        aria-label="Game panel"
-        inert={!panelOpen}
-        className={`absolute inset-y-0 right-0 z-[var(--z-sticky)] w-full border-l border-line bg-surface shadow-[-24px_0_60px_-30px_rgb(0_0_0/0.6)] transition-[translate,visibility] duration-250 ease-out-quart sm:w-[400px] ${
-          panelOpen ? 'visible translate-x-0' : 'invisible translate-x-full'
-        }`}
-      >
+      <Drawer id="game-panel" ref={panelRef} label="Game panel" side="right" open={panelOpen} className="sm:w-[400px]">
         <PlayPanel view={view} onClose={closePanel} onRotate={rotate} />
-      </aside>
+      </Drawer>
     </div>
   )
 }

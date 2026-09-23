@@ -1,10 +1,11 @@
-import { FlipVertical2, Pause, Play, X } from 'lucide-react'
+import { FlipVertical2, Pause, Play } from 'lucide-react'
 import { useEffect, useMemo, useRef } from 'react'
 import type { Color, GameView } from '../lib/api'
 import { colorName, describeMove, explainOutcome, squareName } from '../lib/board'
 import { useGame, type Mode, type Pace } from '../state/game'
 import { useDetail, useSettings, type DetailPart } from '../state/settings'
 import { PieceGlyph } from './PieceGlyph'
+import { DrawerHeader } from './stage'
 import { Button, Collapse, SectionTitle, Segmented, Switch } from './ui'
 
 const AGENTS = [
@@ -182,14 +183,8 @@ export function PlayPanel({ view, onClose, onRotate }: { view: GameView | null; 
   const g = useGame()
   const settings = useSettings()
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex h-14 shrink-0 items-center justify-between border-b border-line px-5 sm:px-6">
-        <h2 className="font-serif text-[19px] font-semibold text-ink">Game</h2>
-        <button type="button" onClick={onClose} aria-label="Close the game panel" title="Close (Esc)"
-          className="-mr-2 grid h-9 w-9 place-items-center rounded-lg text-ink-muted transition-colors duration-150 hover:bg-surface-2 hover:text-ink">
-          <X size={18} />
-        </button>
-      </div>
+    <>
+      <DrawerHeader title="Game" onClose={onClose} closeLabel="Close the game panel" />
       <div className="flex-1 space-y-7 overflow-y-auto p-5 sm:p-6">
 
         <section aria-label="Game mode" className="space-y-3.5">
@@ -288,6 +283,6 @@ export function PlayPanel({ view, onClose, onRotate }: { view: GameView | null; 
           <Button size="sm" onClick={onRotate} icon={<FlipVertical2 size={15} />}>Rotate the board</Button>
         </section>
       </div>
-    </div>
+    </>
   )
 }
