@@ -67,12 +67,13 @@ function Rig({ orientation, flat }: { orientation: Color; flat: boolean }) {
     const c = ref.current
     if (!c) return
     // Pull back on narrow canvases so the whole board stays in frame.
-    const k = Math.min(2.4, Math.max(1.22, 1.45 / aspect))
+    const k = Math.min(2.5, Math.max(1.3, 1.55 / aspect))
     const dir = orientation === 1 ? 1 : -1
     if (flat) {
-      void c.setLookAt(0, 19.5 * k, 0.001 * dir, 0, 0, 0, !first.current && !prefersReducedMotion())
+      // Aim slightly past the centre so the board sits below the floating status bar.
+      void c.setLookAt(0, 19.5 * k, -0.7 * dir + 0.001 * dir, 0, 0, -0.7 * dir, !first.current && !prefersReducedMotion())
     } else {
-      void c.setLookAt(0, 8.1 * k, 10.2 * k * dir, 0, -0.6, 0.55 * dir, !first.current && !prefersReducedMotion())
+      void c.setLookAt(0, 8.1 * k, 10.2 * k * dir, 0, -0.6, -0.45 * dir, !first.current && !prefersReducedMotion())
     }
     first.current = false
   }, [orientation, flat, aspect])

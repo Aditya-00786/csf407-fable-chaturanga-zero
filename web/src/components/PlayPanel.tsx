@@ -1,4 +1,4 @@
-import { FlipVertical2, Pause, Play, RotateCcw, Undo2 } from 'lucide-react'
+import { Pause, Play, X } from 'lucide-react'
 import { useEffect, useMemo, useRef } from 'react'
 import type { Color, GameView } from '../lib/api'
 import { colorName, describeMove, squareName } from '../lib/board'
@@ -25,13 +25,14 @@ function Swatch({ color }: { color: Color }) {
   )
 }
 
-function Status({ view }: { view: GameView | null }) {
+/** Whose turn it is and why, shown in the floating card over the board. */
+export function Status({ view }: { view: GameView | null }) {
   const { mode, humanColor, status, reviewPly } = useGame()
   if (!view) {
     return (
       <div aria-busy="true">
-        <div className="h-8 w-44 animate-pulse rounded-md bg-surface-2" />
-        <div className="mt-2 h-4 w-60 animate-pulse rounded bg-surface-2" />
+        <div className="h-6 w-40 animate-pulse rounded-md bg-surface-2" />
+        <div className="mt-2 h-4 w-56 animate-pulse rounded bg-surface-2" />
       </div>
     )
   }
@@ -59,12 +60,12 @@ function Status({ view }: { view: GameView | null }) {
   const last = view.history[view.history.length - 1]
   return (
     <div>
-      <p className="flex items-center gap-2.5 font-serif text-[26px] leading-tight font-semibold text-ink">
+      <p className="flex items-center gap-2 font-serif text-[20px] leading-tight font-semibold text-ink">
         {!view.outcome && <Swatch color={side} />}
         {title}
       </p>
-      <p className={`mt-1.5 text-sm ${tone}`}>{detail}</p>
-      <p className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[12.5px] text-ink-faint tabular-nums">
+      <p className={`mt-1 text-[13.5px] leading-snug ${tone}`}>{detail}</p>
+      <p className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[12px] text-ink-faint tabular-nums">
         <span>Move {Math.floor(view.ply / 2) + 1}</span>
         <span title="Plies since the last capture or Padati move. At 140 the game is drawn.">
           Quiet plies {view.no_progress}/140
@@ -156,14 +157,19 @@ function Captured({ view }: { view: GameView | null }) {
   )
 }
 
-export function PlayPanel({ view }: { view: GameView | null }) {
+export function PlayPanel({ view, onClose }: { view: GameView | null; onClose: () => void }) {
   const g = useGame()
   const settings = useSettings()
-  const busy = g.status === 'connecting'
   return (
     <div className="flex h-full flex-col">
+      <div className="flex h-14 shrink-0 items-center justify-between border-b border-line px-5 sm:px-6">
+        <h2 className="font-serif text-[19px] font-semibold text-ink">Game</h2>
+        <button type="button" onClick={onClose} aria-label="Close the game panel" title="Close (Esc)"
+          className="-mr-2 grid h-9 w-9 place-items-center rounded-lg text-ink-muted transition-colors duration-150 hover:bg-surface-2 hover:text-ink">
+          <X size={18} />
+        </button>
+      </div>
       <div className="flex-1 space-y-7 overflow-y-auto p-5 sm:p-6">
-        <Status view={view} />
 
         <section aria-label="Game mode" className="space-y-3.5">
           <Segmented<Mode>
@@ -176,6 +182,9 @@ export function PlayPanel({ view }: { view: GameView | null }) {
               { value: 'cvc', label: 'Computers', title: 'Computer against computer' },
             ]}
           />
+          {g.mode === 'hvh' && (
+            <Switch label="Turn the board after each move" checked={g.autoRotate} onChange={g.setAutoRotate} />
+          )}
           {g.mode === 'hvc' && (
             <div className="grid grid-cols-2 gap-3">
               <Segmented<Color> label="You play" value={g.humanColor} onChange={g.setHumanColor} size="sm"
@@ -229,13 +238,6 @@ export function PlayPanel({ view }: { view: GameView | null }) {
           </div>
           <Switch label="Sound" checked={settings.sound} onChange={settings.setSound} />
         </section>
-      </div>
-
-      <div className="flex flex-wrap gap-2 border-t border-line bg-surface p-4 sm:px-6">
-        <Button variant="primary" onClick={g.newGame} disabled={busy} icon={<RotateCcw size={16} />}>New game</Button>
-        <Button onClick={g.undo} disabled={busy || g.moves.length === 0 || g.status === 'thinking' && g.mode !== 'cvc'}
-          icon={<Undo2 size={16} />}>Undo</Button>
-        <Button variant="ghost" onClick={g.flip} icon={<FlipVertical2 size={16} />} aria-label="Rotate the board">Rotate</Button>
       </div>
     </div>
   )

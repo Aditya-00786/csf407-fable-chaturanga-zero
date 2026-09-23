@@ -24,6 +24,7 @@ interface GameStore {
   pace: Pace
   running: boolean // computer vs computer: playing or paused
   orientation: Color // side shown at the bottom of the board
+  autoRotate: boolean // two players: turn the board to face the side to move
 
   moves: string[]
   game: GameView | null
@@ -45,6 +46,8 @@ interface GameStore {
   setRunning: (on: boolean) => void
   review: (ply: number | null) => void
   flip: () => void
+  setOrientation: (c: Color) => void
+  setAutoRotate: (on: boolean) => void
 }
 
 let generation = 0
@@ -121,6 +124,7 @@ export const useGame = create<GameStore>((set, get) => {
     pace: 'normal',
     running: true,
     orientation: 1,
+    autoRotate: true,
     moves: [],
     game: null,
     status: 'connecting',
@@ -189,6 +193,8 @@ export const useGame = create<GameStore>((set, get) => {
     },
 
     flip: () => set({ orientation: (get().orientation === 1 ? -1 : 1) as Color }),
+    setOrientation: (orientation) => set({ orientation }),
+    setAutoRotate: (autoRotate) => set({ autoRotate }),
 
     review: (ply) => {
       const s = get()

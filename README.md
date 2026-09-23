@@ -213,7 +213,7 @@ The server keeps no game state, so undo and review are just shorter move lists.
 
 | Screen | What it does |
 |---|---|
-| **Play** | Two players, vs computer (greedy or random), or computer vs computer with a pace control. Includes move list, click-to-review, captured pieces, undo, board rotation, a 3D or flat view, and piece names in Latin or Devanagari. |
+| **Play** | The board fills the screen. A floating card shows whose turn it is; the toolbar has Undo, Rotate and New game. **Game** opens a drawer (Esc closes it) with the mode, move list (click to review), captured pieces and display options. Modes: two players (the board turns to face the player to move; switch this off in the drawer), vs computer (greedy or random), or computer vs computer with a pace control. |
 | **Learn** | 11 lessons: the board, each piece, check and checkmate, bare king, stalemate and draws. Most end with a one-move task that the engine checks. `tests/test_lessons.py` checks that every lesson position is legal and every task can be solved. |
 | **Rules** | A compact reference, with the source tallies from `docs/RULES.md`. |
 
