@@ -115,7 +115,7 @@ export function getFrameTexture() {
 
 /** Transparent overlay with file letters and rank numbers engraved on the frame. */
 export function makeCoordinateTexture(flipped: boolean) {
-  const size = 2048
+  const size = 1536
   const c = canvas(size)
   const ctx = c.getContext('2d')!
   const unit = size / 10 // the overlay spans the full 10-unit frame

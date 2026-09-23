@@ -209,6 +209,8 @@ function Rig({ orientation, flat }: { orientation: Color; flat: boolean }) {
     first.current = false
     const id = ++request.current
     const limits = LIMITS[flat ? 'flat' : '3d']
+    // Keep the current angle within one turn so a flip always takes the short, even half-turn.
+    c.normalizeRotations()
     // Tilt limits are applied only once the camera has arrived. Tightening them first
     // (e.g. flat view's near-vertical limit) would snap the camera before the glide starts.
     c.minPolarAngle = 0

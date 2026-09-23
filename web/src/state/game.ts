@@ -46,7 +46,6 @@ interface GameStore {
   setRunning: (on: boolean) => void
   review: (ply: number | null) => void
   flip: () => void
-  setOrientation: (c: Color) => void
   setAutoRotate: (on: boolean) => void
 }
 
@@ -193,7 +192,6 @@ export const useGame = create<GameStore>((set, get) => {
     },
 
     flip: () => set({ orientation: (get().orientation === 1 ? -1 : 1) as Color }),
-    setOrientation: (orientation) => set({ orientation }),
     setAutoRotate: (autoRotate) => set({ autoRotate }),
 
     review: (ply) => {

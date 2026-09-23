@@ -61,19 +61,26 @@ function ToolButton({ label, icon, onClick, disabled }: {
   )
 }
 
-/** The side shown at the bottom. In a two-player game it follows the side to move, after a pause. */
-function useBoardOrientation(): Color {
-  const { mode, autoRotate, orientation, game, reviewPly } = useGame()
+/**
+ * The side shown at the bottom, plus a manual "rotate". In a two-player game the board turns to
+ * face the side to move shortly after each move (or new game / undo). A manual rotate only
+ * overrides that until the turn next changes hands; it never switches auto-turning off.
+ */
+function useBoardOrientation(): [Color, () => void] {
+  const { mode, autoRotate, orientation, game, reviewPly, flip } = useGame()
   const following = mode === 'hvh' && autoRotate
   const target: Color = game?.side ?? 1
+  const ply = game?.ply ?? 0
   const [shown, setShown] = useState<Color>(target)
   useEffect(() => {
-    // Hold still while reviewing old positions; catch up afterwards.
-    if (!following || reviewPly !== null || shown === target) return
+    // Hold still while reviewing old positions; catch up afterwards. Setting the side that is
+    // already shown is a no-op, so a board already facing the player does not move.
+    if (!following || reviewPly !== null) return
     const t = setTimeout(() => setShown(target), prefersReducedMotion() ? 0 : TURN_DELAY_MS)
     return () => clearTimeout(t)
-  }, [following, reviewPly, target, shown])
-  return following ? shown : orientation
+  }, [following, reviewPly, target, ply])
+  const rotate = () => (following ? setShown((s) => (s === 1 ? -1 : 1)) : flip())
+  return [following ? shown : orientation, rotate]
 }
 
 function useFullscreen(): [boolean, () => void, boolean] {
@@ -103,7 +110,7 @@ export function PlayView() {
   const [fullscreen, toggleFullscreen, canFullscreen] = useFullscreen()
   const panelRef = useRef<HTMLElement>(null)
   const toggleRef = useRef<HTMLButtonElement>(null)
-  const orientation = useBoardOrientation()
+  const [orientation, rotate] = useBoardOrientation()
 
   const closePanel = () => {
     setPanelOpen(false)
@@ -132,16 +139,6 @@ export function PlayView() {
     (g.mode === 'hvh' || (g.mode === 'hvc' && g.game.side === g.humanColor))
   const interactive = g.status === 'ready' && !reviewing && humanTurn
   const busy = g.status === 'connecting'
-
-  const rotate = () => {
-    // Turning the board by hand switches the automatic turning off.
-    if (g.mode === 'hvh' && g.autoRotate) {
-      g.setAutoRotate(false)
-      g.setOrientation((orientation === 1 ? -1 : 1) as Color)
-    } else {
-      g.flip()
-    }
-  }
 
   return (
     <div

@@ -1,8 +1,10 @@
 /** The Ashtapada: a carved rosewood frame around an uncheckered field with inlaid lines and brass crosses. */
 
-import { useEffect, useMemo, useState } from 'react'
+import { useFrame } from '@react-three/fiber'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { MARKED_SQUARES } from '../lib/board'
+import { prefersReducedMotion } from '../state/settings'
 import { squareToWorld } from './coords'
 import { brass, darkBrass, getFieldTexture, getFrameTexture, makeCoordinateTexture } from './materials'
 
@@ -58,6 +60,38 @@ function Cross({ sq }: { sq: number }) {
   )
 }
 
+/** Letters readable from White's side and from Black's, crossfaded as the board turns. */
+function CoordinateOverlays({ white, black, flipped }: { white: THREE.Texture; black: THREE.Texture; flipped: boolean }) {
+  const whiteMat = useRef<THREE.MeshStandardMaterial>(null)
+  const blackMat = useRef<THREE.MeshStandardMaterial>(null)
+  const [initial] = useState(flipped ? 0 : 1)
+  useFrame(({ invalidate }, dt) => {
+    if (!whiteMat.current || !blackMat.current) return
+    const target = flipped ? 0 : 1
+    const current = whiteMat.current.opacity
+    if (current === target) return
+    const next = prefersReducedMotion() || Math.abs(target - current) < 0.003
+      ? target
+      : current + (target - current) * (1 - Math.exp(-7 * dt))
+    whiteMat.current.opacity = next
+    blackMat.current.opacity = 1 - next
+    invalidate()
+  })
+  const plane = [OUTER - 0.12, OUTER - 0.12] as [number, number]
+  return (
+    <>
+      <mesh position={[0, FRAME_RAISE + 0.002, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={plane} />
+        <meshStandardMaterial ref={whiteMat} map={white} transparent opacity={initial} depthWrite={false} metalness={0.6} roughness={0.35} />
+      </mesh>
+      <mesh position={[0, FRAME_RAISE + 0.003, 0]} rotation={[-Math.PI / 2, 0, Math.PI]}>
+        <planeGeometry args={plane} />
+        <meshStandardMaterial ref={blackMat} map={black} transparent opacity={1 - initial} depthWrite={false} metalness={0.6} roughness={0.35} />
+      </mesh>
+    </>
+  )
+}
+
 export function Board({ flipped }: { flipped: boolean }) {
   const frameGeometry = useFrameGeometry()
   const fieldMaterials = useMemo(() => {
@@ -72,21 +106,24 @@ export function Board({ flipped }: { flipped: boolean }) {
     [],
   )
 
-  // Draw the coordinates once the serif font is available, so they don't fall back to Georgia.
-  const [coords, setCoords] = useState<THREE.CanvasTexture | null>(null)
+  // Draw both sets of coordinates once, when the serif font is available (so they don't fall
+  // back to Georgia). Flipping the board then crossfades between them instead of redrawing a
+  // large texture mid-turn.
+  const [coords, setCoords] = useState<{ white: THREE.CanvasTexture; black: THREE.CanvasTexture } | null>(null)
   useEffect(() => {
     let alive = true
-    let tex: THREE.CanvasTexture | null = null
+    let made: { white: THREE.CanvasTexture; black: THREE.CanvasTexture } | null = null
     document.fonts.load('600 40px "Newsreader Variable"').finally(() => {
       if (!alive) return
-      tex = makeCoordinateTexture(flipped)
-      setCoords(tex)
+      made = { white: makeCoordinateTexture(false), black: makeCoordinateTexture(true) }
+      setCoords(made)
     })
     return () => {
       alive = false
-      tex?.dispose()
+      made?.white.dispose()
+      made?.black.dispose()
     }
-  }, [flipped])
+  }, [])
 
   return (
     <group>
@@ -95,12 +132,7 @@ export function Board({ flipped }: { flipped: boolean }) {
         <boxGeometry args={[FIELD, 0.3, FIELD]} />
       </mesh>
       <mesh geometry={frameGeometry} material={frameMaterial} castShadow receiveShadow />
-      {coords && (
-        <mesh position={[0, FRAME_RAISE + 0.002, 0]} rotation={[-Math.PI / 2, 0, flipped ? Math.PI : 0]}>
-          <planeGeometry args={[OUTER - 0.12, OUTER - 0.12]} />
-          <meshStandardMaterial map={coords} transparent depthWrite={false} metalness={0.6} roughness={0.35} />
-        </mesh>
-      )}
+      {coords && <CoordinateOverlays white={coords.white} black={coords.black} flipped={flipped} />}
       {/* Thin brass lip where the frame meets the field. */}
       {[0, 1, 2, 3].map((i) => (
         <group key={i} rotation={[0, (i * Math.PI) / 2, 0]}>
