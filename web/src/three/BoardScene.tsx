@@ -43,6 +43,9 @@ const LIGHTING: Record<Theme, { sky: string; ground: string; hemi: number; key: 
   light: { sky: '#ffffff', ground: '#d8c4b3', hemi: 1.0, key: '#fff5e8', keyI: 2.6, rim: 0, env: 0.9 },
 }
 
+// Longest time step (seconds) any animation may advance in a single frame.
+const MAX_FRAME_DELTA = 1 / 30
+
 /** Low-end hint: few cores or little memory. Such machines get a lower pixel ratio and smaller shadows. */
 const LOW_POWER =
   (navigator.hardwareConcurrency ?? 8) <= 4 ||
@@ -354,6 +357,12 @@ export function BoardScene(props: BoardSceneProps) {
       <Canvas shadows="percentage" frameloop="demand" dpr={[1, LOW_POWER ? 1.25 : 1.75]} camera={{ fov: 32, position: [0, 11, 9] }} gl={{ antialias: true }}
         onPointerMissed={() => setSelected(null)}
         onCreated={(state) => {
+          // The scene renders on demand, so after idling (a refresh, another window) the first
+          // frame's delta can be seconds long, and camera smoothing would jump straight to the
+          // end of a glide. Cap each step; the clock's elapsed time still tracks real time.
+          const clock = state.clock
+          const rawDelta = clock.getDelta.bind(clock)
+          clock.getDelta = () => Math.min(rawDelta(), MAX_FRAME_DELTA)
           if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__three = state
           requestAnimationFrame(() => requestAnimationFrame(() => setReady(true)))
         }}>
