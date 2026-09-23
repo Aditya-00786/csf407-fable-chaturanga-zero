@@ -1,7 +1,7 @@
 import { animated, easings, to, useSpring } from '@react-spring/three'
 import { Html } from '@react-three/drei'
 import type { ThreeEvent } from '@react-three/fiber'
-import { useEffect, useRef } from 'react'
+import { memo, useEffect, useRef } from 'react'
 import { ASHVA, GAJA, PIECES, type PieceKind } from '../lib/pieces'
 import type { LabelMode } from '../state/settings'
 import { squareToWorld } from './coords'
@@ -15,10 +15,10 @@ interface Props {
   flipped: boolean
   labels: LabelMode
   reducedMotion: boolean
-  onPointerDown: (e: ThreeEvent<PointerEvent>) => void
+  onPick: (e: ThreeEvent<PointerEvent>, sq: number) => void
 }
 
-export function AnimatedPiece({ piece, sq, lifted, flat, flipped, labels, reducedMotion, onPointerDown }: Props) {
+export const AnimatedPiece = memo(function AnimatedPiece({ piece, sq, lifted, flat, flipped, labels, reducedMotion, onPick }: Props) {
   const kind = Math.abs(piece) as PieceKind
   const white = piece > 0
   const from = useRef(sq)
@@ -54,7 +54,7 @@ export function AnimatedPiece({ piece, sq, lifted, flat, flipped, labels, reduce
   // Profile pieces face left for White and right for Black, like knights in a chess set.
   const facing = (white ? 1 : -1) * (flipped ? -1 : 1)
   return (
-    <animated.group position={position} onPointerDown={onPointerDown}>
+    <animated.group position={position} onPointerDown={(e: ThreeEvent<PointerEvent>) => onPick(e, sq)}>
       {flat ? (
         <group rotation={[0, flipped ? Math.PI : 0, 0]}>
           <PieceToken kind={kind} white={white} />
@@ -79,4 +79,4 @@ export function AnimatedPiece({ piece, sq, lifted, flat, flipped, labels, reduce
       )}
     </animated.group>
   )
-}
+})

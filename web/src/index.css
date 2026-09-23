@@ -151,3 +151,16 @@ p {
 .cz-slide-in {
   animation: cz-slide-in 200ms var(--ease-out-quart) both;
 }
+
+/* Theme switch: a short GPU crossfade of the whole page (see switchTheme). */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 320ms;
+  animation-timing-function: cubic-bezier(0.25, 1, 0.5, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+}

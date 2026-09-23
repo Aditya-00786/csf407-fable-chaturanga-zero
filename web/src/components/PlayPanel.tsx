@@ -5,7 +5,7 @@ import { colorName, describeMove, explainOutcome, squareName } from '../lib/boar
 import { useGame, type Mode, type Pace } from '../state/game'
 import { useDetail, useSettings, type DetailPart } from '../state/settings'
 import { PieceGlyph } from './PieceGlyph'
-import { Button, SectionTitle, Segmented, Switch } from './ui'
+import { Button, Collapse, SectionTitle, Segmented, Switch } from './ui'
 
 const AGENTS = [
   { value: 'greedy', label: 'Greedy', title: 'Looks two plies ahead: grabs material, avoids losing pieces' },
@@ -262,19 +262,22 @@ export function PlayPanel({ view, onClose, onRotate }: { view: GameView | null; 
               { value: 'essential', label: 'Essential', title: 'Headlines only: whose turn it is, check, and the result' },
               { value: 'full', label: 'Full', title: 'Also hints, move and quiet-ply counters, and the rule behind each result' },
             ]} />
-          {settings.details === 'essential' ? (
-            <p className="-mt-1.5 text-[12.5px] leading-snug text-ink-faint">
-              Showing headlines only. Full lets you add hints, move counters and the rule behind each result.
-            </p>
-          ) : (
-            <fieldset className="-mt-1 space-y-2.5 rounded-lg bg-bg px-3 py-3">
-              <legend className="sr-only">Details to show</legend>
-              {DETAIL_PARTS.map((p) => (
-                <Switch key={p.part} label={p.label} checked={settings.detailParts[p.part]}
-                  onChange={(on) => settings.setDetailPart(p.part, on)} />
-              ))}
-            </fieldset>
-          )}
+          <div className="-mt-1.5">
+            <Collapse open={settings.details === 'essential'}>
+              <p className="text-[12.5px] leading-snug text-ink-faint">
+                Showing headlines only. Full lets you add hints, move counters and the rule behind each result.
+              </p>
+            </Collapse>
+            <Collapse open={settings.details === 'full'}>
+              <fieldset className="mt-0.5 space-y-2.5 rounded-lg bg-bg px-3 py-3">
+                <legend className="sr-only">Details to show</legend>
+                {DETAIL_PARTS.map((p) => (
+                  <Switch key={p.part} label={p.label} checked={settings.detailParts[p.part]}
+                    onChange={(on) => settings.setDetailPart(p.part, on)} />
+                ))}
+              </fieldset>
+            </Collapse>
+          </div>
           <Switch label="Sound" checked={settings.sound} onChange={settings.setSound} />
           <Button size="sm" onClick={onRotate} icon={<FlipVertical2 size={15} />}>Rotate the board</Button>
         </section>

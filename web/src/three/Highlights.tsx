@@ -50,8 +50,10 @@ function MoveTarget({ sq, capture, hovered, color }: { sq: number; capture: bool
 function CheckRing({ sq, color, animate }: { sq: number; color: string; animate: boolean }) {
   const [x, z] = squareToWorld(sq)
   const ref = useRef<THREE.MeshBasicMaterial>(null)
-  useFrame(({ clock }) => {
-    if (ref.current && animate) ref.current.opacity = 0.65 + Math.sin(clock.elapsedTime * 4) * 0.3
+  useFrame(({ clock, invalidate }) => {
+    if (!ref.current || !animate) return
+    ref.current.opacity = 0.65 + Math.sin(clock.elapsedTime * 4) * 0.3
+    invalidate() // the scene renders on demand; keep frames coming while the pulse runs
   })
   // A thick ring plus a soft wash under the piece, so check reads even around a wide plinth.
   return (

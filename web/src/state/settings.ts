@@ -1,5 +1,6 @@
 /** Per-viewer display preferences, remembered in localStorage when available. */
 
+import { flushSync } from 'react-dom'
 import { create } from 'zustand'
 
 export type Theme = 'dark' | 'light'
@@ -97,4 +98,19 @@ export function useDetail(part: DetailPart) {
 
 export function prefersReducedMotion() {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
+/**
+ * Switch theme with a compositor crossfade (View Transitions API) where available. The page is
+ * snapshotted once and faded on the GPU, which stays smooth on slow machines; the 3D scene eases
+ * its own lighting underneath. Without support, or with reduced motion, it switches instantly.
+ */
+export function switchTheme(next: Theme) {
+  const apply = () => flushSync(() => useSettings.getState().setTheme(next))
+  const doc = document as Document & { startViewTransition?: (cb: () => void) => unknown }
+  if (!doc.startViewTransition || prefersReducedMotion()) {
+    apply()
+    return
+  }
+  doc.startViewTransition(apply)
 }

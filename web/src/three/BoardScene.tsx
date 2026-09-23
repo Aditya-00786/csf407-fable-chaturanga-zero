@@ -4,8 +4,9 @@
  */
 
 import { CameraControls, Environment, Lightformer } from '@react-three/drei'
-import { Canvas, useThree, type ThreeEvent } from '@react-three/fiber'
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import * as THREE from 'three'
 import type { Color } from '../lib/api'
 import { squareName } from '../lib/board'
 import { PIECES, type PieceKind } from '../lib/pieces'
@@ -29,34 +30,102 @@ export interface BoardSceneProps {
   label?: string
 }
 
-const SCENE: Record<Theme, { colors: HighlightColors; env: number }> = {
-  dark: { colors: { accent: '#dcb562', danger: '#e36a4c', ink: '#f1e8d8' }, env: 0.55 },
-  light: { colors: { accent: '#8d6420', danger: '#b8432e', ink: '#3a2118' }, env: 0.9 },
+const SCENE: Record<Theme, { colors: HighlightColors }> = {
+  dark: { colors: { accent: '#dcb562', danger: '#e36a4c', ink: '#f1e8d8' } },
+  light: { colors: { accent: '#8d6420', danger: '#b8432e', ink: '#3a2118' } },
 }
 
-function Lights({ theme }: { theme: Theme }) {
-  const shadow = {
-    castShadow: true,
-    'shadow-mapSize': [2048, 2048] as [number, number],
-    'shadow-camera-left': -7, 'shadow-camera-right': 7, 'shadow-camera-top': 7, 'shadow-camera-bottom': -7,
-    'shadow-bias': -0.0004, 'shadow-normalBias': 0.02,
-  }
-  if (theme === 'dark') {
-    return (
-      <>
-        <hemisphereLight args={['#ffe0b8', '#2b140c', 0.45]} />
-        <directionalLight position={[3.5, 9, 5]} intensity={2.5} color="#ffd29a" {...shadow} />
-        <directionalLight position={[-5, 4, -6]} intensity={0.35} color="#c9d4ff" />
-      </>
-    )
-  }
+// One fixed set of lights for both themes: only colours and intensities change, so switching
+// theme never changes the light count (which would force every shader to recompile).
+const LIGHTING: Record<Theme, { sky: string; ground: string; hemi: number; key: string; keyI: number; rim: number; env: number }> = {
+  dark: { sky: '#ffe0b8', ground: '#2b140c', hemi: 0.45, key: '#ffd29a', keyI: 2.5, rim: 0.35, env: 0.55 },
+  light: { sky: '#ffffff', ground: '#d8c4b3', hemi: 1.0, key: '#fff5e8', keyI: 2.6, rim: 0, env: 0.9 },
+}
+
+/** Low-end hint: few cores or little memory. Such machines get a lower pixel ratio and smaller shadows. */
+const LOW_POWER =
+  (navigator.hardwareConcurrency ?? 8) <= 4 ||
+  ((navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8) <= 4
+
+function Lights({ theme, instant }: { theme: Theme; instant: boolean }) {
+  const hemi = useRef<THREE.HemisphereLight>(null)
+  const key = useRef<THREE.DirectionalLight>(null)
+  const rim = useRef<THREE.DirectionalLight>(null)
+  const env = useRef(LIGHTING[theme].env)
+  const targets = useMemo(() => {
+    const l = LIGHTING[theme]
+    return { ...l, sky: new THREE.Color(l.sky), ground: new THREE.Color(l.ground), key: new THREE.Color(l.key) }
+  }, [theme])
+
+  useFrame(({ scene, invalidate }, dt) => {
+    if (!hemi.current || !key.current || !rim.current) return
+    // Ease towards the theme's lighting; keep requesting frames until it has settled.
+    const k = instant ? 1 : 1 - Math.exp(-9 * Math.min(dt, 0.05))
+    hemi.current.color.lerp(targets.sky, k)
+    hemi.current.groundColor.lerp(targets.ground, k)
+    key.current.color.lerp(targets.key, k)
+    hemi.current.intensity += (targets.hemi - hemi.current.intensity) * k
+    key.current.intensity += (targets.keyI - key.current.intensity) * k
+    rim.current.intensity += (targets.rim - rim.current.intensity) * k
+    env.current += (targets.env - env.current) * k
+    scene.environmentIntensity = env.current
+    const near = (a: number, b: number) => Math.abs(a - b) < 0.002
+    const nearColor = (a: THREE.Color, b: THREE.Color) => near(a.r, b.r) && near(a.g, b.g) && near(a.b, b.b)
+    const settled =
+      near(targets.hemi, hemi.current.intensity) && near(targets.keyI, key.current.intensity) &&
+      near(targets.rim, rim.current.intensity) && near(targets.env, env.current) &&
+      nearColor(hemi.current.color, targets.sky) && nearColor(hemi.current.groundColor, targets.ground) &&
+      nearColor(key.current.color, targets.key)
+    if (!settled) {
+      invalidate()
+    } else if (hemi.current.intensity !== targets.hemi) {
+      // Snap the last fraction so the loop stops cleanly.
+      hemi.current.color.copy(targets.sky)
+      hemi.current.groundColor.copy(targets.ground)
+      key.current.color.copy(targets.key)
+      hemi.current.intensity = targets.hemi
+      key.current.intensity = targets.keyI
+      rim.current.intensity = targets.rim
+      env.current = targets.env
+      scene.environmentIntensity = env.current
+      invalidate()
+    }
+  })
+
+  const l = LIGHTING[theme]
+  const map = LOW_POWER ? 1024 : 2048
   return (
     <>
-      <hemisphereLight args={['#ffffff', '#d8c4b3', 1.0]} />
-      <directionalLight position={[4, 10, 4]} intensity={2.6} color="#fff5e8" {...shadow} />
+      <hemisphereLight ref={hemi} args={[l.sky, l.ground, l.hemi]} />
+      <directionalLight
+        ref={key}
+        position={[3.5, 9, 5]}
+        intensity={l.keyI}
+        color={l.key}
+        castShadow
+        shadow-mapSize={[map, map]}
+        shadow-camera-left={-7}
+        shadow-camera-right={7}
+        shadow-camera-top={7}
+        shadow-camera-bottom={-7}
+        shadow-bias={-0.0004}
+        shadow-normalBias={0.02}
+      />
+      <directionalLight ref={rim} position={[-5, 4, -6]} intensity={l.rim} color="#c9d4ff" />
     </>
   )
 }
+
+/** Rendered once: its layout effect re-applies scene settings on every render, so keep it still. */
+const StudioEnvironment = memo(function StudioEnvironment() {
+  return (
+    <Environment resolution={LOW_POWER ? 128 : 256}>
+      <Lightformer form="rect" intensity={2.2} color="#ffe6c4" position={[0, 6, -4]} scale={[12, 4, 1]} />
+      <Lightformer form="rect" intensity={1.2} color="#fff2e0" position={[-6, 3, 2]} rotation={[0, Math.PI / 2, 0]} scale={[8, 2, 1]} />
+      <Lightformer form="ring" intensity={1.5} color="#ffd9a8" position={[5, 5, 4]} scale={3} />
+    </Environment>
+  )
+})
 
 function Rig({ orientation, flat }: { orientation: Color; flat: boolean }) {
   const ref = useRef<CameraControls>(null)
@@ -140,15 +209,20 @@ export function BoardScene(props: BoardSceneProps) {
 
   // R3F dispatches one event per intersected mesh (a piece is several meshes), so act on
   // each native click once: the nearest hit wins, whether it is a piece or the field.
+  // The handler is stable (it reads the latest `choose` through a ref), so pieces can be memoised
+  // and a hover or theme change does not re-render all 32 of them.
   const lastClick = useRef<Event | null>(null)
-  const once = (e: ThreeEvent<PointerEvent>, sq: number | null) => {
+  const chooseRef = useRef(choose)
+  useLayoutEffect(() => {
+    chooseRef.current = choose
+  })
+  const pick = useCallback((e: ThreeEvent<PointerEvent>, sq: number | null) => {
     e.stopPropagation()
     if (lastClick.current === e.nativeEvent) return
     lastClick.current = e.nativeEvent
-    if (sq !== null) choose(sq)
-  }
-  const onPiece = (sq: number) => (e: ThreeEvent<PointerEvent>) => once(e, sq)
-  const onField = (e: ThreeEvent<PointerEvent>) => once(e, worldToSquare(e.point.x, e.point.z))
+    if (sq !== null) chooseRef.current(sq)
+  }, [])
+  const onField = (e: ThreeEvent<PointerEvent>) => pick(e, worldToSquare(e.point.x, e.point.z))
   const onHover = (e: ThreeEvent<PointerEvent>) => {
     const sq = worldToSquare(e.point.x, e.point.z)
     setHovered(sq)
@@ -202,19 +276,15 @@ export function BoardScene(props: BoardSceneProps) {
           Setting up the board…
         </p>
       </div>
-      <Canvas shadows="percentage" dpr={[1, 2]} camera={{ fov: 32, position: [0, 11, 9] }} gl={{ antialias: true }}
+      <Canvas shadows="percentage" frameloop="demand" dpr={[1, LOW_POWER ? 1.25 : 1.75]} camera={{ fov: 32, position: [0, 11, 9] }} gl={{ antialias: true }}
         onPointerMissed={() => setSelected(null)}
         onCreated={(state) => {
           if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__three = state
           requestAnimationFrame(() => requestAnimationFrame(() => setReady(true)))
         }}>
         <Rig orientation={orientation} flat={flat} />
-        <Lights theme={theme} />
-        <Environment resolution={256} environmentIntensity={SCENE[theme].env}>
-          <Lightformer form="rect" intensity={2.2} color="#ffe6c4" position={[0, 6, -4]} scale={[12, 4, 1]} />
-          <Lightformer form="rect" intensity={1.2} color="#fff2e0" position={[-6, 3, 2]} rotation={[0, Math.PI / 2, 0]} scale={[8, 2, 1]} />
-          <Lightformer form="ring" intensity={1.5} color="#ffd9a8" position={[5, 5, 4]} scale={3} />
-        </Environment>
+        <Lights theme={theme} instant={reducedMotion} />
+        <StudioEnvironment />
         <Board flipped={flipped} />
         <Highlights
           colors={SCENE[theme].colors}
@@ -243,7 +313,7 @@ export function BoardScene(props: BoardSceneProps) {
             flipped={flipped}
             labels={labels}
             reducedMotion={reducedMotion}
-            onPointerDown={onPiece(p.sq)}
+            onPick={pick}
           />
         ))}
       </Canvas>

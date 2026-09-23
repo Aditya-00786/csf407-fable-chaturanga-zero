@@ -4,7 +4,7 @@
  * brass ring. Geometries are created once and reused by every piece.
  */
 
-import { useMemo } from 'react'
+import { memo, useMemo } from 'react'
 import * as THREE from 'three'
 import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js'
 import type { PieceKind } from '../lib/pieces'
@@ -91,7 +91,7 @@ function Plinth({ body }: { body: THREE.Material }) {
   )
 }
 
-export function PieceModel({ kind, white }: { kind: PieceKind; white: boolean }) {
+export const PieceModel = memo(function PieceModel({ kind, white }: { kind: PieceKind; white: boolean }) {
   const body = white ? ivory : ebony
   switch (kind) {
     case 1:
@@ -190,7 +190,7 @@ export function PieceModel({ kind, white }: { kind: PieceKind; white: boolean })
       )
     }
   }
-}
+})
 
 /** Flat-view token: a disc with the piece glyph, for the top-down view and slow machines. */
 export function PieceToken({ kind, white }: { kind: PieceKind; white: boolean }) {

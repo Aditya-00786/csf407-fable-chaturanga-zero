@@ -223,6 +223,11 @@ The server keeps no game state, so undo and review are just shorter move lists.
 - Reduced-motion settings are respected.
 - Light and dark themes follow the system setting, with a toggle in the top bar.
 
+**Performance on slower machines**
+- **On-demand rendering:** the 3D scene draws only when something changes, such as a move, hover or camera move. It uses no GPU at all while you think.
+- **Low-power mode:** machines with 4 or fewer CPU cores, or 4 GB of memory or less, get a lower pixel ratio and smaller shadows.
+- **Cheap theme switching:** the page crossfades on the GPU (View Transitions API), and the 3D lighting eases across. The set of lights never changes, so switching theme never forces shaders to recompile.
+
 **Developer aids** (development builds only)
 - `?showcase` shows every piece model side by side.
 - `window.__game` exposes the Play store in the browser console.

@@ -1,6 +1,6 @@
 import { Moon, Sun } from 'lucide-react'
 import { href, type Page } from '../lib/route'
-import { useSettings } from '../state/settings'
+import { switchTheme, useSettings } from '../state/settings'
 
 const NAV: { page: Page; label: string }[] = [
   { page: 'play', label: 'Play' },
@@ -20,7 +20,6 @@ function Mark() {
 
 export function TopBar({ page }: { page: Page }) {
   const theme = useSettings((s) => s.theme)
-  const setTheme = useSettings((s) => s.setTheme)
   return (
     <header className="flex h-14 shrink-0 items-center gap-4 border-b border-line bg-surface px-4 sm:gap-6 sm:px-5">
       <a href={href('play')} className="flex items-center gap-2.5 rounded-md" aria-label="ChaturangZero home">
@@ -58,7 +57,7 @@ export function TopBar({ page }: { page: Page }) {
         <span className="hidden text-[12.5px] text-ink-faint xl:inline">CS F407 · Team Fable</span>
         <button
           type="button"
-          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          onClick={() => switchTheme(theme === 'dark' ? 'light' : 'dark')}
           className="grid h-9 w-9 place-items-center rounded-lg text-ink-muted transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
           aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
           title={theme === 'dark' ? 'Light theme' : 'Dark theme'}
