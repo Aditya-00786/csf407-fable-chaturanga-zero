@@ -165,7 +165,8 @@ function usePinchZoom(controls: RefObject<CameraControls | null>) {
     let safariScale: number | null = null
     const dollyBy = (amount: number) => {
       const c = controls.current
-      if (!c) return
+      // Disabled while the camera glides on its own (see Rig): the glide must not be disturbed.
+      if (!c || !c.enabled) return
       void c.dolly(amount, false)
       invalidate()
     }
@@ -235,6 +236,10 @@ function Rig({ orientation, flat }: { orientation: Color; flat: boolean }) {
     c.maxPolarAngle = Math.PI / 2
     c.azimuthRotateSpeed = limits.rotate
     c.polarRotateSpeed = limits.rotate
+    // Ignore camera input until the glide has finished. Even a plain click counts as the start of
+    // a drag to camera-controls, which then hurries the rest of the turn with its quick drag
+    // smoothing, so the flip seemed to stop dead. Clicks on the board still reach the pieces.
+    if (animate) c.enabled = false
     // Pull back on narrow canvases so the whole board, with its capture trays, stays in frame.
     const k = Math.min(2.5, Math.max(1.3, 1.75 / aspect))
     const dir = orientation === 1 ? 1 : -1
@@ -246,6 +251,7 @@ function Rig({ orientation, flat }: { orientation: Color; flat: boolean }) {
       if (request.current !== id) return // a newer move of the camera took over
       c.minPolarAngle = limits.minPolar
       c.maxPolarAngle = limits.maxPolar
+      c.enabled = true
     })
   }, [orientation, flat, aspect])
   return (
