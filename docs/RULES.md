@@ -16,27 +16,29 @@ self-play games always end.
 
 ## 1. Sources
 
+Sources with a saved copy in [`docs/Handouts/`](Handouts/) link to that PDF; the rest link to the web.
+
 ### Scholarly / primary
 | Key | Source |
 |-----|--------|
 | **[Murray]** | H. J. R. Murray, *A History of Chess*, Oxford: Clarendon Press, 1913 ([archive.org](https://archive.org/details/AHistoryOfChess)). p. 27 n. 4 (king files); pp. 59–61 (early Indian game, al-Adli's Indian rules); pp. 63–65 (translation of **Nilakantha**, a Sanskrit text on two-player chess, c. 1600–1700); p. 72 (four-handed dice game); pp. 80–81 (19th-c. Hindustani chess); pp. 224–229 (shatranj) |
-| **[Averbakh]** | Y. Averbakh, *A History of Chess: From Chaturanga to the Present Day*, Russell Enterprises, 2012, pp. 36–37 (shatranj rules). Local copy: `Handouts/a-history-of-chess-from-chaturanga-to-the-present-day_compress.pdf` |
+| **[Averbakh]** | Y. Averbakh, *A History of Chess: From Chaturanga to the Present Day*, Russell Enterprises, 2012, pp. 36–37 (shatranj rules) ([PDF](Handouts/a-history-of-chess-from-chaturanga-to-the-present-day_compress.pdf)) |
 
 ### Encyclopedic / secondary
 | Key | Source | Notes |
 |-----|--------|-------|
-| **[W-Chat]** | Wikipedia, "Chaturanga" ([link](https://en.wikipedia.org/wiki/Chaturanga)) | Cites Murray, Pritchard (2007), ChessZone (dead page) and learn-and-play-online-chess. Local copies: `Handouts/Chaturanga - Wikipedia.pdf`, `Handouts/b17318c6171017e0.pdf` (older snapshot) |
+| **[W-Chat]** | Wikipedia, "Chaturanga" ([PDF](Handouts/Chaturanga%20-%20Wikipedia.pdf); [older snapshot](Handouts/b17318c6171017e0.pdf)) | Cites Murray, Pritchard (2007), ChessZone (dead page) and learn-and-play-online-chess |
 | **[W-Promo]** | Wikipedia, "Promotion (chess)" ([link](https://en.wikipedia.org/wiki/Promotion_(chess))) | Mantri-only view cited to chessvariants.com; file-based view cited to Ludoteka |
 | **[W-Shat]** | Wikipedia, "Shatranj" ([link](https://en.wikipedia.org/wiki/Shatranj)) | Supporting only |
 | **[W-Ind]** | Wikipedia, "Indian chess" ([link](https://en.wikipedia.org/wiki/Indian_chess)) | 18th–19th c. Indian chess; supporting only |
 | **[Wikibooks]** | Wikibooks, "Chess Variants/Chaturanga and Shatranj" ([link](https://en.wikibooks.org/wiki/Chess_Variants/Chaturanga_and_Shatranj)) | No citations |
-| **[Daou]** | N. D. Daou, *Historical Chess Variants*, 2007 (hosted on chessvariants.com; local copy: `Handouts/HistoricalChessVariants.pdf`) | Internet-based compilation. Its footnote 5 ties its promotion rule to 19th-c. Indian chess |
+| **[Daou]** | N. D. Daou, *Historical Chess Variants*, 2007, hosted on chessvariants.com ([PDF](Handouts/HistoricalChessVariants.pdf)) | Internet-based compilation. Its footnote 5 ties its promotion rule to 19th-c. Indian chess |
 
 ### Websites / game sites
 | Key | Source | Notes |
 |-----|--------|-------|
-| **[Handout]** | Rules handout (`Handouts/50b2970664273654.pdf`) | Setup diagram is the same as Wikipedia's |
-| **[LAPOC]** | learn-and-play-online-chess.com, "Chaturanga – The Original Chess" ([link](http://www.learn-and-play-online-chess.com/chaturanga.html); local copy: `Handouts/Chaturanga - The Original Chess.pdf`) | |
+| **[Handout]** | Rules handout ([PDF](Handouts/50b2970664273654.pdf)) | Setup diagram is the same as Wikipedia's |
+| **[LAPOC]** | learn-and-play-online-chess.com, "Chaturanga – The Original Chess" ([PDF](Handouts/Chaturanga%20-%20The%20Original%20Chess.pdf)) | |
 | **[Ludoteka]** | Ludoteka, "Chaturanga – game rules" ([link](http://www.ludoteka.com/chaturanga-en.html)) | Rules match 19th-c. Hindustani chess ([Murray p. 81]) |
 | **[ChessCom]** | Chess.com, "Chaturanga" ([link](https://www.chess.com/terms/chaturanga-game)) | |
 | **[WorldChess]** | World Chess, "Chaturanga" ([link](https://worldchess.com/chess-terms/chaturanga-game)) | |

@@ -175,7 +175,7 @@ csf407-fable-chaturanga-zero/
 │   └── random_play.py       # random-vs-random stress test and benchmark
 ├── docs/
 │   ├── RULES.md             # rules specification with source tallies
-│   └── Handouts/            # source PDFs cited in RULES.md
+│   └── Handouts/            # source PDFs cited in RULES.md (linked from there)
 ├── pyproject.toml           # package metadata and dependencies
 └── README.md
 ```
@@ -293,7 +293,7 @@ Scopes: `engine`, `encoding`, `mcts`, `net`, `train`, `eval`, `rules`, `scripts`
 - **Match the style of the surrounding code:** type hints on public functions, and short
   docstrings that explain *why* rather than *what*.
 - **Never commit** virtual environments, training checkpoints or large datasets. `.gitignore`
-  covers these. The repository is private because `docs/Handouts/` contains copyrighted source PDFs;
+  covers these. The repository is private because [`docs/Handouts/`](docs/Handouts/) contains copyrighted source PDFs;
   keep it private.
 
 ---
