@@ -83,17 +83,19 @@ export function PlayView() {
   // The toggle is inert while the drawer covers it, so let the drawer close before focusing it.
   const closePanel = () => {
     flushSync(() => setPanelOpen(false))
-    toggleRef.current?.focus()
+    toggleRef.current?.focus({ preventScroll: true })
   }
 
   // Esc closes the panel; focus moves into it when it opens.
   useEffect(() => {
     if (!panelOpen) return
-    panelRef.current?.querySelector<HTMLElement>('button')?.focus()
+    // preventScroll: the drawer is still off-screen as it starts to slide in, and focusing it would
+    // otherwise scroll the whole stage sideways to reveal it.
+    panelRef.current?.querySelector<HTMLElement>('button')?.focus({ preventScroll: true })
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         flushSync(() => setPanelOpen(false))
-        toggleRef.current?.focus()
+        toggleRef.current?.focus({ preventScroll: true })
       }
     }
     window.addEventListener('keydown', onKey)
@@ -111,7 +113,7 @@ export function PlayView() {
 
   return (
     <div
-      className="relative min-h-[440px] flex-1 overflow-hidden"
+      className="relative min-h-[440px] flex-1 overflow-clip"
       style={{ background: 'radial-gradient(ellipse 70% 60% at 50% 55%, var(--stage-glow), transparent 75%)' }}
     >
       <section aria-label="Board" className="absolute inset-0">
@@ -133,7 +135,7 @@ export function PlayView() {
         <Floating className="max-w-[min(360px,52vw)] px-4 py-3">
           <Status view={view} />
         </Floating>
-        <Covered by={panelOpen} className="shrink-0">
+        <Covered by={panelOpen} onHidden={() => setQuickOpen(false)} className="shrink-0">
           <Floating className="flex items-center gap-0.5 p-1">
             <QuickActions id="quick-actions" open={quickOpen}>
               <ToolButton label="Undo" icon={<Undo2 size={17} />} onClick={g.undo}
@@ -150,10 +152,7 @@ export function PlayView() {
               ref={toggleRef}
               open={panelOpen}
               controls="game-panel"
-              onClick={() => {
-                setPanelOpen((open) => !open)
-                setQuickOpen(false)
-              }}
+              onClick={() => setPanelOpen((open) => !open)}
               icon={<PanelRight size={17} />}
               label="Game"
               title="Mode, moves and display"

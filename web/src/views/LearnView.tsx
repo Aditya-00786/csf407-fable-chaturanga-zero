@@ -285,11 +285,12 @@ function useDrawers() {
   // A drawer's toggle is inert while the drawer covers it, so let the drawer close before focusing it.
   const close = (name: DrawerName) => {
     flushSync(() => set(name, false))
-    document.getElementById(DRAWERS[name].toggle)?.focus()
+    document.getElementById(DRAWERS[name].toggle)?.focus({ preventScroll: true })
   }
 
   useEffect(() => {
-    if (focusRequest) document.getElementById(DRAWERS[focusRequest.name].drawer)?.querySelector<HTMLElement>('button, a')?.focus()
+    // preventScroll: the drawer is still off-screen as it starts to slide in (see PlayView).
+    if (focusRequest) document.getElementById(DRAWERS[focusRequest.name].drawer)?.querySelector<HTMLElement>('button, a')?.focus({ preventScroll: true })
   }, [focusRequest])
 
   useEffect(() => {
@@ -298,7 +299,7 @@ function useDrawers() {
       if (e.key !== 'Escape') return
       const name = open[latest] ? latest : otherDrawer(latest)
       flushSync(() => setOpen((o) => ({ ...o, [name]: false })))
-      document.getElementById(DRAWERS[name].toggle)?.focus()
+      document.getElementById(DRAWERS[name].toggle)?.focus({ preventScroll: true })
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -326,7 +327,7 @@ export function LearnView({ lessonId }: { lessonId: string | null }) {
 
   return (
     <div
-      className="relative min-h-[440px] flex-1 overflow-hidden"
+      className="relative min-h-[440px] flex-1 overflow-clip"
       style={{ background: 'radial-gradient(ellipse 70% 60% at 50% 55%, var(--stage-glow), transparent 75%)' }}
     >
       <section aria-label="Lesson board" className="absolute inset-0">
@@ -364,7 +365,7 @@ export function LearnView({ lessonId }: { lessonId: string | null }) {
             <LessonCard key={lesson.id} lesson={lesson} index={index} next={next} state={state} onRead={() => d.set('lesson', true)} />
           </Floating>
         </Covered>
-        <Covered by={d.open.lesson} className="shrink-0">
+        <Covered by={d.open.lesson} onHidden={() => setQuickOpen(false)} className="shrink-0">
           <Floating className="flex items-center gap-0.5 p-1">
             <QuickActions id="learn-quick-actions" open={quickOpen}>
               <ToolButton label="Reset board" icon={<RotateCcw size={17} />} onClick={reset} />
@@ -381,10 +382,7 @@ export function LearnView({ lessonId }: { lessonId: string | null }) {
               id={DRAWERS.lesson.toggle}
               open={d.open.lesson}
               controls={DRAWERS.lesson.drawer}
-              onClick={() => {
-                d.set('lesson', !d.open.lesson)
-                setQuickOpen(false)
-              }}
+              onClick={() => d.set('lesson', !d.open.lesson)}
               icon={<BookOpen size={17} />}
               label="Lesson"
               title="Read the lesson"

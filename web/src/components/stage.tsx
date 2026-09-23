@@ -19,10 +19,19 @@ export function Floating({ className = '', children }: { className?: string; chi
  * Floating controls that sit where a drawer opens. They fade out and become inert while it is
  * open, so nothing peeks out past the drawer's edge.
  */
-export function Covered({ by, className = '', children }: { by: boolean; className?: string; children: ReactNode }) {
+export function Covered({ by, onHidden, className = '', children }: {
+  by: boolean
+  /** Called once they have faded out: the moment to tidy them (e.g. fold quick actions) unseen. */
+  onHidden?: () => void
+  className?: string
+  children: ReactNode
+}) {
   return (
     <div
       inert={by}
+      onTransitionEnd={(e) => {
+        if (by && e.target === e.currentTarget && e.propertyName === 'opacity') onHidden?.()
+      }}
       className={`transition-opacity duration-200 ease-out-quart ${by ? 'pointer-events-none opacity-0' : 'opacity-100'} ${className}`}
     >
       {children}
@@ -89,7 +98,7 @@ export function ToolButton({ label, icon, onClick, disabled }: {
   )
 }
 
-/** A toolbar toggle that opens a drawer; filled with the accent while its drawer is open. */
+/** A toolbar toggle that opens a drawer. Its drawer covers it (see Covered), so it needs no open state of its own. */
 export function DrawerToggle({ ref, id, open, controls, onClick, icon, label, title, badge }: {
   ref?: Ref<HTMLButtonElement>
   id?: string
@@ -110,13 +119,11 @@ export function DrawerToggle({ ref, id, open, controls, onClick, icon, label, ti
       aria-expanded={open}
       aria-controls={controls}
       title={title}
-      className={`inline-flex h-10 items-center gap-2 rounded-lg px-2.5 text-sm font-medium transition-colors duration-150 sm:px-3 ${
-        open ? 'bg-accent text-accent-ink hover:bg-accent-hover' : 'text-ink hover:bg-surface-2'
-      }`}
+      className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg px-2.5 text-sm font-medium text-ink transition-colors duration-150 hover:bg-surface-2 sm:px-3"
     >
       {icon}
       <span className="hidden sm:inline">{label}</span>
-      {!open && badge}
+      {badge}
     </button>
   )
 }
@@ -141,10 +148,13 @@ export function Drawer({ ref, id, label, side, open, className = '', children }:
       ref={ref}
       aria-label={label}
       inert={!open}
-      // Visible at once on opening (so focus can move in straight away); hidden only once it
-      // has slid out on closing.
-      className={`absolute inset-y-0 z-[var(--z-sticky)] w-full border-line bg-surface duration-250 ease-out-quart ${edge} ${className} ${
-        open ? 'visible translate-x-0 transition-[translate]' : `invisible ${away} transition-[translate,visibility]`
+      // Visible at once on opening (so focus can move in straight away); hidden only once it has
+      // slid out on closing. It glides in on a long ease-out and leaves a little quicker; its own
+      // compositor layer keeps the slide off the main thread and away from the WebGL canvas.
+      className={`absolute inset-y-0 z-[var(--z-sticky)] w-full border-line bg-surface will-change-[translate] ${edge} ${className} ${
+        open
+          ? 'visible translate-x-0 transition-[translate] duration-[340ms] ease-out-quint'
+          : `invisible ${away} transition-[translate,visibility] duration-[260ms] ease-in-out-cubic`
       }`}
     >
       <div className="flex h-full flex-col">{children}</div>
