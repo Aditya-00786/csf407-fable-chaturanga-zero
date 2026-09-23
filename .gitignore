@@ -5,6 +5,3 @@ __pycache__/
 .DS_Store
 checkpoints/
 runs/
-
-# Source PDFs are copyrighted material; kept locally only
-docs/Handouts/

@@ -72,7 +72,7 @@ the same commit that completes the work.
 ## Quick start
 
 ```bash
-git clone <repo-url> chaturanga-zero
+git clone https://github.com/Aditya-00786/chaturanga-zero.git
 cd chaturanga-zero
 python3 -m venv .venv
 source .venv/bin/activate
@@ -88,7 +88,7 @@ python -m pytest -q
 
 1. **Clone the repository.**
    ```bash
-   git clone <repo-url> chaturanga-zero
+   git clone https://github.com/Aditya-00786/chaturanga-zero.git
    cd chaturanga-zero
    ```
 2. **Create and activate a virtual environment.** This keeps the project's packages separate from the system Python.
@@ -175,7 +175,7 @@ chaturanga-zero/
 │   └── random_play.py       # random-vs-random stress test and benchmark
 ├── docs/
 │   ├── RULES.md             # rules specification with source tallies
-│   └── Handouts/            # source PDFs (local only, not committed)
+│   └── Handouts/            # source PDFs cited in RULES.md
 ├── pyproject.toml           # package metadata and dependencies
 └── README.md
 ```
@@ -290,8 +290,9 @@ Scopes: `engine`, `encoding`, `mcts`, `net`, `train`, `eval`, `rules`, `scripts`
 - **Every bug fix comes with a test** that fails without the fix.
 - **Match the style of the surrounding code:** type hints on public functions, and short
   docstrings that explain *why* rather than *what*.
-- **Never commit** virtual environments, training checkpoints, large datasets or the source PDFs.
-  `.gitignore` covers these.
+- **Never commit** virtual environments, training checkpoints or large datasets. `.gitignore`
+  covers these. The repository is private because `docs/Handouts/` contains copyrighted source PDFs;
+  keep it private.
 
 ---
 
