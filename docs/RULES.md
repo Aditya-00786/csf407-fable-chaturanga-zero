@@ -50,7 +50,7 @@ Sources with a saved copy in [`docs/Handouts/`](Handouts/) link to that PDF; the
 |---|---|
 | Gambiter, "Chaturanga" | Copy of the Wikipedia article |
 | chessvariants.com "Chaturanga" page | Could not open (CAPTCHA). Counted as *indirect*: Wikipedia cites it for Mantri-only promotion |
-| Front Porch Classics rulebook, gamesrules.net | 4-player dice game (chaturaji), not the 2-player game |
+| Front Porch Classics rulebook ([PDF](Handouts/toaz.info-how-to-play-chaturanga-pr_e8494eab1bbd6a3d24146c33cad12c78.pdf)), gamesrules.net | 4-player dice game (chaturaji), not the 2-player game |
 | *Caturangadīpikā* (Śūlapāṇi) | A manual of the 4-player dice game |
 
 ## 2. Board and setup

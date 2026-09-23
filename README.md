@@ -25,6 +25,10 @@ Overall   ██████████░░░░░░░░░░░░░�
 | 3 | Self-play training pipeline (50–100 games, loss tracking) | `░░░░░░░░░░`   0% | Planned |
 | 4 | Benchmarking vs random, heuristic and earlier agents | `░░░░░░░░░░`   0% | Planned |
 
+Also shipped: the **web app, phase 1**. It has a 3D board, three play modes, interactive lessons
+and a rules reference. The AlphaZero opponent and the live "Watch training" view follow
+Milestones 2–3.
+
 <details>
 <summary>How to update the progress bars</summary>
 
@@ -42,6 +46,7 @@ the same commit that completes the work.
 - [Setting up the repo locally](#setting-up-the-repo-locally)
 - [Essential commands](#essential-commands)
 - [Using the engine](#using-the-engine)
+- [Web app](#web-app)
 - [Project structure](#project-structure)
 - [The rules in brief](#the-rules-in-brief)
 - [Architecture](#architecture)
@@ -55,8 +60,12 @@ the same commit that completes the work.
 
 - **Researched ruleset.** Every rule is backed by historical sources, and contested rules are
   settled by counting references. See [docs/RULES.md](docs/RULES.md).
-- **Verified rules engine.** 61 unit tests, a cross-check against an independent reference
+- **Verified rules engine.** 99 tests, a cross-check against an independent reference
   move generator, and a 10,000-game random-play stress test.
+- **Browser app.** A carved rosewood-and-brass 3D board in light and dark themes, with:
+  - Human vs Human, Human vs Computer and Computer vs Computer;
+  - 11 interactive lessons, each position checked against the engine;
+  - an explanation of why every game ended.
 - **Network-ready encoding.** 15×8×8 input planes from the side to move's point of view, and a
   4,096-move action space with a legal-move mask.
 - **Configurable rules.** Contested historical rules (setup, promotion, stalemate) can be switched
@@ -78,13 +87,16 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 python -m pytest -q
+(cd web && npm install && npm run build)
+python -m chaturanga_server           # then open http://127.0.0.1:8000
 ```
 
 ---
 
 ## Setting up the repo locally
 
-**Requirements:** Python 3.10 or newer (developed on 3.14) and git. PyTorch is added in Milestone 2.
+**Requirements:** Python 3.10 or newer (developed on 3.14), git, and Node.js 20 or newer for the web app
+(developed on 24). PyTorch is added in Milestone 2.
 
 1. **Clone the repository.**
    ```bash
@@ -103,7 +115,11 @@ python -m pytest -q
    "Editable" means changes to the code under `chaturanga/` take effect without reinstalling.
 4. **Check that everything works.**
    ```bash
-   python -m pytest -q                # expect: 61 passed
+   python -m pytest -q                # expect: 99 passed
+   ```
+5. **Install the web app's packages** (only needed for the browser app):
+   ```bash
+   cd web && npm install && cd ..
    ```
 
 The commands below assume the virtual environment is active. If it isn't, prefix them with
@@ -123,6 +139,11 @@ The commands below assume the virtual environment is active. If it isn't, prefix
 | Quick random-play benchmark (1 core) | `python scripts/random_play.py --games 200 --workers 1` |
 | Random play with alternative rules | `python scripts/random_play.py --setup facing --promotion file` |
 | Show all script options | `python scripts/random_play.py --help` |
+| Start the API server | `python -m chaturanga_server` (add `--reload` while developing) |
+| Start the web dev server | `npm run dev --prefix web`, then open http://localhost:5173 |
+| Type-check and lint the web app | `cd web && npx tsc -b && npx oxlint src` |
+| Build the web app | `npm run build --prefix web` |
+| Serve the built app (demo mode) | `python -m chaturanga_server`, then open http://127.0.0.1:8000 |
 
 `random_play.py` prints how the games ended, how long they were and how fast the engine ran.
 Every move comes from the legal-move list and every game must end, so a crash or a hang means a bug.
@@ -157,6 +178,59 @@ FEN letters: `K` Raja, `M` Mantri, `R` Ratha, `G` Gaja, `N` Ashva, `P` Padati. U
 
 ---
 
+## Web app
+
+The browser app lives in `web/`, built with React, TypeScript, Vite, Tailwind CSS, and
+React Three Fiber for the 3D board.
+
+**It never implements the rules itself.** Every move goes to the FastAPI server in
+`chaturanga_server/`, which replays the game with the Python engine and returns:
+- the position;
+- the legal moves;
+- the result.
+
+The server keeps no game state, so undo and review are just shorter move lists.
+
+**Running it**
+- **Development** uses two terminals, and the dev server hot-reloads:
+  ```bash
+  python -m chaturanga_server --reload
+  ```
+  ```bash
+  npm run dev --prefix web
+  ```
+  Then open http://localhost:5173. The dev server forwards `/api` requests to port 8000.
+- **Demo** needs one command, after building once:
+  ```bash
+  npm run build --prefix web
+  ```
+  ```bash
+  python -m chaturanga_server
+  ```
+  Then open http://127.0.0.1:8000. The Python server also serves the built app.
+
+**Screens**
+
+| Screen | What it does |
+|---|---|
+| **Play** | Two players, vs computer (greedy or random), or computer vs computer with a pace control. Includes move list, click-to-review, captured pieces, undo, board rotation, a 3D or flat view, and piece names in Latin or Devanagari. |
+| **Learn** | 11 lessons: the board, each piece, check and checkmate, bare king, stalemate and draws. Most end with a one-move task that the engine checks. `tests/test_lessons.py` checks that every lesson position is legal and every task can be solved. |
+| **Rules** | A compact reference, with the source tallies from `docs/RULES.md`. |
+
+**Accessibility**
+- The board can be played by keyboard: arrow keys move a cursor, Enter selects and moves, Escape cancels.
+- Highlights differ in shape as well as colour, so they don't rely on colour alone.
+- Reduced-motion settings are respected.
+- Light and dark themes follow the system setting, with a toggle in the top bar.
+
+**Developer aids** (development builds only)
+- `?showcase` shows every piece model side by side.
+- `window.__game` exposes the Play store in the browser console.
+
+Design intent and audience are captured in [PRODUCT.md](PRODUCT.md).
+
+---
+
 ## Project structure
 
 ```
@@ -167,16 +241,27 @@ csf407-fable-chaturanga-zero/
 │   ├── tables.py            # precomputed move tables and attack detection
 │   ├── zobrist.py           # position hashing for repetition detection
 │   ├── game.py              # GameState: legal moves, apply(), outcome()
-│   └── encoding.py          # network input planes, action space, legal mask
+│   ├── encoding.py          # network input planes, action space, legal mask
+│   └── agents.py            # baseline players: random, greedy (2-ply material)
+├── chaturanga_server/       # FastAPI app used by the web client (stateless)
+├── web/                     # browser app (React + Three.js)
+│   └── src/
+│       ├── three/           # 3D board, procedural pieces, highlights, animation
+│       ├── views/           # Play, Learn, Rules screens
+│       ├── components/      # top bar, side panel, shared controls
+│       ├── content/         # lessons.json (validated by tests/test_lessons.py)
+│       ├── state/           # game and settings stores (Zustand)
+│       └── lib/             # API client, piece data, notation, sounds
 ├── tests/                   # pytest suite
 │   ├── reference.py         # independent, deliberately naive move generator
-│   └── test_*.py            # setup, moves, check, termination, encoding, fuzzing
+│   └── test_*.py            # engine, agents, API server and lesson content
 ├── scripts/
 │   └── random_play.py       # random-vs-random stress test and benchmark
 ├── docs/
 │   ├── RULES.md             # rules specification with source tallies
 │   └── Handouts/            # source PDFs cited in RULES.md (linked from there)
 ├── pyproject.toml           # package metadata and dependencies
+├── PRODUCT.md               # product and design brief for the web app
 └── README.md
 ```
 
@@ -260,6 +345,7 @@ The full specification, with every source and the reference counts, is in [docs/
 4. **Before every commit:**
    - Run `python -m pytest -q`; all tests must pass.
    - If you touched the engine, also run `python scripts/random_play.py --games 1000`.
+   - If you touched `web/`, also run `cd web && npx tsc -b && npx oxlint src`.
 5. **Open a pull request** into `main`. Another team member reviews it before it is merged.
 
 ### Commit messages
@@ -283,7 +369,7 @@ Commit messages follow [Conventional Commits](https://www.conventionalcommits.or
 | `chore` | Tooling, dependencies, config |
 | `exp` | Training experiments and hyperparameter runs |
 
-Scopes: `engine`, `encoding`, `mcts`, `net`, `train`, `eval`, `rules`, `scripts`.
+Scopes: `engine`, `encoding`, `mcts`, `net`, `train`, `eval`, `rules`, `scripts`, `server`, `web`.
 
 ### Code and rules conventions
 
