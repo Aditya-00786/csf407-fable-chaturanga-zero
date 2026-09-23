@@ -10,7 +10,7 @@ import * as THREE from 'three'
 import type { Color } from '../lib/api'
 import { squareName } from '../lib/board'
 import { PIECES, type PieceKind } from '../lib/pieces'
-import { prefersReducedMotion, useSettings, type Theme } from '../state/settings'
+import { LOW_POWER, prefersReducedMotion, useSettings, type Theme } from '../state/settings'
 import { AnimatedPiece } from './AnimatedPiece'
 import { PieceWarmup } from './PieceModel'
 import { markShadowsDirty, takeShadowsDirty } from './shadows'
@@ -47,12 +47,8 @@ const LIGHTING: Record<Theme, { sky: string; ground: string; hemi: number; key: 
 // Longest time step (seconds) any animation may advance in a single frame.
 const MAX_FRAME_DELTA = 1 / 30
 
-/** Low-end hint: few cores or little memory. Such machines get a lower pixel ratio and smaller shadows. */
-const LOW_POWER =
-  (navigator.hardwareConcurrency ?? 8) <= 4 ||
-  ((navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8) <= 4
 
-function Lights({ theme, instant }: { theme: Theme; instant: boolean }) {
+function Lights({ theme, instant, lite }: { theme: Theme; instant: boolean; lite: boolean }) {
   const hemi = useRef<THREE.HemisphereLight>(null)
   const key = useRef<THREE.DirectionalLight>(null)
   const rim = useRef<THREE.DirectionalLight>(null)
@@ -107,7 +103,7 @@ function Lights({ theme, instant }: { theme: Theme; instant: boolean }) {
         position={[3.5, 9, 5]}
         intensity={l.keyI}
         color={l.key}
-        castShadow
+        castShadow={!lite}
         shadow-mapSize={[map, map]}
         shadow-camera-left={-7}
         shadow-camera-right={7}
@@ -119,6 +115,18 @@ function Lights({ theme, instant }: { theme: Theme; instant: boolean }) {
       <directionalLight ref={rim} position={[-5, 4, -6]} intensity={l.rim} color="#c9d4ff" />
     </>
   )
+}
+
+/** Applies Reduced graphics to the renderer: shadows off entirely (the program cache recompiles once). */
+function GraphicsMode({ lite }: { lite: boolean }) {
+  const get = useThree((s) => s.get)
+  useEffect(() => {
+    const { gl, invalidate } = get()
+    gl.shadowMap.enabled = !lite
+    markShadowsDirty()
+    invalidate()
+  }, [get, lite])
+  return null
 }
 
 function ShadowUpdater() {
@@ -256,6 +264,7 @@ export function BoardScene(props: BoardSceneProps) {
   const theme = useSettings((s) => s.theme)
   const labels = useSettings((s) => s.labels)
   const flat = useSettings((s) => s.view) === 'flat'
+  const lite = useSettings((s) => s.reducedGraphics)
   const [reducedMotion] = useState(prefersReducedMotion)
   const flipped = orientation === -1
 
@@ -364,7 +373,7 @@ export function BoardScene(props: BoardSceneProps) {
           Setting up the board…
         </p>
       </div>
-      <Canvas shadows="percentage" frameloop="demand" dpr={[1, LOW_POWER ? 1.25 : 1.75]} camera={{ fov: 32, position: [0, 11, 9] }} gl={{ antialias: true }}
+      <Canvas shadows={lite ? false : 'percentage'} frameloop="demand" dpr={lite ? 1 : [1, LOW_POWER ? 1.25 : 1.75]} camera={{ fov: 32, position: [0, 11, 9] }} gl={{ antialias: true }}
         onPointerMissed={() => setSelected(null)}
         onCreated={(state) => {
           // The scene renders on demand, so after idling (a refresh, another window) the first
@@ -380,11 +389,12 @@ export function BoardScene(props: BoardSceneProps) {
           requestAnimationFrame(() => requestAnimationFrame(() => setReady(true)))
         }}>
         <Rig orientation={orientation} flat={flat} />
-        <Lights theme={theme} instant={reducedMotion} />
+        <GraphicsMode lite={lite} />
+        <Lights theme={theme} instant={reducedMotion} lite={lite} />
         <StudioEnvironment />
-        <PieceWarmup />
+        <PieceWarmup lite={lite} />
         <ShadowUpdater />
-        <Board flipped={flipped} />
+        <Board flipped={flipped} lite={lite} />
         <Highlights
           colors={SCENE[theme].colors}
           selected={selected}
@@ -394,7 +404,7 @@ export function BoardScene(props: BoardSceneProps) {
           checkSquare={checkSquare}
           cursor={cursor}
           emphasis={emphasis}
-          animate={!reducedMotion}
+          animate={!reducedMotion && !lite}
           flat={flat}
         />
         {/* Click catcher over the whole field. */}
@@ -413,6 +423,7 @@ export function BoardScene(props: BoardSceneProps) {
             labelFlipped={labels !== 'off' && flipped}
             labels={labels}
             reducedMotion={reducedMotion}
+            lite={lite}
             onPick={pick}
           />
         ))}

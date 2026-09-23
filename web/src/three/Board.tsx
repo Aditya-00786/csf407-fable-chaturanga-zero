@@ -92,18 +92,21 @@ function CoordinateOverlays({ white, black, flipped }: { white: THREE.Texture; b
   )
 }
 
-export function Board({ flipped }: { flipped: boolean }) {
+export function Board({ flipped, lite }: { flipped: boolean; lite: boolean }) {
   const frameGeometry = useFrameGeometry()
+  // Reduced graphics drops the lacquer (clear-coat) layers for a much cheaper shader.
   const fieldMaterials = useMemo(() => {
     const side = new THREE.MeshStandardMaterial({ color: '#7a4a2a', roughness: 0.7 })
-    const top = new THREE.MeshPhysicalMaterial({
-      map: getFieldTexture(), roughness: 0.55, clearcoat: 0.25, clearcoatRoughness: 0.5,
-    })
+    const top = lite
+      ? new THREE.MeshStandardMaterial({ map: getFieldTexture(), roughness: 0.6 })
+      : new THREE.MeshPhysicalMaterial({ map: getFieldTexture(), roughness: 0.55, clearcoat: 0.25, clearcoatRoughness: 0.5 })
     return [side, side, top, side, side, side]
-  }, [])
+  }, [lite])
   const frameMaterial = useMemo(
-    () => new THREE.MeshPhysicalMaterial({ map: getFrameTexture(), roughness: 0.45, clearcoat: 0.55, clearcoatRoughness: 0.3 }),
-    [],
+    () => lite
+      ? new THREE.MeshStandardMaterial({ map: getFrameTexture(), roughness: 0.5 })
+      : new THREE.MeshPhysicalMaterial({ map: getFrameTexture(), roughness: 0.45, clearcoat: 0.55, clearcoatRoughness: 0.3 }),
+    [lite],
   )
 
   // Draw both sets of coordinates once, when the serif font is available (so they don't fall
@@ -148,11 +151,13 @@ export function Board({ flipped }: { flipped: boolean }) {
         </mesh>
       ))}
       {MARKED_SQUARES.map((sq) => <Cross key={sq} sq={sq} />)}
-      {/* Invisible table that catches the board's shadow. */}
-      <mesh position={[0, -0.62, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[40, 40]} />
-        <shadowMaterial opacity={0.35} />
-      </mesh>
+      {/* Invisible table that catches the board's shadow (not needed without shadows). */}
+      {!lite && (
+        <mesh position={[0, -0.62, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+          <planeGeometry args={[40, 40]} />
+          <shadowMaterial opacity={0.35} />
+        </mesh>
+      )}
     </group>
   )
 }

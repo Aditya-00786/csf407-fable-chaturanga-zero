@@ -278,6 +278,12 @@ export function PlayPanel({ view, onClose, onRotate }: { view: GameView | null; 
               </fieldset>
             </Collapse>
           </div>
+          <div>
+            <Switch label="Reduced graphics" checked={settings.reducedGraphics} onChange={settings.setReducedGraphics} />
+            <p className="mt-1 text-[12.5px] leading-snug text-ink-faint">
+              No shadows, glossy finishes or pulsing effects, at a lower resolution. Smoother on slower computers.
+            </p>
+          </div>
           <Switch label="Sound" checked={settings.sound} onChange={settings.setSound} />
           <Button size="sm" onClick={onRotate} icon={<FlipVertical2 size={15} />}>Rotate the board</Button>
         </section>

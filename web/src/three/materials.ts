@@ -146,16 +146,22 @@ export const ivory = new THREE.MeshPhysicalMaterial({
 export const ebony = new THREE.MeshPhysicalMaterial({
   color: '#2a1d18', roughness: 0.36, clearcoat: 0.75, clearcoatRoughness: 0.22,
 })
+// Reduced graphics: the same colours without clear-coat layers (a much cheaper shader).
+export const ivoryLite = new THREE.MeshStandardMaterial({ color: '#efe3c8', roughness: 0.45 })
+export const ebonyLite = new THREE.MeshStandardMaterial({ color: '#2a1d18', roughness: 0.38 })
+export const pieceMaterials = (white: boolean, lite: boolean) =>
+  white ? (lite ? ivoryLite : ivory) : (lite ? ebonyLite : ebony)
+
 export const brass = new THREE.MeshStandardMaterial({ color: '#c9a14c', metalness: 1, roughness: 0.3 })
 export const darkBrass = new THREE.MeshStandardMaterial({ color: '#8f6c2c', metalness: 1, roughness: 0.4 })
 
 /** Cached token materials (side, top, side), one set per piece type and colour. */
 const tokenMaterialCache = new Map<string, THREE.Material[]>()
-export function getTokenMaterials(kind: PieceKind, white: boolean) {
-  const key = `${kind}${white ? 'w' : 'b'}`
+export function getTokenMaterials(kind: PieceKind, white: boolean, lite = false) {
+  const key = `${kind}${white ? 'w' : 'b'}${lite ? 'l' : ''}`
   let materials = tokenMaterialCache.get(key)
   if (!materials) {
-    const side = white ? ivory : ebony
+    const side = pieceMaterials(white, lite)
     const top = new THREE.MeshStandardMaterial({ map: getTokenTexture(kind, white), roughness: 0.55 })
     materials = [side, top, side]
     tokenMaterialCache.set(key, materials)

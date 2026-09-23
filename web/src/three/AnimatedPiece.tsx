@@ -17,6 +17,7 @@ interface Props {
   labelFlipped: boolean
   labels: LabelMode
   reducedMotion: boolean
+  lite: boolean
   onPick: (e: ThreeEvent<PointerEvent>, sq: number) => void
 }
 
@@ -25,7 +26,7 @@ const smoothstep = (a: number, b: number, v: number) => {
   return x * x * (3 - 2 * x)
 }
 
-export const AnimatedPiece = memo(function AnimatedPiece({ piece, sq, lifted, flat, labelFlipped, labels, reducedMotion, onPick }: Props) {
+export const AnimatedPiece = memo(function AnimatedPiece({ piece, sq, lifted, flat, labelFlipped, labels, reducedMotion, lite, onPick }: Props) {
   const kind = Math.abs(piece) as PieceKind
   const white = piece > 0
   const from = useRef(sq)
@@ -95,11 +96,11 @@ export const AnimatedPiece = memo(function AnimatedPiece({ piece, sq, lifted, fl
   return (
     <animated.group position={position} onPointerDown={(e: ThreeEvent<PointerEvent>) => onPick(e, sq)}>
       <animated.group scale={modelScale} visible={f.to((v) => v < 0.999)}>
-        <PieceModel kind={kind} white={white} />
+        <PieceModel kind={kind} white={white} lite={lite} />
       </animated.group>
       {/* Tokens keep a fixed orientation: each side's glyphs face their own player. */}
       <animated.group scale={tokenScale} visible={f.to((v) => v > 0.001)}>
-        <PieceToken kind={kind} white={white} />
+        <PieceToken kind={kind} white={white} lite={lite} />
       </animated.group>
       {labels !== 'off' && (
         <Html position={flat ? [0, 0.1, labelFlipped ? -0.52 : 0.52] : [0, 1.05, 0]} center zIndexRange={[5, 0]} style={{ pointerEvents: 'none' }}>

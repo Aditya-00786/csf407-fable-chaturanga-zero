@@ -9,7 +9,7 @@ import * as THREE from 'three'
 import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import type { PieceKind } from '../lib/pieces'
-import { brass, ebony, getTokenMaterials, ivory } from './materials'
+import { brass, getTokenMaterials, ivory, ivoryLite, pieceMaterials } from './materials'
 import { markShadowsDirty } from './shadows'
 
 const PLINTH_TOP = 0.1
@@ -226,21 +226,21 @@ function mergedFor(kind: PieceKind): Merged {
   return cached
 }
 
-export const PieceModel = memo(function PieceModel({ kind, white }: { kind: PieceKind; white: boolean }) {
+export const PieceModel = memo(function PieceModel({ kind, white, lite = false }: { kind: PieceKind; white: boolean; lite?: boolean }) {
   const g = mergedFor(kind)
   return (
     <group>
       {/* White's tusks are ivory like its body, so they share the body mesh. */}
-      <mesh geometry={white ? g.bodyWithIvory : g.body} material={white ? ivory : ebony} castShadow receiveShadow />
+      <mesh geometry={white ? g.bodyWithIvory : g.body} material={pieceMaterials(white, lite)} castShadow receiveShadow />
       <mesh geometry={g.brass} material={brass} castShadow />
-      {!white && g.ivory && <mesh geometry={g.ivory} material={ivory} castShadow />}
+      {!white && g.ivory && <mesh geometry={g.ivory} material={lite ? ivoryLite : ivory} castShadow />}
     </group>
   )
 })
 
 /** Flat-view token: a disc with the piece glyph, for the top-down view and slow machines. */
-export const PieceToken = memo(function PieceToken({ kind, white }: { kind: PieceKind; white: boolean }) {
-  const materials = getTokenMaterials(kind, white)
+export const PieceToken = memo(function PieceToken({ kind, white, lite = false }: { kind: PieceKind; white: boolean; lite?: boolean }) {
+  const materials = getTokenMaterials(kind, white, lite)
   return (
     <group>
       <mesh geometry={G.token} material={materials} position={[0, 0.04, 0]} castShadow />
@@ -253,7 +253,7 @@ export const PieceToken = memo(function PieceToken({ kind, white }: { kind: Piec
  * Shader warm-up: renders one of every model and token for a moment, hidden under the board,
  * so the first switch between 3D and flat view never stalls to compile shaders or upload textures.
  */
-export function PieceWarmup() {
+export function PieceWarmup({ lite }: { lite: boolean }) {
   const [done, setDone] = useState(false)
   useEffect(() => {
     const t = setTimeout(() => setDone(true), 1500)
@@ -268,8 +268,8 @@ export function PieceWarmup() {
     <group position={[0, -3, 0]} scale={0.2}>
       {kinds.flatMap((k) => [true, false].map((white) => (
         <group key={`${k}${white}`}>
-          <PieceModel kind={k} white={white} />
-          <PieceToken kind={k} white={white} />
+          <PieceModel kind={k} white={white} lite={lite} />
+          <PieceToken kind={k} white={white} lite={lite} />
         </group>
       )))}
     </group>

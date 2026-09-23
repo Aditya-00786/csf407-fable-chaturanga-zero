@@ -12,6 +12,11 @@ export type DetailLevel = 'essential' | 'full'
 export type DetailPart = 'hints' | 'counters' | 'explanation' | 'rules'
 export type DetailParts = Record<DetailPart, boolean>
 
+/** Low-end hint: few cores or little memory. Such machines start with Reduced graphics on. */
+export const LOW_POWER =
+  (navigator.hardwareConcurrency ?? 8) <= 4 ||
+  ((navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8) <= 4
+
 const ALL_PARTS: DetailParts = { hints: true, counters: true, explanation: true, rules: true }
 
 interface Settings {
@@ -21,12 +26,15 @@ interface Settings {
   view: ViewMode
   details: DetailLevel
   detailParts: DetailParts
+  /** No shadows, pixel ratio 1, simpler materials, no continuous effects. */
+  reducedGraphics: boolean
   setTheme: (t: Theme) => void
   setSound: (on: boolean) => void
   setLabels: (l: LabelMode) => void
   setView: (v: ViewMode) => void
   setDetails: (d: DetailLevel) => void
   setDetailPart: (part: DetailPart, on: boolean) => void
+  setReducedGraphics: (on: boolean) => void
 }
 
 function read(key: string): string | null {
@@ -63,6 +71,7 @@ export const useSettings = create<Settings>((set, get) => ({
   view: (read('cz-view') as ViewMode) === 'flat' ? 'flat' : '3d',
   details: read('cz-details') === 'full' ? 'full' : 'essential',
   detailParts: readParts(),
+  reducedGraphics: (read('cz-reduced-graphics') ?? (LOW_POWER ? 'on' : 'off')) === 'on',
   setTheme: (theme) => {
     document.documentElement.dataset.theme = theme
     write('cz-theme', theme)
@@ -83,6 +92,10 @@ export const useSettings = create<Settings>((set, get) => ({
   setDetails: (details) => {
     write('cz-details', details)
     set({ details })
+  },
+  setReducedGraphics: (on) => {
+    write('cz-reduced-graphics', on ? 'on' : 'off')
+    set({ reducedGraphics: on })
   },
   setDetailPart: (part, on) => {
     const detailParts = { ...get().detailParts, [part]: on }
