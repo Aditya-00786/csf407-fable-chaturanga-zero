@@ -53,6 +53,18 @@ const PLINTH = 'M24 80 H76 Q81 80 81 85 V92 H19 V85 Q19 80 24 80 Z'
 const ring = (cx: number, cy: number, r: number) =>
   `M${cx - r} ${cy} A${r} ${r} 0 1 0 ${cx + r} ${cy} A${r} ${r} 0 1 0 ${cx - r} ${cy} Z`
 
+/** A spoked wheel: rim, six spokes and a hub, kept apart by thin gaps. */
+function wheel(cx: number, cy: number, r: number) {
+  const f = (v: number) => v.toFixed(2)
+  const spokes = Array.from({ length: 6 }, (_, i) => {
+    const a = (i * Math.PI) / 3 + Math.PI / 6
+    const [c, s, w] = [Math.cos(a), Math.sin(a), r * 0.075]
+    const at = (d: number, side: number) => `${f(cx + c * d - s * w * side)} ${f(cy + s * d + c * w * side)}`
+    return `M${at(r * 0.36, 1)} L${at(r * 0.66, 1)} L${at(r * 0.66, -1)} L${at(r * 0.36, -1)} Z`
+  }).join(' ')
+  return `${ring(cx, cy, r)} ${ring(cx, cy, r * 0.73)} ${spokes} ${ring(cx, cy, r * 0.26)}`
+}
+
 /**
  * Silhouettes shared by the 2D glyphs and the flat-view tokens, drawn after the 3D set: robed
  * court figures, a temple chariot, a caparisoned elephant and a horse. Fill with evenodd; parts
@@ -73,20 +85,23 @@ export const GLYPHS: Record<PieceKind, string> = {
       M44 44.5 Q50 43 56 44.5 Q59 45.5 59 48.5 L58 55 H42 L41 48.5 Q41 45.5 44 44.5 Z
       M42 57 H58 L61.5 66 H38.5 Z M42.5 68 H48 V78 H42.5 Z M52 68 H57.5 V78 H52 Z
       ${ring(29, 52, 9)} ${ring(29, 52, 6.5)} ${ring(29, 52, 2.5)} ${PLINTH}`,
-  // Ratha: temple chariot, a stepped shikhara over the car, one great wheel.
+  // Ratha: temple chariot, a stepped shikhara over the car, on two spoked wheels.
   4: `M50 3 L53 11 H47 Z M50 12 L63 24 H37 Z M34 25.5 H66 V29.5 H34 Z M30 31 H70 V35 H30 Z
       M33 36.5 H36.5 V46 H33 Z M63.5 36.5 H67 V46 H63.5 Z M48.2 36.5 H51.8 V46 H48.2 Z
-      M27 47.5 H73 V58 H27 Z M27 52 L13 57 V59.5 L27 55 Z
-      ${ring(50, 69.5, 10)} ${ring(50, 69.5, 7)} ${ring(50, 69.5, 2.6)} ${PLINTH}`,
+      M24 47.5 H76 V58 H24 Z M24 51.5 L10 56.5 V59 L24 54.5 Z
+      ${wheel(35, 69.5, 9.6)} ${wheel(65, 69.5, 9.6)} ${PLINTH}`,
   // Gaja: caparisoned elephant facing left, with a howdah under a canopy.
   3: `${ring(53, 6.5, 2.5)} M53 10 Q63 10 65 20 H41 Q43 10 53 10 Z
       M43 21.5 H45.5 V29 H43 Z M60.5 21.5 H63 V29 H60.5 Z M41 30.5 H65 V37 H41 Z
       M36 39.5 Q58 36.5 75 40.5 Q85 44 85 56 Q85 63 81 65 V78 H72.5 V67 H50.5 V78 H42 V66 Q37 64 34 61
       Q31 66 28 71 Q25 77 20 78 Q15 78 16 74 Q19 73 21 70 Q24 64 24 56 Q22 46 28 42 Q31 40 36 39.5 Z
       ${ring(27.5, 49, 1.7)} M34 45 Q43 44 44 52 Q43 60 36 58 Q32 52 34 45 Z ${PLINTH}`,
-  // Ashva: horse facing left, ears curving in, with a plume and a saddle cloth line.
-  2: `M27 3 Q33 4 32 11 L30 11 Q30 6 26 5 Z
-      M13 37 Q10 34 13 31 L22 19 L23.5 11 L27 16.5 L29.5 11.5 L31.5 18 Q41 22 46 37 Q56 40 70 39 Q79 40 81 46
-      Q88 50 87 64 L84.5 64 Q84.5 54 81 51 Q81 57 79 62 L80 78 H75 L73.5 64 Q68 60 62 60 H48 Q44 61 43 64 L42 78 H37 L36.5 64
-      Q33 58 32 49 Q30 41 26 35.5 Q22 38.5 18 39 Q15 39 13 37 Z ${ring(20.5, 26.5, 1.5)} M50 41 H66 V43.5 H50 Z ${PLINTH}`,
+  // Ashva: a Marwari horse prancing to the left, one foreleg raised, ears curving in, a plume
+  // on its head and a saddle cloth set off by a carved line.
+  2: `M28 1.5 Q35 0.5 35 5.5 L33.3 6 Q32.8 2.8 28 1.5 Z
+      M24.5 34.5 Q21.5 34 22 30.5 L28.5 15 L29.5 7.5 Q32 9.5 32 14 L34.5 8 Q36 10.5 35.5 15 Q47 18 51 36
+      Q58 39 68 38 Q76 37 80 41 Q90 45 87 63 L84.5 63 Q85 52 80 48 Q81 56 78 61 L80 78 H75 L74 65
+      Q70 59 62 59 H47 Q44 60 43.5 64 L43 78 H38.5 L38.5 64 Q38 60 36 59 L30 62 L31 69 L27 70 L26 63
+      L27.5 58.5 L34 55 Q34.5 48 33.5 42 Q32.5 35 31 30 Q28 34 24.5 34.5 Z ${ring(28.2, 20.5, 1.3)}
+      M51 40.5 Q60 41.5 69 40.5 L68 50.5 Q60 52.5 52 50.5 Z M52.6 42 Q60 43 67.4 42 L66.7 49.2 Q60 51 53.3 49.2 Z ${PLINTH}`,
 }

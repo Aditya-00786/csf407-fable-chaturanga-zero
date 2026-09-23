@@ -1,8 +1,8 @@
 /**
  * Procedural piece models after the carved figural sets of Indian courts: robed figures for the
  * Raja, Mantri and Padati, a temple chariot for the Ratha, and a caparisoned elephant and a
- * Marwari horse for the Gaja and Ashva, each on a lotus pedestal. Figures face the opponent;
- * the chariot and the animals stand in profile, like knights in a chess set. Geometries are
+ * Marwari horse for the Gaja and Ashva, each on a lotus pedestal. Every piece faces the
+ * opponent, as on a real board. Geometries are
  * built once and shared by every piece.
  */
 
@@ -169,16 +169,18 @@ function figure(f: FigureSpec): { parts: Part[]; headTop: number; headY: number 
   }
 }
 
-/** A draped cloth over an animal's back: a shell just proud of the body, edged in brass. */
-function caparison(center: V3, size: V3, reach = 1.0): Part[] {
+/**
+ * A draped cloth over an animal's back: a shell just proud of the body. A cloth of the body's
+ * own colour is edged in brass; a brass (gold) cloth needs no edge.
+ */
+function caparison(center: V3, size: V3, reach = 1.0, m: Mat = 'body'): Part[] {
   const grow = 1.05
   const shell = new THREE.SphereGeometry(1, 24, 8, 0, Math.PI * 2, 0, reach)
   const edgeY = center[1] + size[1] * grow * Math.cos(reach)
   const k = Math.sin(reach) * grow
-  return [
-    { g: shell, m: 'body', p: center, s: [size[0] * grow, size[1] * grow, size[2] * grow] },
-    { g: new THREE.TorusGeometry(1, 0.05, 6, 40), m: 'brass', p: [center[0], edgeY, center[2]], r: X90, s: [size[0] * k, size[2] * k, 0.18] },
-  ]
+  const cloth: Part = { g: shell, m, p: center, s: [size[0] * grow, size[1] * grow, size[2] * grow] }
+  if (m === 'brass') return [cloth]
+  return [cloth, { g: new THREE.TorusGeometry(1, 0.05, 6, 40), m: 'brass', p: [center[0], edgeY, center[2]], r: X90, s: [size[0] * k, size[2] * k, 0.18] }]
 }
 
 // Shared small parts.
@@ -344,7 +346,8 @@ function partsFor(kind: PieceKind): Part[] {
         // Deep chest and rounded quarters.
         { g: ball, m: 'body', p: [-0.1, 0.5, 0], s: [0.1, 0.108, 0.09] },
         { g: ball, m: 'body', p: [0.14, 0.495, 0], s: [0.1, 0.11, 0.094] },
-        ...caparison([0.03, 0.48, 0], [0.12, 0.11, 0.095], 1.1),
+        // Gold saddle cloth.
+        ...caparison([0.03, 0.48, 0], [0.12, 0.11, 0.095], 1.1, 'brass'),
         // Neck arching up to the head, which drops towards the muzzle.
         { g: tube([[-0.12, 0.52, 0], [-0.17, 0.61, 0], [-0.2, 0.7, 0]], 0.076, 0.05, 12, 14), m: 'body' },
         { g: tube([[-0.2, 0.735, 0], [-0.25, 0.7, 0], [-0.3, 0.645, 0]], 0.055, 0.038, 12, 14), m: 'body' },
@@ -409,14 +412,11 @@ function mergedFor(kind: PieceKind): Merged {
   return cached
 }
 
-/** Figures turn to face the opponent; the chariot and animals stand in profile, facing left for White. */
-const FIGURES = new Set<PieceKind>([1, 5, 6])
-
 export const PieceModel = memo(function PieceModel({ kind, white, lite = false }: { kind: PieceKind; white: boolean; lite?: boolean }) {
   const g = mergedFor(kind)
-  const figure = FIGURES.has(kind)
+  // Models are built facing -x; turn them to face the opponent (White looks up the board, towards -z).
   return (
-    <group rotation={[0, figure ? (white ? -Math.PI / 2 : Math.PI / 2) : 0, 0]} scale={[figure || white ? 1 : -1, 1, 1]}>
+    <group rotation={[0, white ? -Math.PI / 2 : Math.PI / 2, 0]}>
       {/* White's tusks are ivory like its body, so they share the body mesh. */}
       <mesh geometry={white ? g.bodyWithIvory : g.body} material={pieceMaterials(white, lite)} castShadow receiveShadow />
       <mesh geometry={g.brass} material={brass} castShadow />
