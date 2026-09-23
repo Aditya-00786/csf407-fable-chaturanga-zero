@@ -4,11 +4,11 @@
  * brass ring. Geometries are created once and reused by every piece.
  */
 
-import { memo, useMemo } from 'react'
+import { memo, useEffect, useState } from 'react'
 import * as THREE from 'three'
 import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js'
 import type { PieceKind } from '../lib/pieces'
-import { brass, ebony, getTokenTexture, ivory } from './materials'
+import { brass, ebony, getTokenMaterials, ivory } from './materials'
 
 const PLINTH_TOP = 0.1
 
@@ -193,16 +193,36 @@ export const PieceModel = memo(function PieceModel({ kind, white }: { kind: Piec
 })
 
 /** Flat-view token: a disc with the piece glyph, for the top-down view and slow machines. */
-export function PieceToken({ kind, white }: { kind: PieceKind; white: boolean }) {
-  const materials = useMemo(() => {
-    const side = white ? ivory : ebony
-    const top = new THREE.MeshStandardMaterial({ map: getTokenTexture(kind, white), roughness: 0.55 })
-    return [side, top, side]
-  }, [kind, white])
+export const PieceToken = memo(function PieceToken({ kind, white }: { kind: PieceKind; white: boolean }) {
+  const materials = getTokenMaterials(kind, white)
   return (
     <group>
       <mesh geometry={G.token} material={materials} position={[0, 0.04, 0]} castShadow />
       <mesh geometry={G.tokenRim} material={brass} position={[0, 0.08, 0]} rotation={[Math.PI / 2, 0, 0]} />
+    </group>
+  )
+})
+
+/**
+ * Shader warm-up: renders one of every model and token for a moment, hidden under the board,
+ * so the first switch between 3D and flat view never stalls to compile shaders or upload textures.
+ */
+export function PieceWarmup() {
+  const [done, setDone] = useState(false)
+  useEffect(() => {
+    const t = setTimeout(() => setDone(true), 1500)
+    return () => clearTimeout(t)
+  }, [])
+  if (done) return null
+  const kinds: PieceKind[] = [1, 2, 3, 4, 5, 6]
+  return (
+    <group position={[0, -3, 0]} scale={0.2}>
+      {kinds.flatMap((k) => [true, false].map((white) => (
+        <group key={`${k}${white}`}>
+          <PieceModel kind={k} white={white} />
+          <PieceToken kind={k} white={white} />
+        </group>
+      )))}
     </group>
   )
 }

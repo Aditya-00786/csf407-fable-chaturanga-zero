@@ -17,13 +17,16 @@ export interface HighlightColors {
 }
 
 const Y = 0.012
+// Flat view: tokens are 0.08 tall (0.09 when a selected token pops), so rings that must stay
+// visible around a token are drawn just above them.
+const Y_OVER_TOKEN = 0.11
 
 function squareOutline(inset: number): [number, number, number][] {
   const h = 0.5 - inset
   return [[-h, Y, -h], [h, Y, -h], [h, Y, h], [-h, Y, h], [-h, Y, -h]]
 }
 
-function MoveTarget({ sq, capture, hovered, color }: { sq: number; capture: boolean; hovered: boolean; color: string }) {
+function MoveTarget({ sq, capture, hovered, color, flat }: { sq: number; capture: boolean; hovered: boolean; color: string; flat: boolean }) {
   const [x, z] = squareToWorld(sq)
   const material = useMemo(
     () => new THREE.MeshBasicMaterial({ color, transparent: true, opacity: hovered ? 1 : 0.85, depthWrite: false }),
@@ -31,10 +34,10 @@ function MoveTarget({ sq, capture, hovered, color }: { sq: number; capture: bool
   )
   if (capture) {
     return (
-      <group position={[x, Y, z]} rotation={[-Math.PI / 2, 0, 0]}>
+      <group position={[x, flat ? Y_OVER_TOKEN : Y, z]} rotation={[-Math.PI / 2, 0, 0]}>
         {[0, 1, 2, 3].map((i) => (
           <mesh key={i} material={material}>
-            <ringGeometry args={[0.36, hovered ? 0.46 : 0.43, 10, 1, Math.PI / 4 + (i * Math.PI) / 2 - 0.42, 0.84]} />
+            <ringGeometry args={[flat ? 0.42 : 0.36, hovered ? 0.49 : flat ? 0.47 : 0.43, 10, 1, Math.PI / 4 + (i * Math.PI) / 2 - 0.42, 0.84]} />
           </mesh>
         ))}
       </group>
@@ -47,7 +50,7 @@ function MoveTarget({ sq, capture, hovered, color }: { sq: number; capture: bool
   )
 }
 
-function CheckRing({ sq, color, animate }: { sq: number; color: string; animate: boolean }) {
+function CheckRing({ sq, color, animate, flat }: { sq: number; color: string; animate: boolean; flat: boolean }) {
   const [x, z] = squareToWorld(sq)
   const ref = useRef<THREE.MeshBasicMaterial>(null)
   useFrame(({ clock, invalidate }) => {
@@ -57,13 +60,13 @@ function CheckRing({ sq, color, animate }: { sq: number; color: string; animate:
   })
   // A thick ring plus a soft wash under the piece, so check reads even around a wide plinth.
   return (
-    <group position={[x, Y + 0.002, z]} rotation={[-Math.PI / 2, 0, 0]}>
-      <mesh>
+    <group position={[x, flat ? Y_OVER_TOKEN : Y + 0.002, z]} rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh visible={!flat}>
         <circleGeometry args={[0.48, 48]} />
         <meshBasicMaterial color={color} transparent opacity={0.28} depthWrite={false} />
       </mesh>
       <mesh>
-        <ringGeometry args={[0.39, 0.49, 48]} />
+        <ringGeometry args={flat ? [0.43, 0.5, 48] : [0.39, 0.49, 48]} />
         <meshBasicMaterial ref={ref} color={color} transparent opacity={0.9} depthWrite={false} />
       </mesh>
     </group>
@@ -80,8 +83,9 @@ export function Highlights(props: {
   cursor: number | null
   emphasis: number[]
   animate: boolean
+  flat: boolean
 }) {
-  const { colors, selected, targets, hovered, lastMove, checkSquare, cursor, emphasis, animate } = props
+  const { colors, selected, targets, hovered, lastMove, checkSquare, cursor, emphasis, animate, flat } = props
   const outline = useMemo(() => squareOutline(0.04), [])
   const cursorOutline = useMemo(() => squareOutline(0.07), [])
   return (
@@ -111,16 +115,25 @@ export function Highlights(props: {
       {selected !== null && (() => {
         const [x, z] = squareToWorld(selected)
         return (
-          <mesh position={[x, Y, z]} rotation={[-Math.PI / 2, 0, 0]}>
-            <circleGeometry args={[0.47, 48]} />
-            <meshBasicMaterial color={colors.accent} transparent opacity={0.3} depthWrite={false} />
-          </mesh>
+          <group position={[x, 0, z]} rotation={[-Math.PI / 2, 0, 0]}>
+            <mesh position={[0, 0, Y]}>
+              <circleGeometry args={[0.47, 48]} />
+              <meshBasicMaterial color={colors.accent} transparent opacity={0.3} depthWrite={false} />
+            </mesh>
+            {/* From directly above a lift is invisible, so flat view rings the (enlarged) token. */}
+            {flat && (
+              <mesh position={[0, 0, Y_OVER_TOKEN]}>
+                <ringGeometry args={[0.45, 0.52, 56]} />
+                <meshBasicMaterial color={colors.accent} transparent opacity={0.95} depthWrite={false} />
+              </mesh>
+            )}
+          </group>
         )
       })()}
       {targets.map((t) => (
-        <MoveTarget key={`t${t.sq}`} sq={t.sq} capture={t.capture} hovered={hovered === t.sq} color={colors.accent} />
+        <MoveTarget key={`t${t.sq}`} sq={t.sq} capture={t.capture} hovered={hovered === t.sq} color={colors.accent} flat={flat} />
       ))}
-      {checkSquare !== null && <CheckRing sq={checkSquare} color={colors.danger} animate={animate} />}
+      {checkSquare !== null && <CheckRing sq={checkSquare} color={colors.danger} animate={animate} flat={flat} />}
       {cursor !== null && (() => {
         const [x, z] = squareToWorld(cursor)
         return (

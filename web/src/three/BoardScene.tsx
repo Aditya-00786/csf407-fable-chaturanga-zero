@@ -12,6 +12,7 @@ import { squareName } from '../lib/board'
 import { PIECES, type PieceKind } from '../lib/pieces'
 import { prefersReducedMotion, useSettings, type Theme } from '../state/settings'
 import { AnimatedPiece } from './AnimatedPiece'
+import { PieceWarmup } from './PieceModel'
 import { Board } from './Board'
 import { worldToSquare } from './coords'
 import { Highlights, type HighlightColors } from './Highlights'
@@ -186,39 +187,53 @@ function usePinchZoom(controls: RefObject<CameraControls | null>) {
   }, [gl, invalidate, controls])
 }
 
+const LIMITS = {
+  flat: { minPolar: 0, maxPolar: 0.01, rotate: 0 },
+  '3d': { minPolar: 0.2, maxPolar: 1.15, rotate: 0.6 },
+}
+
 function Rig({ orientation, flat }: { orientation: Color; flat: boolean }) {
   const ref = useRef<CameraControls>(null)
   const { size } = useThree()
   const aspect = size.width / Math.max(1, size.height)
   const first = useRef(true)
+  const request = useRef(0)
   usePinchZoom(ref)
   useEffect(() => {
     const c = ref.current
     if (!c) return
+    const animate = !first.current && !prefersReducedMotion()
+    first.current = false
+    const id = ++request.current
+    const limits = LIMITS[flat ? 'flat' : '3d']
+    // Tilt limits are applied only once the camera has arrived. Tightening them first
+    // (e.g. flat view's near-vertical limit) would snap the camera before the glide starts.
+    c.minPolarAngle = 0
+    c.maxPolarAngle = Math.PI / 2
+    c.azimuthRotateSpeed = limits.rotate
+    c.polarRotateSpeed = limits.rotate
     // Pull back on narrow canvases so the whole board stays in frame.
     const k = Math.min(2.5, Math.max(1.3, 1.55 / aspect))
     const dir = orientation === 1 ? 1 : -1
-    if (flat) {
+    const arrived = flat
       // Aim slightly past the centre so the board sits below the floating status bar.
-      void c.setLookAt(0, 19.5 * k, -0.7 * dir + 0.001 * dir, 0, 0, -0.7 * dir, !first.current && !prefersReducedMotion())
-    } else {
-      void c.setLookAt(0, 8.1 * k, 10.2 * k * dir, 0, -0.6, -0.45 * dir, !first.current && !prefersReducedMotion())
-    }
-    first.current = false
+      ? c.setLookAt(0, 19.5 * k, -0.7 * dir + 0.001 * dir, 0, 0, -0.7 * dir, animate)
+      : c.setLookAt(0, 8.1 * k, 10.2 * k * dir, 0, -0.6, -0.45 * dir, animate)
+    void arrived.then(() => {
+      if (request.current !== id) return // a newer move of the camera took over
+      c.minPolarAngle = limits.minPolar
+      c.maxPolarAngle = limits.maxPolar
+    })
   }, [orientation, flat, aspect])
   return (
     <CameraControls
       ref={ref}
       makeDefault
-      minPolarAngle={flat ? 0 : 0.2}
-      maxPolarAngle={flat ? 0.01 : 1.15}
       minDistance={9}
       maxDistance={30}
-      azimuthRotateSpeed={flat ? 0 : 0.6}
-      polarRotateSpeed={flat ? 0 : 0.6}
       truckSpeed={0}
       dollySpeed={0.4}
-      smoothTime={0.35}
+      smoothTime={0.32}
     />
   )
 }
@@ -345,6 +360,7 @@ export function BoardScene(props: BoardSceneProps) {
         <Rig orientation={orientation} flat={flat} />
         <Lights theme={theme} instant={reducedMotion} />
         <StudioEnvironment />
+        <PieceWarmup />
         <Board flipped={flipped} />
         <Highlights
           colors={SCENE[theme].colors}
@@ -356,6 +372,7 @@ export function BoardScene(props: BoardSceneProps) {
           cursor={cursor}
           emphasis={emphasis}
           animate={!reducedMotion}
+          flat={flat}
         />
         {/* Click catcher over the whole field. */}
         <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]} onPointerDown={onField} onPointerMove={onHover}

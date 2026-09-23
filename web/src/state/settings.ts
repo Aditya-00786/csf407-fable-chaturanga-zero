@@ -107,10 +107,14 @@ export function prefersReducedMotion() {
  */
 export function switchTheme(next: Theme) {
   const apply = () => flushSync(() => useSettings.getState().setTheme(next))
-  const doc = document as Document & { startViewTransition?: (cb: () => void) => unknown }
+  type Transition = { ready: Promise<void>; finished: Promise<void> }
+  const doc = document as Document & { startViewTransition?: (cb: () => void) => Transition }
   if (!doc.startViewTransition || prefersReducedMotion()) {
     apply()
     return
   }
-  doc.startViewTransition(apply)
+  const transition = doc.startViewTransition(apply)
+  // The browser may skip the animation (hidden tab, a newer transition); the theme still applies.
+  transition.ready.catch(() => {})
+  transition.finished.catch(() => {})
 }

@@ -148,6 +148,20 @@ export const ebony = new THREE.MeshPhysicalMaterial({
 export const brass = new THREE.MeshStandardMaterial({ color: '#c9a14c', metalness: 1, roughness: 0.3 })
 export const darkBrass = new THREE.MeshStandardMaterial({ color: '#8f6c2c', metalness: 1, roughness: 0.4 })
 
+/** Cached token materials (side, top, side), one set per piece type and colour. */
+const tokenMaterialCache = new Map<string, THREE.Material[]>()
+export function getTokenMaterials(kind: PieceKind, white: boolean) {
+  const key = `${kind}${white ? 'w' : 'b'}`
+  let materials = tokenMaterialCache.get(key)
+  if (!materials) {
+    const side = white ? ivory : ebony
+    const top = new THREE.MeshStandardMaterial({ map: getTokenTexture(kind, white), roughness: 0.55 })
+    materials = [side, top, side]
+    tokenMaterialCache.set(key, materials)
+  }
+  return materials
+}
+
 /** Top-face textures for flat-view tokens: glyph on an ivory or ebony disc. */
 const tokenCache = new Map<string, THREE.CanvasTexture>()
 export function getTokenTexture(kind: PieceKind, white: boolean) {
@@ -170,9 +184,10 @@ export function getTokenTexture(kind: PieceKind, white: boolean) {
   const tex = new THREE.CanvasTexture(c)
   tex.colorSpace = THREE.SRGBColorSpace
   tex.anisotropy = 4
-  // Cylinder cap UVs are rotated a quarter turn relative to the board; undo that.
+  // Cylinder cap UVs sit a quarter turn off the board. Turn each side's glyph to face its own
+  // player: White's reads upright from rank 1, Black's from rank 8.
   tex.center.set(0.5, 0.5)
-  tex.rotation = -Math.PI / 2
+  tex.rotation = white ? Math.PI / 2 : -Math.PI / 2
   tokenCache.set(key, tex)
   return tex
 }
