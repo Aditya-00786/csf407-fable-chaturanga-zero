@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { MARKED_SQUARES } from '../lib/board'
 import { prefersReducedMotion } from '../state/settings'
-import { squareToWorld } from './coords'
+import { TRAY, squareToWorld } from './coords'
 import { brass, darkBrass, getFieldTexture, getFrameTexture, makeCoordinateTexture } from './materials'
 
 const FIELD = 8.24
@@ -25,6 +25,38 @@ function roundedRect(half: number, r: number) {
   s.lineTo(-half, -half + r)
   s.quadraticCurveTo(-half, -half, -half + r, -half)
   return s
+}
+
+/** A rounded rectangle centred at (cx, cy). */
+function roundedRectAt(cx: number, cy: number, w: number, h: number, r: number) {
+  const s = new THREE.Shape()
+  const [x0, x1, y0, y1] = [cx - w / 2, cx + w / 2, cy - h / 2, cy + h / 2]
+  s.moveTo(x0 + r, y0)
+  s.lineTo(x1 - r, y0)
+  s.quadraticCurveTo(x1, y0, x1, y0 + r)
+  s.lineTo(x1, y1 - r)
+  s.quadraticCurveTo(x1, y1, x1 - r, y1)
+  s.lineTo(x0 + r, y1)
+  s.quadraticCurveTo(x0, y1, x0, y1 - r)
+  s.lineTo(x0, y0 + r)
+  s.quadraticCurveTo(x0, y0, x0 + r, y0)
+  return s
+}
+
+/**
+ * The two trays beside the board where captured pieces are set down. Extruded in the frame's
+ * own coordinates, so the rosewood grain continues from the frame.
+ */
+function useTrayGeometry() {
+  return useMemo(() => {
+    const shapes = [-1, 1].map((side) => roundedRectAt(side * TRAY.x, 0, TRAY.width, TRAY.length, 0.12))
+    const g = new THREE.ExtrudeGeometry(shapes, {
+      depth: TRAY.depth, bevelEnabled: true, bevelSize: 0.04, bevelThickness: 0.04, bevelSegments: 3, curveSegments: 8,
+    })
+    g.rotateX(-Math.PI / 2)
+    g.translate(0, TRAY.top - TRAY.depth - 0.04, 0)
+    return g
+  }, [])
 }
 
 function useFrameGeometry() {
@@ -94,6 +126,7 @@ function CoordinateOverlays({ white, black, flipped }: { white: THREE.Texture; b
 
 export function Board({ flipped, lite }: { flipped: boolean; lite: boolean }) {
   const frameGeometry = useFrameGeometry()
+  const trayGeometry = useTrayGeometry()
   // Reduced graphics drops the lacquer (clear-coat) layers for a much cheaper shader.
   const fieldMaterials = useMemo(() => {
     const side = new THREE.MeshStandardMaterial({ color: '#7a4a2a', roughness: 0.7 })
@@ -135,6 +168,7 @@ export function Board({ flipped, lite }: { flipped: boolean; lite: boolean }) {
         <boxGeometry args={[FIELD, 0.3, FIELD]} />
       </mesh>
       <mesh geometry={frameGeometry} material={frameMaterial} castShadow receiveShadow />
+      <mesh geometry={trayGeometry} material={frameMaterial} castShadow receiveShadow />
       {coords && <CoordinateOverlays white={coords.white} black={coords.black} flipped={flipped} />}
       {/* Thin brass lip where the frame meets the field. */}
       {[0, 1, 2, 3].map((i) => (

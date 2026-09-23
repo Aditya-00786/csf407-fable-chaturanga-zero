@@ -1,6 +1,6 @@
 /** Square helpers, the starting position and human-readable descriptions of results. */
 
-import type { Color, HistoryEntry, Outcome } from './api'
+import type { Color, GameView, HistoryEntry, Outcome } from './api'
 import { PIECES, type PieceKind } from './pieces'
 
 export const FILES = 'abcdefgh'
@@ -10,6 +10,20 @@ export const rankOf = (sq: number) => sq >> 3
 export const squareName = (sq: number) => FILES[fileOf(sq)] + String(rankOf(sq) + 1)
 export const squareIndex = (name: string) => FILES.indexOf(name[0]) + (Number(name[1]) - 1) * 8
 export const moveText = (from: number, to: number) => squareName(from) + squareName(to)
+
+const capturesCache = new WeakMap<GameView, number[]>()
+const NO_CAPTURES: number[] = []
+
+/** Pieces captured in the game so far (signed codes), in the order taken. Stable per view. */
+export function captures(view: GameView | null | undefined): number[] {
+  if (!view) return NO_CAPTURES
+  let list = capturesCache.get(view)
+  if (!list) {
+    list = view.history.map((h) => h.captured).filter((p) => p !== 0)
+    capturesCache.set(view, list)
+  }
+  return list
+}
 
 export const colorName = (c: Color) => (c === 1 ? 'White' : 'Black')
 

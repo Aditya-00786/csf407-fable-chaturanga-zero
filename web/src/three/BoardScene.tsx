@@ -30,6 +30,8 @@ export interface BoardSceneProps {
   onMove: (from: number, to: number) => void
   emphasis?: number[]
   label?: string
+  /** Pieces captured so far (signed codes), in the order taken; they stand beside the board. */
+  captured?: number[]
 }
 
 const SCENE: Record<Theme, { colors: HighlightColors }> = {
@@ -233,8 +235,8 @@ function Rig({ orientation, flat }: { orientation: Color; flat: boolean }) {
     c.maxPolarAngle = Math.PI / 2
     c.azimuthRotateSpeed = limits.rotate
     c.polarRotateSpeed = limits.rotate
-    // Pull back on narrow canvases so the whole board stays in frame.
-    const k = Math.min(2.5, Math.max(1.3, 1.55 / aspect))
+    // Pull back on narrow canvases so the whole board, with its capture trays, stays in frame.
+    const k = Math.min(2.5, Math.max(1.3, 1.75 / aspect))
     const dir = orientation === 1 ? 1 : -1
     const arrived = flat
       // Aim slightly past the centre so the board sits below the floating status bar.
@@ -259,8 +261,10 @@ function Rig({ orientation, flat }: { orientation: Color; flat: boolean }) {
   )
 }
 
+const NONE: number[] = []
+
 export function BoardScene(props: BoardSceneProps) {
-  const { board, ply, legalMoves, lastMove, checkSquare, orientation, interactive, onMove, emphasis = [], label } = props
+  const { board, ply, legalMoves, lastMove, checkSquare, orientation, interactive, onMove, emphasis = [], label, captured = NONE } = props
   const theme = useSettings((s) => s.theme)
   const labels = useSettings((s) => s.labels)
   const flat = useSettings((s) => s.view) === 'flat'
@@ -272,7 +276,7 @@ export function BoardScene(props: BoardSceneProps) {
   const [hovered, setHovered] = useState<number | null>(null)
   const [cursor, setCursor] = useState<number | null>(null)
   const [ready, setReady] = useState(false)
-  const pieces = usePieces(board, ply, lastMove)
+  const pieces = usePieces(board, ply, lastMove, captured)
 
   // Drop any selection when the position or whose turn it is changes.
   const positionKey = `${ply}|${interactive}|${board.join()}`
@@ -418,7 +422,8 @@ export function BoardScene(props: BoardSceneProps) {
             key={p.id}
             piece={p.piece}
             sq={p.sq}
-            lifted={p.sq === selected}
+            taken={p.taken}
+            lifted={p.taken === null && p.sq === selected}
             flat={flat}
             labelFlipped={labels !== 'off' && flipped}
             labels={labels}

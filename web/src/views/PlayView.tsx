@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { PlayPanel, Status } from '../components/PlayPanel'
 import { Button } from '../components/ui'
 import type { Color } from '../lib/api'
-import { explainOutcome, INITIAL_BOARD } from '../lib/board'
+import { captures, explainOutcome, INITIAL_BOARD } from '../lib/board'
 import { useGame } from '../state/game'
 import { prefersReducedMotion, useDetail } from '../state/settings'
 import { BoardScene } from '../three/BoardScene'
@@ -151,6 +151,7 @@ export function PlayView() {
           ply={view?.ply ?? 0}
           legalMoves={interactive ? g.game!.legal_moves : []}
           lastMove={last ? { from: last.from, to: last.to } : null}
+          captured={captures(view)}
           checkSquare={view?.in_check ? view.king_square : null}
           orientation={orientation}
           interactive={interactive}

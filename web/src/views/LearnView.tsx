@@ -4,7 +4,7 @@ import { PieceGlyph } from '../components/PieceGlyph'
 import { Button } from '../components/ui'
 import lessonsData from '../content/lessons.json'
 import { api, type GameView, type OutcomeReason } from '../lib/api'
-import { explainOutcome, moveText, squareIndex } from '../lib/board'
+import { captures, explainOutcome, moveText, squareIndex } from '../lib/board'
 import { PIECES, type PieceKind } from '../lib/pieces'
 import { href } from '../lib/route'
 import { playMoveSound } from '../lib/sound'
@@ -162,6 +162,7 @@ export function LearnView({ lessonId }: { lessonId: string | null }) {
           ply={view?.ply ?? 0}
           legalMoves={interactive ? view!.legal_moves : []}
           lastMove={last ? { from: last.from, to: last.to } : null}
+          captured={captures(view)}
           checkSquare={view?.in_check ? view.king_square : null}
           orientation={1}
           interactive={interactive}

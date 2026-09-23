@@ -67,6 +67,7 @@ the same commit that completes the work.
     Ratha, a caparisoned Gaja with its howdah, a Marwari Ashva, and spear-and-shield Padatis;
   - Human vs Human, Human vs Computer and Computer vs Computer;
   - 11 interactive lessons, each position checked against the engine;
+  - captured pieces carried off to trays beside the board, on the capturing player's right;
   - an explanation of why every game ended.
 - **Network-ready encoding.** 15×8×8 input planes from the side to move's point of view, and a
   4,096-move action space with a legal-move mask.

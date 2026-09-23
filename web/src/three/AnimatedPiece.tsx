@@ -1,16 +1,18 @@
 import { animated, easings, to, useSpring } from '@react-spring/three'
 import { Html } from '@react-three/drei'
 import type { ThreeEvent } from '@react-three/fiber'
-import { memo, useEffect, useRef } from 'react'
+import { memo, useEffect, useMemo, useRef } from 'react'
 import { ASHVA, GAJA, PIECES, type PieceKind } from '../lib/pieces'
 import type { LabelMode } from '../state/settings'
-import { PIECE_TOP, squareToWorld } from './coords'
+import { PIECE_TOP, TAKEN_SCALE, squareToWorld, takenToWorld } from './coords'
 import { PieceModel, PieceToken } from './PieceModel'
 import { markShadowsDirty } from './shadows'
 
 interface Props {
   piece: number
   sq: number
+  /** Place in the line of captured pieces beside the board, or null while in play. */
+  taken: number | null
   lifted: boolean
   flat: boolean
   /** Only used to place flat-view labels on the viewer's side; false when labels are off. */
@@ -21,30 +23,43 @@ interface Props {
   onPick: (e: ThreeEvent<PointerEvent>, sq: number) => void
 }
 
+/** Where a piece stands and at what size: x, y, z, scale. */
+type Place = [number, number, number, number]
+
+function placeOf(piece: number, sq: number, taken: number | null): Place {
+  if (taken !== null) return [...takenToWorld(piece, taken), TAKEN_SCALE]
+  const [x, z] = squareToWorld(sq)
+  return [x, 0, z, 1]
+}
+
 const smoothstep = (a: number, b: number, v: number) => {
   const x = Math.min(1, Math.max(0, (v - a) / (b - a)))
   return x * x * (3 - 2 * x)
 }
 
-export const AnimatedPiece = memo(function AnimatedPiece({ piece, sq, lifted, flat, labelFlipped, labels, reducedMotion, lite, onPick }: Props) {
+export const AnimatedPiece = memo(function AnimatedPiece({ piece, sq, taken, lifted, flat, labelFlipped, labels, reducedMotion, lite, onPick }: Props) {
   const kind = Math.abs(piece) as PieceKind
   const white = piece > 0
-  const from = useRef(sq)
+  const captured = taken !== null
+  const target = useMemo(() => placeOf(piece, sq, taken), [piece, sq, taken])
+  const from = useRef(target)
   // t: travel between squares. lift: raised when selected (3D). pop: enlarged when selected
   // (flat, where a lift can't be seen from above). f: 0 = 3D model, 1 = flat token.
   const [{ t, lift, pop, f }, api] = useSpring(() => ({ t: 1, lift: 0, pop: 1, f: flat ? 1 : 0 }))
 
   useEffect(() => {
-    if (from.current === sq) return
+    if (from.current === target) return
     api.start({
       from: { t: 0 },
       to: { t: 1 },
       immediate: reducedMotion,
-      config: { duration: 360, easing: easings.easeOutQuart },
+      // A captured piece waits a beat for its captor, then is carried off to the side.
+      delay: captured ? 140 : 0,
+      config: { duration: captured ? 620 : 360, easing: captured ? easings.easeInOutCubic : easings.easeOutQuart },
       onChange: markShadowsDirty,
-      onRest: () => { from.current = sq },
+      onRest: () => { from.current = target },
     })
-  }, [sq, api, reducedMotion])
+  }, [target, captured, api, reducedMotion])
 
   useEffect(() => {
     api.start({
@@ -72,15 +87,20 @@ export const AnimatedPiece = memo(function AnimatedPiece({ piece, sq, lifted, fl
     return markShadowsDirty
   }, [piece, sq, flat, lifted])
 
-  // Leapers (Gaja, Ashva) hop in an arc; everything else glides.
-  const arc = kind === GAJA || kind === ASHVA ? 0.55 : 0.12
-  // The callback runs per animation frame, not during render, so reading the ref is safe
-  // (and needed: it must see the latest start square).
+  // Leapers (Gaja, Ashva) hop in an arc, captured pieces are lifted clear of the board, and
+  // everything else glides.
+  const arc = captured ? 1.1 : kind === GAJA || kind === ASHVA ? 0.55 : 0.12
+  // The callbacks run per animation frame, not during render, so reading the ref is safe
+  // (and needed: they must see the latest starting place).
   // oxlint-disable-next-line react/refs
   const position = to([t, lift], (v: number, l: number) => {
-    const [ax, az] = squareToWorld(from.current)
-    const [bx, bz] = squareToWorld(sq)
-    return [ax + (bx - ax) * v, Math.sin(Math.PI * v) * arc + l, az + (bz - az) * v] as [number, number, number]
+    const a = from.current
+    return [a[0] + (target[0] - a[0]) * v, a[1] + (target[1] - a[1]) * v + Math.sin(Math.PI * v) * arc + l, a[2] + (target[2] - a[2]) * v] as [number, number, number]
+  })
+  // oxlint-disable-next-line react/refs
+  const size = to([t], (v: number) => {
+    const s = from.current[3] + (target[3] - from.current[3]) * v
+    return [s, s, s] as [number, number, number]
   })
 
   const info = PIECES[kind]
@@ -92,7 +112,12 @@ export const AnimatedPiece = memo(function AnimatedPiece({ piece, sq, lifted, fl
     return [s, s, s] as [number, number, number]
   })
   return (
-    <animated.group position={position} onPointerDown={(e: ThreeEvent<PointerEvent>) => onPick(e, sq)}>
+    <animated.group
+      position={position}
+      scale={size}
+      // Captured pieces are out of play: clicks on them do nothing.
+      onPointerDown={captured ? undefined : (e: ThreeEvent<PointerEvent>) => onPick(e, sq)}
+    >
       <animated.group scale={modelScale} visible={f.to((v) => v < 0.999)}>
         <PieceModel kind={kind} white={white} lite={lite} />
       </animated.group>
@@ -100,7 +125,7 @@ export const AnimatedPiece = memo(function AnimatedPiece({ piece, sq, lifted, fl
       <animated.group scale={tokenScale} visible={f.to((v) => v > 0.001)}>
         <PieceToken kind={kind} white={white} lite={lite} />
       </animated.group>
-      {labels !== 'off' && (
+      {labels !== 'off' && !captured && (
         <Html position={flat ? [0, 0.1, labelFlipped ? -0.52 : 0.52] : [0, PIECE_TOP[kind] + 0.14, 0]} center zIndexRange={[5, 0]} style={{ pointerEvents: 'none' }}>
           <span
             className={
