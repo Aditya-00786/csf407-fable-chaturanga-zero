@@ -63,6 +63,8 @@ the same commit that completes the work.
 - **Verified rules engine.** 99 tests, a cross-check against an independent reference
   move generator, and a 10,000-game random-play stress test.
 - **Browser app.** A carved rosewood-and-brass 3D board in light and dark themes, with:
+  - a figural piece set after Indian court chess sets: a crowned Raja, a turbaned Mantri, a temple-car
+    Ratha, a caparisoned Gaja with its howdah, a Marwari Ashva, and spear-and-shield Padatis;
   - Human vs Human, Human vs Computer and Computer vs Computer;
   - 11 interactive lessons, each position checked against the engine;
   - an explanation of why every game ended.

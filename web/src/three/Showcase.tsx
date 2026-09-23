@@ -9,7 +9,7 @@ export function Showcase() {
   const only = Number(new URLSearchParams(location.search).get('kind')) || null
   const kinds = only ? PIECE_ORDER.filter((k) => k === only) : PIECE_ORDER
   return (
-    <Canvas shadows="percentage" camera={{ fov: 28, position: only ? [1.2, 1.4, 3] : [0, 2.2, 8] }}>
+    <Canvas shadows="percentage" camera={{ fov: 28, position: only ? [1.2, 1.4, 3] : [0, 2.8, 11] }}>
       <OrbitControls target={only ? [0, 0.55, -0.6] : [0, 0.6, -0.6]} />
       <hemisphereLight args={['#ffe0b8', '#2b140c', 0.5]} />
       <directionalLight position={[3, 6, 5]} intensity={2.5} color="#ffd29a" castShadow />
@@ -20,7 +20,7 @@ export function Showcase() {
       {kinds.map((kind, i) => (
         <group key={kind} position={[(i - (kinds.length - 1) / 2) * 1.05, 0, 0]}>
           <PieceModel kind={kind} white />
-          <group position={[0, 0, -1.2]} scale={[-1, 1, 1]}>
+          <group position={[0, 0, -1.2]}>
             <PieceModel kind={kind} white={false} />
           </group>
         </group>

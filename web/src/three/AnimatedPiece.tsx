@@ -84,11 +84,9 @@ export const AnimatedPiece = memo(function AnimatedPiece({ piece, sq, lifted, fl
   })
 
   const info = PIECES[kind]
-  // Profile pieces face left for White and right for Black, like knights in a chess set. The
-  // models are symmetric front-to-back, so turning the board needs no change here at all.
-  const facing = white ? 1 : -1
+  // Each model faces its own way (see PieceModel), independent of how the board is turned.
   // The model settles into its base over the first part of the morph; the token rises over the rest.
-  const modelScale = to([f], (v: number) => [facing, Math.max(0.001, 1 - smoothstep(0, 0.6, v)), 1] as [number, number, number])
+  const modelScale = to([f], (v: number) => [1, Math.max(0.001, 1 - smoothstep(0, 0.6, v)), 1] as [number, number, number])
   const tokenScale = to([f, pop], (v: number, p: number) => {
     const s = Math.max(0.001, smoothstep(0.35, 1, v)) * p
     return [s, s, s] as [number, number, number]

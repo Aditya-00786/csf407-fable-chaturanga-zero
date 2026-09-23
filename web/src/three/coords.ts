@@ -14,4 +14,4 @@ export function worldToSquare(x: number, z: number): number | null {
 }
 
 /** Height of each piece model's top (world units), for placing labels above it. */
-export const PIECE_TOP: Record<PieceKind, number> = { 1: 0.79, 2: 1.03, 3: 0.99, 4: 0.94, 5: 1.12, 6: 1.55 }
+export const PIECE_TOP: Record<PieceKind, number> = { 1: 0.97, 2: 0.86, 3: 0.88, 4: 0.97, 5: 1.05, 6: 1.38 }

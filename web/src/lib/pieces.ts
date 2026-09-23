@@ -49,23 +49,44 @@ export const PIECES: Record<PieceKind, PieceInfo> = {
 export const PIECE_ORDER: PieceKind[] = [6, 5, 4, 3, 2, 1]
 
 const PLINTH = 'M24 80 H76 Q81 80 81 85 V92 H19 V85 Q19 80 24 80 Z'
+/** A full circle as a path, for eyes, heads, wheels and shields (nested circles cut rings with evenodd). */
+const ring = (cx: number, cy: number, r: number) =>
+  `M${cx - r} ${cy} A${r} ${r} 0 1 0 ${cx + r} ${cy} A${r} ${r} 0 1 0 ${cx - r} ${cy} Z`
 
-/** Silhouettes shared by the 2D glyphs and the flat-view tokens. Fill with evenodd. */
+/**
+ * Silhouettes shared by the 2D glyphs and the flat-view tokens, drawn after the 3D set: robed
+ * court figures, a temple chariot, a caparisoned elephant and a horse. Fill with evenodd; parts
+ * are kept apart by thin gaps, which read as carved lines.
+ */
 export const GLYPHS: Record<PieceKind, string> = {
-  // Foot soldier: helmeted head, tapering body, round shield.
-  1: `M50 11 L55 20 A11 11 0 1 1 45 20 Z M43 42 H57 L64 78 H36 Z ${PLINTH}`,
-  // Minister beneath a chhatri (royal parasol).
-  5: `M50 5 A4 4 0 1 1 49.9 5 Z M20 36 Q50 4 80 36 Z M47.5 36 H52.5 V44 H47.5 Z M41 44 H59 L66 78 H34 Z ${PLINTH}`,
-  // King: three-pointed crown over a banded body.
-  6: `M28 34 L31 12 L41 24 L50 6 L59 24 L69 12 L72 34 Z M29 36 H71 V43 H29 Z M39 43 H61 L69 78 H31 Z ${PLINTH}`,
-  // Chariot: canopy, body and two spoked wheels.
-  4: `M28 38 L50 20 L72 38 Z M25 40 H75 V62 H25 Z
-      M36 58 A13 13 0 1 1 35.9 58 Z M36 66 A5 5 0 1 0 36.1 66 Z
-      M64 58 A13 13 0 1 1 63.9 58 Z M64 66 A5 5 0 1 0 64.1 66 Z ${PLINTH}`,
-  // Elephant facing left, trunk lowered, with an eye.
-  3: `M83 80 L83 56 Q83 33 61 31 Q47 29 39 33 Q27 29 20 40 Q14 49 16 60 Q17 70 12 75 Q9 80 15 80
-      Q22 79 24 69 Q25 61 30 58 L34 80 Z M29 43 A2.6 2.6 0 1 0 29.1 43 Z ${PLINTH}`,
-  // Horse head facing left, with an eye.
-  2: `M71 80 L69 60 Q72 40 63 28 L66 14 L56 21 Q50 17 44 21 Q33 28 25 42 Q21 50 26 54 Q33 58 40 54
-      Q46 51 51 55 Q45 66 40 80 Z M45 32 A2.6 2.6 0 1 0 45.1 32 Z ${PLINTH}`,
+  // Raja: robed figure under a tiered mukut.
+  6: `M50 4 L53.5 12 H56 L58 21 H42 L44 12 H46.5 Z M40 23 H60 L61 29 H39 Z ${ring(50, 36.5, 5.5)}
+      M41 44.5 Q50 42.5 59 44.5 Q62 45.5 62 49 L60 57 H40 L38 49 Q38 45.5 41 44.5 Z
+      M40.5 59.5 H59.5 Q63 70 71 78 H29 Q37 70 40.5 59.5 Z ${PLINTH}`,
+  // Mantri: robed courtier in a pagdi with a sarpech (cut out) and a plume.
+  5: `M54 5 Q63 8 61 18 L58 18 Q59 11 53 8 Z M38.5 29 Q38 19.5 50 19 Q62 19.5 61.5 29 Z ${ring(50, 24, 2)} ${ring(50, 36, 5.5)}
+      M42 43.5 Q50 42 58 43.5 Q61 44.5 61 48 L59 55 H41 L39 48 Q39 44.5 42 43.5 Z
+      M41.5 57.5 H58.5 Q62 68 69 78 H31 Q38 68 41.5 57.5 Z ${PLINTH}`,
+  // Padati: foot soldier with a spear and a round shield.
+  1: `M73 5 L76.5 17 H74.6 V78 H72.4 V17 H70.5 Z
+      M43 31 Q43 21 50 17 Q57 21 57 31 Z ${ring(50, 37, 5)}
+      M44 44.5 Q50 43 56 44.5 Q59 45.5 59 48.5 L58 55 H42 L41 48.5 Q41 45.5 44 44.5 Z
+      M42 57 H58 L61.5 66 H38.5 Z M42.5 68 H48 V78 H42.5 Z M52 68 H57.5 V78 H52 Z
+      ${ring(29, 52, 9)} ${ring(29, 52, 6.5)} ${ring(29, 52, 2.5)} ${PLINTH}`,
+  // Ratha: temple chariot, a stepped shikhara over the car, one great wheel.
+  4: `M50 3 L53 11 H47 Z M50 12 L63 24 H37 Z M34 25.5 H66 V29.5 H34 Z M30 31 H70 V35 H30 Z
+      M33 36.5 H36.5 V46 H33 Z M63.5 36.5 H67 V46 H63.5 Z M48.2 36.5 H51.8 V46 H48.2 Z
+      M27 47.5 H73 V58 H27 Z M27 52 L13 57 V59.5 L27 55 Z
+      ${ring(50, 69.5, 10)} ${ring(50, 69.5, 7)} ${ring(50, 69.5, 2.6)} ${PLINTH}`,
+  // Gaja: caparisoned elephant facing left, with a howdah under a canopy.
+  3: `${ring(53, 6.5, 2.5)} M53 10 Q63 10 65 20 H41 Q43 10 53 10 Z
+      M43 21.5 H45.5 V29 H43 Z M60.5 21.5 H63 V29 H60.5 Z M41 30.5 H65 V37 H41 Z
+      M36 39.5 Q58 36.5 75 40.5 Q85 44 85 56 Q85 63 81 65 V78 H72.5 V67 H50.5 V78 H42 V66 Q37 64 34 61
+      Q31 66 28 71 Q25 77 20 78 Q15 78 16 74 Q19 73 21 70 Q24 64 24 56 Q22 46 28 42 Q31 40 36 39.5 Z
+      ${ring(27.5, 49, 1.7)} M34 45 Q43 44 44 52 Q43 60 36 58 Q32 52 34 45 Z ${PLINTH}`,
+  // Ashva: horse facing left, ears curving in, with a plume and a saddle cloth line.
+  2: `M27 3 Q33 4 32 11 L30 11 Q30 6 26 5 Z
+      M13 37 Q10 34 13 31 L22 19 L23.5 11 L27 16.5 L29.5 11.5 L31.5 18 Q41 22 46 37 Q56 40 70 39 Q79 40 81 46
+      Q88 50 87 64 L84.5 64 Q84.5 54 81 51 Q81 57 79 62 L80 78 H75 L73.5 64 Q68 60 62 60 H48 Q44 61 43 64 L42 78 H37 L36.5 64
+      Q33 58 32 49 Q30 41 26 35.5 Q22 38.5 18 39 Q15 39 13 37 Z ${ring(20.5, 26.5, 1.5)} M50 41 H66 V43.5 H50 Z ${PLINTH}`,
 }
