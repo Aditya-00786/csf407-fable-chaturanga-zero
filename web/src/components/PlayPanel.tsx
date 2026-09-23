@@ -1,7 +1,7 @@
-import { Pause, Play, X } from 'lucide-react'
+import { FlipVertical2, Pause, Play, X } from 'lucide-react'
 import { useEffect, useMemo, useRef } from 'react'
 import type { Color, GameView } from '../lib/api'
-import { colorName, describeMove, squareName } from '../lib/board'
+import { colorName, describeMove, explainOutcome, squareName } from '../lib/board'
 import { useGame, type Mode, type Pace } from '../state/game'
 import { useSettings } from '../state/settings'
 import { PieceGlyph } from './PieceGlyph'
@@ -25,53 +25,66 @@ function Swatch({ color }: { color: Color }) {
   )
 }
 
-/** Whose turn it is and why, shown in the floating card over the board. */
+/**
+ * Whose turn it is, shown in the floating card over the board. "Essential" detail keeps it to
+ * the headline plus urgent tags (check, thinking); "Full" adds the hint and the counters.
+ */
 export function Status({ view }: { view: GameView | null }) {
   const { mode, humanColor, status, reviewPly } = useGame()
+  const full = useSettings((s) => s.details) === 'full'
   if (!view) {
     return (
       <div aria-busy="true">
         <div className="h-6 w-40 animate-pulse rounded-md bg-surface-2" />
-        <div className="mt-2 h-4 w-56 animate-pulse rounded bg-surface-2" />
+        {full && <div className="mt-2 h-4 w-56 animate-pulse rounded bg-surface-2" />}
       </div>
     )
   }
   const side = view.side
   let title = `${colorName(side)} to move`
-  let detail: string
-  let tone = 'text-ink-muted'
+  let hint: string | null = null
+  let tag: { text: string; danger?: boolean } | null = null
   if (view.outcome) {
-    title = 'Game over'
-    detail = view.outcome.winner === null ? 'The game is drawn.' : `${colorName(view.outcome.winner)} wins.`
+    title = explainOutcome(view.outcome, side).title
   } else if (reviewPly !== null) {
-    detail = `Reviewing the position after ${reviewPly} ${reviewPly === 1 ? 'ply' : 'plies'}.`
+    hint = `Reviewing the position after ${reviewPly} ${reviewPly === 1 ? 'ply' : 'plies'}.`
   } else if (status === 'thinking') {
-    detail = 'The computer is thinking…'
+    tag = { text: 'Thinking…' }
+    hint = 'The computer is choosing a move.'
   } else if (view.in_check) {
-    detail = `Check: the ${colorName(side)} Raja is attacked and must be saved.`
-    tone = 'text-danger'
+    tag = { text: 'Check', danger: true }
+    hint = `The ${colorName(side)} Raja is attacked and must be saved.`
   } else if (mode === 'hvc') {
-    detail = side === humanColor ? 'Your move. Select a piece to see where it can go.' : "The computer's move."
+    hint = side === humanColor ? 'Your move. Select a piece to see where it can go.' : "The computer's move."
   } else if (mode === 'cvc') {
-    detail = 'Computer against computer.'
+    hint = 'Computer against computer.'
   } else {
-    detail = 'Select a piece to see where it can go.'
+    hint = 'Select a piece to see where it can go.'
   }
   const last = view.history[view.history.length - 1]
   return (
     <div>
-      <p className="flex items-center gap-2 font-serif text-[20px] leading-tight font-semibold text-ink">
+      <p className="flex flex-wrap items-center gap-x-2 gap-y-1 font-serif text-[20px] leading-tight font-semibold text-ink">
         {!view.outcome && <Swatch color={side} />}
         {title}
+        {tag && (
+          <span className={`rounded-md px-1.5 py-0.5 font-sans text-[12px] font-semibold ${
+            tag.danger ? 'bg-danger-soft text-danger' : 'bg-surface-2 text-ink-muted'
+          }`}>
+            {tag.text}
+          </span>
+        )}
       </p>
-      <p className={`mt-1 text-[13.5px] leading-snug ${tone}`}>{detail}</p>
-      <p className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[12px] text-ink-faint tabular-nums">
-        <span>Move {Math.floor(view.ply / 2) + 1}</span>
-        <span title="Plies since the last capture or Padati move. At 140 the game is drawn.">
-          Quiet plies {view.no_progress}/140
-        </span>
-        {view.repetition > 1 && <span className="text-ink-muted">Position repeated {view.repetition}×</span>}
-      </p>
+      {full && hint && <p className={`mt-1 text-[13.5px] leading-snug ${tag?.danger ? 'text-danger' : 'text-ink-muted'}`}>{hint}</p>}
+      {full && (
+        <p className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[12px] text-ink-faint tabular-nums">
+          <span>Move {Math.floor(view.ply / 2) + 1}</span>
+          <span title="Plies since the last capture or Padati move. At 140 the game is drawn.">
+            Quiet plies {view.no_progress}/140
+          </span>
+          {view.repetition > 1 && <span className="text-ink-muted">Position repeated {view.repetition}×</span>}
+        </p>
+      )}
       <p className="sr-only" aria-live="polite">{last ? `${last.piece > 0 ? 'White' : 'Black'} played ${describeMove(last)}` : ''}</p>
     </div>
   )
@@ -157,7 +170,7 @@ function Captured({ view }: { view: GameView | null }) {
   )
 }
 
-export function PlayPanel({ view, onClose }: { view: GameView | null; onClose: () => void }) {
+export function PlayPanel({ view, onClose, onRotate }: { view: GameView | null; onClose: () => void; onRotate: () => void }) {
   const g = useGame()
   const settings = useSettings()
   return (
@@ -236,7 +249,18 @@ export function PlayPanel({ view, onClose }: { view: GameView | null; onClose: (
                 { value: 'sanskrit', label: <span className="font-deva text-[14px]" lang="sa">देव</span>, title: 'Devanagari' },
               ]} />
           </div>
+          <Segmented label="Details" value={settings.details} onChange={settings.setDetails} size="sm"
+            options={[
+              { value: 'essential', label: 'Essential', title: 'Headlines only: whose turn it is, check, and the result' },
+              { value: 'full', label: 'Full', title: 'Also hints, move and quiet-ply counters, and the rule behind each result' },
+            ]} />
+          <p className="-mt-1.5 text-[12.5px] leading-snug text-ink-faint">
+            {settings.details === 'essential'
+              ? 'Showing headlines only. Full adds hints, move counters and the rule behind each result.'
+              : 'Showing hints, move counters and the rule behind each result.'}
+          </p>
           <Switch label="Sound" checked={settings.sound} onChange={settings.setSound} />
+          <Button size="sm" onClick={onRotate} icon={<FlipVertical2 size={15} />}>Rotate the board</Button>
         </section>
       </div>
     </div>

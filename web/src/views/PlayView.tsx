@@ -1,11 +1,11 @@
-import { AlertTriangle, FlipVertical2, History, PanelRight, RotateCcw, Undo2, X } from 'lucide-react'
+import { AlertTriangle, ChevronLeft, ChevronRight, History, Maximize, Minimize, PanelRight, RotateCcw, Undo2, X } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { PlayPanel, Status } from '../components/PlayPanel'
 import { Button } from '../components/ui'
 import type { Color } from '../lib/api'
 import { explainOutcome, INITIAL_BOARD } from '../lib/board'
 import { useGame } from '../state/game'
-import { prefersReducedMotion } from '../state/settings'
+import { prefersReducedMotion, useSettings } from '../state/settings'
 import { BoardScene } from '../three/BoardScene'
 
 // Let the moving piece land before the board turns to the next player.
@@ -13,6 +13,7 @@ const TURN_DELAY_MS = 520
 
 function GameEnd() {
   const { game, newGame, review, reviewPly } = useGame()
+  const full = useSettings((s) => s.details) === 'full'
   const [hiddenAtPly, setHiddenAtPly] = useState<number | null>(null)
   if (!game?.outcome || reviewPly !== null || hiddenAtPly === game.ply) return null
   const text = explainOutcome(game.outcome, game.side)
@@ -29,8 +30,12 @@ function GameEnd() {
             <X size={17} />
           </button>
         </div>
-        <p className="mt-1.5 max-w-[60ch] text-sm leading-relaxed text-ink-muted">{text.detail}</p>
-        <p className="mt-2 text-[12.5px] text-ink-faint">Rule: {text.source}</p>
+        {full && (
+          <>
+            <p className="mt-1.5 max-w-[60ch] text-sm leading-relaxed text-ink-muted">{text.detail}</p>
+            <p className="mt-2 text-[12.5px] text-ink-faint">Rule: {text.source}</p>
+          </>
+        )}
         <div className="mt-4 flex flex-wrap gap-2">
           <Button variant="primary" onClick={newGame} icon={<RotateCcw size={16} />}>Play again</Button>
           <Button onClick={() => review(Math.max(0, game.ply - 1))} icon={<History size={16} />}>Review moves</Button>
@@ -74,6 +79,20 @@ function useBoardOrientation(): Color {
   return following ? shown : orientation
 }
 
+function useFullscreen(): [boolean, () => void, boolean] {
+  const [on, setOn] = useState(() => !!document.fullscreenElement)
+  useEffect(() => {
+    const sync = () => setOn(!!document.fullscreenElement)
+    document.addEventListener('fullscreenchange', sync)
+    return () => document.removeEventListener('fullscreenchange', sync)
+  }, [])
+  const toggle = () => {
+    if (document.fullscreenElement) void document.exitFullscreen()
+    else void document.documentElement.requestFullscreen?.().catch(() => {})
+  }
+  return [on, toggle, !!document.fullscreenEnabled]
+}
+
 const FLOAT = 'rounded-xl border border-line bg-surface/92 shadow-[0_12px_32px_-18px_rgb(0_0_0/0.6)]'
 
 export function PlayView() {
@@ -81,6 +100,9 @@ export function PlayView() {
   useEffect(() => g.init(), []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [panelOpen, setPanelOpen] = useState(false)
+  // Quick actions (Undo, Full screen, New game) stay tucked away until asked for.
+  const [quickOpen, setQuickOpen] = useState(false)
+  const [fullscreen, toggleFullscreen, canFullscreen] = useFullscreen()
   const panelRef = useRef<HTMLElement>(null)
   const toggleRef = useRef<HTMLButtonElement>(null)
   const orientation = useBoardOrientation()
@@ -147,15 +169,36 @@ export function PlayView() {
           <Status view={view} />
         </div>
         <div className={`pointer-events-auto flex shrink-0 items-center gap-0.5 p-1 ${FLOAT}`}>
-          <ToolButton label="Undo" icon={<Undo2 size={17} />} onClick={g.undo}
-            disabled={busy || g.moves.length === 0 || (g.status === 'thinking' && g.mode !== 'cvc')} />
-          <ToolButton label="Rotate" icon={<FlipVertical2 size={17} />} onClick={rotate} />
-          <ToolButton label="New game" icon={<RotateCcw size={17} />} onClick={g.newGame} disabled={busy} />
-          <span className="mx-0.5 h-6 w-px bg-line" aria-hidden />
+          {quickOpen && (
+            <div id="quick-actions" className="cz-slide-in flex items-center gap-0.5">
+              <ToolButton label="Undo" icon={<Undo2 size={17} />} onClick={g.undo}
+                disabled={busy || g.moves.length === 0 || (g.status === 'thinking' && g.mode !== 'cvc')} />
+              {canFullscreen && (
+                <ToolButton label={fullscreen ? 'Exit full screen' : 'Full screen'}
+                  icon={fullscreen ? <Minimize size={17} /> : <Maximize size={17} />} onClick={toggleFullscreen} />
+              )}
+              <ToolButton label="New game" icon={<RotateCcw size={17} />} onClick={g.newGame} disabled={busy} />
+              <span className="mx-0.5 h-6 w-px bg-line" aria-hidden />
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => setQuickOpen((open) => !open)}
+            aria-expanded={quickOpen}
+            aria-controls="quick-actions"
+            aria-label={quickOpen ? 'Hide quick actions' : 'Show quick actions: undo, full screen, new game'}
+            title={quickOpen ? 'Hide quick actions' : 'Quick actions'}
+            className="grid h-10 w-8 place-items-center rounded-lg text-ink-muted transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
+          >
+            {quickOpen ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+          </button>
           <button
             ref={toggleRef}
             type="button"
-            onClick={() => setPanelOpen((open) => !open)}
+            onClick={() => {
+              setPanelOpen((open) => !open)
+              setQuickOpen(false)
+            }}
             aria-expanded={panelOpen}
             aria-controls="game-panel"
             title="Mode, moves and display"
@@ -204,7 +247,7 @@ export function PlayView() {
           panelOpen ? 'visible translate-x-0' : 'invisible translate-x-full'
         }`}
       >
-        <PlayPanel view={view} onClose={closePanel} />
+        <PlayPanel view={view} onClose={closePanel} onRotate={rotate} />
       </aside>
     </div>
   )

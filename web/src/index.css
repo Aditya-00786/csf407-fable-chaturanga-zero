@@ -140,3 +140,14 @@ p {
 .cz-rise {
   animation: cz-rise 260ms var(--ease-out-quart) both;
 }
+
+/* Quick actions slide out from the toolbar toggle. */
+@keyframes cz-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+}
+.cz-slide-in {
+  animation: cz-slide-in 200ms var(--ease-out-quart) both;
+}
