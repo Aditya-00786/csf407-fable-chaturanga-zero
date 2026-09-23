@@ -217,6 +217,8 @@ The server keeps no game state, so undo and review are just shorter move lists.
 | **Learn** | 11 lessons: the board, each piece, check and checkmate, bare king, stalemate and draws. Most end with a one-move task that the engine checks. `tests/test_lessons.py` checks that every lesson position is legal and every task can be solved. |
 | **Rules** | A compact reference, with the source tallies from `docs/RULES.md`. |
 
+**Camera:** drag to orbit the board. Zoom with the mouse wheel, a two-finger scroll, a trackpad pinch, or a two-finger pinch on a touch screen.
+
 **Accessibility**
 - The board can be played by keyboard: arrow keys move a cursor, Enter selects and moves, Escape cancels.
 - Highlights differ in shape as well as colour, so they don't rely on colour alone.

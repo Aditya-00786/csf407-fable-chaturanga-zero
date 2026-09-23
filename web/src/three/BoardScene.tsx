@@ -5,7 +5,7 @@
 
 import { CameraControls, Environment, Lightformer } from '@react-three/drei'
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from 'react'
 import * as THREE from 'three'
 import type { Color } from '../lib/api'
 import { squareName } from '../lib/board'
@@ -127,11 +127,71 @@ const StudioEnvironment = memo(function StudioEnvironment() {
   )
 })
 
+// Pinch sensitivity: fraction of the current distance moved per unit of pinch delta.
+const PINCH_SPEED = 0.01
+
+/**
+ * Trackpad pinch-to-zoom. Chrome, Edge and Firefox report a pinch as a wheel event with ctrlKey
+ * set; camera-controls maps that to a weak lens zoom, so we take it over and dolly the camera in
+ * proportion to the pinch instead. Safari reports pinches as gesture events. Plain wheel and
+ * two-finger scroll still go to camera-controls unchanged.
+ */
+function usePinchZoom(controls: RefObject<CameraControls | null>) {
+  const { gl, invalidate } = useThree()
+  useEffect(() => {
+    const el = gl.domElement
+    let safariScale: number | null = null
+    const dollyBy = (amount: number) => {
+      const c = controls.current
+      if (!c) return
+      void c.dolly(amount, false)
+      invalidate()
+    }
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey || safariScale !== null) return
+      e.preventDefault()
+      e.stopImmediatePropagation() // keep camera-controls' own ctrl-wheel zoom out of it
+      const c = controls.current
+      if (c) dollyBy(-e.deltaY * PINCH_SPEED * c.distance)
+    }
+    type GestureEvent = Event & { scale: number }
+    const onGestureStart = (e: Event) => {
+      e.preventDefault()
+      safariScale = 1
+    }
+    const onGestureChange = (e: Event) => {
+      e.preventDefault()
+      const c = controls.current
+      const scale = (e as GestureEvent).scale
+      if (!c || safariScale === null || scale <= 0) return
+      const ratio = scale / safariScale
+      safariScale = scale
+      dollyBy(c.distance * (1 - 1 / ratio)) // new distance = old distance / ratio
+    }
+    const onGestureEnd = (e: Event) => {
+      e.preventDefault()
+      safariScale = null
+    }
+    // Capture phase on the canvas runs before camera-controls' listener on the same element.
+    el.addEventListener('wheel', onWheel, { passive: false, capture: true })
+    el.addEventListener('gesturestart', onGestureStart, { passive: false })
+    el.addEventListener('gesturechange', onGestureChange, { passive: false })
+    el.addEventListener('gestureend', onGestureEnd, { passive: false })
+    return () => {
+      el.removeEventListener('wheel', onWheel, { capture: true })
+      el.removeEventListener('gesturestart', onGestureStart)
+      el.removeEventListener('gesturechange', onGestureChange)
+      el.removeEventListener('gestureend', onGestureEnd)
+    }
+  }, [gl, invalidate, controls])
+}
+
 function Rig({ orientation, flat }: { orientation: Color; flat: boolean }) {
   const ref = useRef<CameraControls>(null)
   const { size } = useThree()
   const aspect = size.width / Math.max(1, size.height)
   const first = useRef(true)
+  usePinchZoom(ref)
   useEffect(() => {
     const c = ref.current
     if (!c) return
