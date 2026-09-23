@@ -1,7 +1,8 @@
-import { ArrowLeft, ArrowRight, BookOpen, Check, ChevronLeft, ChevronRight, Lightbulb, ListOrdered, Maximize, Minimize, RotateCcw, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, BookOpen, Check, Lightbulb, ListOrdered, Maximize, Minimize, RotateCcw, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { PieceGlyph } from '../components/PieceGlyph'
-import { Drawer, DrawerHeader, DrawerToggle, Floating, ToolButton } from '../components/stage'
+import { Covered, Drawer, DrawerHeader, DrawerToggle, Floating, QuickActions, QuickToggle, ToolButton } from '../components/stage'
 import { Button } from '../components/ui'
 import lessonsData from '../content/lessons.json'
 import { api, type GameView, type OutcomeReason } from '../lib/api'
@@ -281,8 +282,9 @@ function useDrawers() {
       setFocusRequest((r) => ({ name, n: (r?.n ?? 0) + 1 }))
     }
   }
+  // A drawer's toggle is inert while the drawer covers it, so let the drawer close before focusing it.
   const close = (name: DrawerName) => {
-    set(name, false)
+    flushSync(() => set(name, false))
     document.getElementById(DRAWERS[name].toggle)?.focus()
   }
 
@@ -295,7 +297,7 @@ function useDrawers() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
       const name = open[latest] ? latest : otherDrawer(latest)
-      setOpen((o) => ({ ...o, [name]: false }))
+      flushSync(() => setOpen((o) => ({ ...o, [name]: false })))
       document.getElementById(DRAWERS[name].toggle)?.focus()
     }
     window.addEventListener('keydown', onKey)
@@ -345,7 +347,7 @@ export function LearnView({ lessonId }: { lessonId: string | null }) {
 
       {/* Floating lesson card and toolbars keep the board full-screen. */}
       <div className="pointer-events-none absolute inset-x-0 top-0 z-[var(--z-stage-overlay)] flex items-start justify-between gap-3 p-3 sm:p-4">
-        <div className="flex min-w-0 flex-col items-start gap-2">
+        <Covered by={d.open.lessons} className="flex min-w-0 flex-col items-start gap-2">
           <Floating className="p-1">
             <DrawerToggle
               id={DRAWERS.lessons.toggle}
@@ -361,10 +363,10 @@ export function LearnView({ lessonId }: { lessonId: string | null }) {
           <Floating className="max-w-[min(360px,calc(100vw-2rem))] px-4 py-3">
             <LessonCard key={lesson.id} lesson={lesson} index={index} next={next} state={state} onRead={() => d.set('lesson', true)} />
           </Floating>
-        </div>
-        <Floating className="flex shrink-0 items-center gap-0.5 p-1">
-          {quickOpen && (
-            <div id="learn-quick-actions" className="cz-slide-in flex items-center gap-0.5">
+        </Covered>
+        <Covered by={d.open.lesson} className="shrink-0">
+          <Floating className="flex items-center gap-0.5 p-1">
+            <QuickActions id="learn-quick-actions" open={quickOpen}>
               <ToolButton label="Reset board" icon={<RotateCcw size={17} />} onClick={reset} />
               <ToolButton label="Previous lesson" icon={<ArrowLeft size={17} />} onClick={() => prev && go(prev)} disabled={!prev} />
               <ToolButton label="Next lesson" icon={<ArrowRight size={17} />} onClick={() => next && go(next)} disabled={!next} />
@@ -372,33 +374,23 @@ export function LearnView({ lessonId }: { lessonId: string | null }) {
                 <ToolButton label={fullscreen ? 'Exit full screen' : 'Full screen'}
                   icon={fullscreen ? <Minimize size={17} /> : <Maximize size={17} />} onClick={toggleFullscreen} />
               )}
-              <span className="mx-0.5 h-6 w-px bg-line" aria-hidden />
-            </div>
-          )}
-          <button
-            type="button"
-            onClick={() => setQuickOpen((o) => !o)}
-            aria-expanded={quickOpen}
-            aria-controls="learn-quick-actions"
-            aria-label={quickOpen ? 'Hide quick actions' : 'Show quick actions: reset, previous and next lesson, full screen'}
-            title={quickOpen ? 'Hide quick actions' : 'Quick actions'}
-            className="grid h-10 w-8 place-items-center rounded-lg text-ink-muted transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
-          >
-            {quickOpen ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
-          </button>
-          <DrawerToggle
-            id={DRAWERS.lesson.toggle}
-            open={d.open.lesson}
-            controls={DRAWERS.lesson.drawer}
-            onClick={() => {
-              d.set('lesson', !d.open.lesson)
-              setQuickOpen(false)
-            }}
-            icon={<BookOpen size={17} />}
-            label="Lesson"
-            title="Read the lesson"
-          />
-        </Floating>
+            </QuickActions>
+            <QuickToggle open={quickOpen} controls="learn-quick-actions" onClick={() => setQuickOpen((o) => !o)}
+              describe="reset, previous and next lesson, full screen" />
+            <DrawerToggle
+              id={DRAWERS.lesson.toggle}
+              open={d.open.lesson}
+              controls={DRAWERS.lesson.drawer}
+              onClick={() => {
+                d.set('lesson', !d.open.lesson)
+                setQuickOpen(false)
+              }}
+              icon={<BookOpen size={17} />}
+              label="Lesson"
+              title="Read the lesson"
+            />
+          </Floating>
+        </Covered>
       </div>
 
       {error && (

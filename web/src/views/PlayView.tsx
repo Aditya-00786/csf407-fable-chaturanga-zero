@@ -1,7 +1,8 @@
-import { AlertTriangle, ChevronLeft, ChevronRight, History, Maximize, Minimize, PanelRight, RotateCcw, Undo2, X } from 'lucide-react'
+import { AlertTriangle, History, Maximize, Minimize, PanelRight, RotateCcw, Undo2, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { PlayPanel, Status } from '../components/PlayPanel'
-import { Drawer, DrawerToggle, Floating, ToolButton } from '../components/stage'
+import { Covered, Drawer, DrawerToggle, Floating, QuickActions, QuickToggle, ToolButton } from '../components/stage'
 import { Button } from '../components/ui'
 import type { Color } from '../lib/api'
 import { captures, explainOutcome, INITIAL_BOARD } from '../lib/board'
@@ -79,8 +80,9 @@ export function PlayView() {
   const toggleRef = useRef<HTMLButtonElement>(null)
   const [orientation, rotate] = useBoardOrientation()
 
+  // The toggle is inert while the drawer covers it, so let the drawer close before focusing it.
   const closePanel = () => {
-    setPanelOpen(false)
+    flushSync(() => setPanelOpen(false))
     toggleRef.current?.focus()
   }
 
@@ -90,7 +92,7 @@ export function PlayView() {
     panelRef.current?.querySelector<HTMLElement>('button')?.focus()
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        setPanelOpen(false)
+        flushSync(() => setPanelOpen(false))
         toggleRef.current?.focus()
       }
     }
@@ -131,9 +133,9 @@ export function PlayView() {
         <Floating className="max-w-[min(360px,52vw)] px-4 py-3">
           <Status view={view} />
         </Floating>
-        <Floating className="flex shrink-0 items-center gap-0.5 p-1">
-          {quickOpen && (
-            <div id="quick-actions" className="cz-slide-in flex items-center gap-0.5">
+        <Covered by={panelOpen} className="shrink-0">
+          <Floating className="flex items-center gap-0.5 p-1">
+            <QuickActions id="quick-actions" open={quickOpen}>
               <ToolButton label="Undo" icon={<Undo2 size={17} />} onClick={g.undo}
                 disabled={busy || g.moves.length === 0 || (g.status === 'thinking' && g.mode !== 'cvc')} />
               {canFullscreen && (
@@ -141,38 +143,28 @@ export function PlayView() {
                   icon={fullscreen ? <Minimize size={17} /> : <Maximize size={17} />} onClick={toggleFullscreen} />
               )}
               <ToolButton label="New game" icon={<RotateCcw size={17} />} onClick={g.newGame} disabled={busy} />
-              <span className="mx-0.5 h-6 w-px bg-line" aria-hidden />
-            </div>
-          )}
-          <button
-            type="button"
-            onClick={() => setQuickOpen((open) => !open)}
-            aria-expanded={quickOpen}
-            aria-controls="quick-actions"
-            aria-label={quickOpen ? 'Hide quick actions' : 'Show quick actions: undo, full screen, new game'}
-            title={quickOpen ? 'Hide quick actions' : 'Quick actions'}
-            className="grid h-10 w-8 place-items-center rounded-lg text-ink-muted transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
-          >
-            {quickOpen ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
-          </button>
-          <DrawerToggle
-            ref={toggleRef}
-            open={panelOpen}
-            controls="game-panel"
-            onClick={() => {
-              setPanelOpen((open) => !open)
-              setQuickOpen(false)
-            }}
-            icon={<PanelRight size={17} />}
-            label="Game"
-            title="Mode, moves and display"
-            badge={g.moves.length > 0 && (
-              <span className="rounded-md bg-surface-2 px-1.5 text-[11.5px] text-ink-muted tabular-nums" aria-label={`${g.moves.length} moves played`}>
-                {g.moves.length}
-              </span>
-            )}
-          />
-        </Floating>
+            </QuickActions>
+            <QuickToggle open={quickOpen} controls="quick-actions" onClick={() => setQuickOpen((open) => !open)}
+              describe="undo, full screen, new game" />
+            <DrawerToggle
+              ref={toggleRef}
+              open={panelOpen}
+              controls="game-panel"
+              onClick={() => {
+                setPanelOpen((open) => !open)
+                setQuickOpen(false)
+              }}
+              icon={<PanelRight size={17} />}
+              label="Game"
+              title="Mode, moves and display"
+              badge={g.moves.length > 0 && (
+                <span className="rounded-md bg-surface-2 px-1.5 text-[11.5px] text-ink-muted tabular-nums" aria-label={`${g.moves.length} moves played`}>
+                  {g.moves.length}
+                </span>
+              )}
+            />
+          </Floating>
+        </Covered>
       </div>
 
       {g.status === 'error' && (

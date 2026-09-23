@@ -3,7 +3,7 @@
  * the board, their buttons, and the drawers that slide in from either edge.
  */
 
-import { X } from 'lucide-react'
+import { ChevronLeft, X } from 'lucide-react'
 import type { ReactNode, Ref } from 'react'
 
 /** A floating surface over the board: status cards and toolbars. */
@@ -12,6 +12,61 @@ export function Floating({ className = '', children }: { className?: string; chi
     <div className={`pointer-events-auto rounded-xl border border-line bg-surface/92 shadow-[0_12px_32px_-18px_rgb(0_0_0/0.6)] ${className}`}>
       {children}
     </div>
+  )
+}
+
+/**
+ * Floating controls that sit where a drawer opens. They fade out and become inert while it is
+ * open, so nothing peeks out past the drawer's edge.
+ */
+export function Covered({ by, className = '', children }: { by: boolean; className?: string; children: ReactNode }) {
+  return (
+    <div
+      inert={by}
+      className={`transition-opacity duration-200 ease-out-quart ${by ? 'pointer-events-none opacity-0' : 'opacity-100'} ${className}`}
+    >
+      {children}
+    </div>
+  )
+}
+
+/**
+ * Quick actions that slide out of a toolbar beside their chevron. They stay mounted and grow or
+ * shrink in width (grid column 0fr to 1fr) with a fade, both ways, so the toolbar never jumps.
+ */
+export function QuickActions({ id, open, children }: { id: string; open: boolean; children: ReactNode }) {
+  return (
+    <div
+      id={id}
+      inert={!open}
+      className={`grid transition-[grid-template-columns,opacity] duration-[280ms] ease-out-quart ${
+        open ? 'grid-cols-[1fr] opacity-100' : 'grid-cols-[0fr] opacity-0'
+      }`}
+    >
+      <div className="flex min-w-0 items-center gap-0.5 overflow-hidden">
+        {children}
+        <span className="mx-0.5 h-6 w-px shrink-0 bg-line" aria-hidden />
+      </div>
+    </div>
+  )
+}
+
+/** The chevron that shows or hides the quick actions; it turns to point the way they will go. */
+export function QuickToggle({ open, controls, onClick, describe }: {
+  open: boolean; controls: string; onClick: () => void; describe: string
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={open}
+      aria-controls={controls}
+      aria-label={open ? 'Hide quick actions' : `Show quick actions: ${describe}`}
+      title={open ? 'Hide quick actions' : 'Quick actions'}
+      className="grid h-10 w-8 shrink-0 place-items-center rounded-lg text-ink-muted transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
+    >
+      <ChevronLeft size={18} className={`transition-transform duration-[280ms] ease-out-quart ${open ? 'rotate-180' : ''}`} />
+    </button>
   )
 }
 
@@ -26,7 +81,7 @@ export function ToolButton({ label, icon, onClick, disabled }: {
       disabled={disabled}
       title={label}
       aria-label={label}
-      className="inline-flex h-10 items-center gap-2 rounded-lg px-2.5 text-sm font-medium text-ink-muted transition-colors duration-150 hover:bg-surface-2 hover:text-ink disabled:pointer-events-none disabled:opacity-45 sm:px-3"
+      className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg px-2.5 text-sm font-medium whitespace-nowrap text-ink-muted transition-colors duration-150 hover:bg-surface-2 hover:text-ink disabled:pointer-events-none disabled:opacity-45 sm:px-3"
     >
       {icon}
       <span className="hidden md:inline">{label}</span>
