@@ -7,8 +7,10 @@
 import { memo, useEffect, useState } from 'react'
 import * as THREE from 'three'
 import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js'
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import type { PieceKind } from '../lib/pieces'
 import { brass, ebony, getTokenMaterials, ivory } from './materials'
+import { markShadowsDirty } from './shadows'
 
 const PLINTH_TOP = 0.1
 
@@ -82,114 +84,158 @@ const G = {
 const svgToWorld = (x: number, y: number, scale: number, cx = 47): [number, number] =>
   [(x - cx) * scale, (80 - y) * scale + PLINTH_TOP]
 
-function Plinth({ body }: { body: THREE.Material }) {
-  return (
-    <>
-      <mesh geometry={G.plinth} material={body} castShadow receiveShadow />
-      <mesh geometry={G.plinthRing} material={brass} position={[0, PLINTH_TOP, 0]} rotation={[Math.PI / 2, 0, 0]} />
-    </>
-  )
+type Mat = 'body' | 'brass' | 'ivory'
+interface Part {
+  g: THREE.BufferGeometry
+  m: Mat
+  p?: [number, number, number]
+  r?: [number, number, number]
+  s?: [number, number, number] | number
 }
 
-export const PieceModel = memo(function PieceModel({ kind, white }: { kind: PieceKind; white: boolean }) {
-  const body = white ? ivory : ebony
+const X90: [number, number, number] = [Math.PI / 2, 0, 0]
+const plinth = (): Part[] => [{ g: G.plinth, m: 'body' }, { g: G.plinthRing, m: 'brass', p: [0, PLINTH_TOP, 0], r: X90 }]
+
+/** Every piece as a list of parts: geometry, material and placement. */
+function partsFor(kind: PieceKind): Part[] {
   switch (kind) {
     case 1:
-      return (
-        <group>
-          <Plinth body={body} />
-          <mesh geometry={G.padati} material={body} castShadow />
-          <mesh geometry={G.padatiHead} material={body} position={[0, 0.52, 0]} castShadow />
-          <mesh geometry={G.padatiHelmet} material={brass} position={[0, 0.645, 0]} castShadow />
-        </group>
-      )
+      return [
+        ...plinth(),
+        { g: G.padati, m: 'body' },
+        { g: G.padatiHead, m: 'body', p: [0, 0.52, 0] },
+        { g: G.padatiHelmet, m: 'brass', p: [0, 0.645, 0] },
+      ]
     case 5:
-      return (
-        <group>
-          <Plinth body={body} />
-          <mesh geometry={G.mantri} material={body} castShadow />
-          <mesh geometry={G.pole} material={brass} position={[0, 0.6, 0]} />
-          {/* Chhatri: a shallow royal parasol with a beaded brass fringe. */}
-          <mesh geometry={G.chhatri} material={body} position={[0, 0.58, 0]} scale={[1, 0.5, 1]} castShadow />
-          <mesh geometry={G.chhatriRim} material={brass} position={[0, 0.657, 0]} rotation={[Math.PI / 2, 0, 0]} />
-          {Array.from({ length: 14 }, (_, i) => {
-            const a = (i / 14) * Math.PI * 2
-            return <mesh key={i} geometry={G.bead} material={brass} position={[Math.cos(a) * 0.268, 0.63, Math.sin(a) * 0.268]} />
-          })}
-          <mesh geometry={G.finial} material={brass} position={[0, 0.77, 0]} />
-        </group>
-      )
+      return [
+        ...plinth(),
+        { g: G.mantri, m: 'body' },
+        { g: G.pole, m: 'brass', p: [0, 0.6, 0] },
+        // Chhatri: a shallow royal parasol with a beaded brass fringe.
+        { g: G.chhatri, m: 'body', p: [0, 0.58, 0], s: [1, 0.5, 1] },
+        { g: G.chhatriRim, m: 'brass', p: [0, 0.657, 0], r: X90 },
+        ...Array.from({ length: 14 }, (_, i): Part => {
+          const a = (i / 14) * Math.PI * 2
+          return { g: G.bead, m: 'brass', p: [Math.cos(a) * 0.268, 0.63, Math.sin(a) * 0.268] }
+        }),
+        { g: G.finial, m: 'brass', p: [0, 0.77, 0] },
+      ]
     case 6:
-      return (
-        <group>
-          <Plinth body={body} />
-          <mesh geometry={G.raja} material={body} castShadow />
-          <mesh geometry={G.crownBand} material={brass} position={[0, 0.71, 0]} rotation={[Math.PI / 2, 0, 0]} castShadow />
-          {[0, 1, 2, 3, 4, 5].map((i) => {
-            const a = (i / 6) * Math.PI * 2
-            return (
-              <mesh key={i} geometry={G.crownPoint} material={brass} castShadow
-                position={[Math.cos(a) * 0.14, 0.79, Math.sin(a) * 0.14]}
-                rotation={[Math.sin(a) * 0.35, 0, -Math.cos(a) * 0.35]} />
-            )
-          })}
-          <mesh geometry={G.crownTop} material={body} position={[0, 0.8, 0]} castShadow />
-          <mesh geometry={G.finial} material={brass} position={[0, 0.9, 0]} />
-        </group>
-      )
+      return [
+        ...plinth(),
+        { g: G.raja, m: 'body' },
+        { g: G.crownBand, m: 'brass', p: [0, 0.71, 0], r: X90 },
+        ...[0, 1, 2, 3, 4, 5].map((i): Part => {
+          const a = (i / 6) * Math.PI * 2
+          return {
+            g: G.crownPoint, m: 'brass',
+            p: [Math.cos(a) * 0.14, 0.79, Math.sin(a) * 0.14],
+            r: [Math.sin(a) * 0.35, 0, -Math.cos(a) * 0.35],
+          }
+        }),
+        { g: G.crownTop, m: 'body', p: [0, 0.8, 0] },
+        { g: G.finial, m: 'brass', p: [0, 0.9, 0] },
+      ]
     case 4:
-      return (
-        <group>
-          <mesh geometry={G.rathaBase} material={body} castShadow receiveShadow />
-          <mesh geometry={G.plinthRing} material={brass} position={[0, PLINTH_TOP, 0]} rotation={[Math.PI / 2, 0, 0]} />
-          <mesh geometry={G.rathaBody} material={body} position={[0, 0.3, 0]} castShadow />
-          {[-1, 1].map((side) => (
-            <group key={side} position={[0, 0.27, side * 0.2]}>
-              <mesh geometry={G.wheel} material={brass} castShadow />
-              <mesh geometry={G.spoke} material={brass} />
-              <mesh geometry={G.spoke} material={brass} rotation={[0, 0, Math.PI / 3]} />
-              <mesh geometry={G.spoke} material={brass} rotation={[0, 0, -Math.PI / 3]} />
-              <mesh geometry={G.hub} material={brass} rotation={[Math.PI / 2, 0, 0]} />
-            </group>
-          ))}
-          {[[-0.19, -0.13], [0.19, -0.13], [-0.19, 0.13], [0.19, 0.13]].map(([x, z], i) => (
-            <mesh key={i} geometry={G.post} material={brass} position={[x, 0.52, z]} />
-          ))}
-          <mesh geometry={G.roof} material={body} position={[0, 0.7, 0]} rotation={[0, Math.PI / 4, 0]} castShadow />
-          <mesh geometry={G.finial} material={brass} position={[0, 0.81, 0]} />
-        </group>
-      )
+      return [
+        { g: G.rathaBase, m: 'body' },
+        { g: G.plinthRing, m: 'brass', p: [0, PLINTH_TOP, 0], r: X90 },
+        { g: G.rathaBody, m: 'body', p: [0, 0.3, 0] },
+        ...[-1, 1].flatMap((side): Part[] => {
+          const p: [number, number, number] = [0, 0.27, side * 0.2]
+          return [
+            { g: G.wheel, m: 'brass', p },
+            { g: G.spoke, m: 'brass', p },
+            { g: G.spoke, m: 'brass', p, r: [0, 0, Math.PI / 3] },
+            { g: G.spoke, m: 'brass', p, r: [0, 0, -Math.PI / 3] },
+            { g: G.hub, m: 'brass', p, r: X90 },
+          ]
+        }),
+        ...[[-0.19, -0.13], [0.19, -0.13], [-0.19, 0.13], [0.19, 0.13]].map(([x, z]): Part => ({ g: G.post, m: 'brass', p: [x, 0.52, z] })),
+        { g: G.roof, m: 'body', p: [0, 0.7, 0], r: [0, Math.PI / 4, 0] },
+        { g: G.finial, m: 'brass', p: [0, 0.81, 0] },
+      ]
     case 3: {
       const [tx, ty] = svgToWorld(24, 61, 0.009)
       const [hx, hy] = svgToWorld(62, 31, 0.009)
-      return (
-        <group>
-          <Plinth body={body} />
-          <mesh geometry={G.gaja} material={body} castShadow />
-          <mesh geometry={G.gajaEar} material={body} position={[0, 0, 0.14]} castShadow />
-          <mesh geometry={G.gajaEar} material={body} position={[0, 0, -0.14]} castShadow />
-          {[-0.06, 0.06].map((z) => (
-            <mesh key={z} geometry={G.tusk} material={ivory} position={[tx - 0.05, ty - 0.03, z]} rotation={[0, 0, 2.3]} />
-          ))}
-          <mesh geometry={G.howdahBase} material={brass} position={[hx, hy - 0.005, 0]} />
-          <mesh geometry={G.howdah} material={brass} position={[hx, hy + 0.01, 0]} scale={[1, 0.8, 1]} castShadow />
-          <mesh geometry={G.finial} material={brass} position={[hx, hy + 0.08, 0]} scale={0.6} />
-        </group>
-      )
+      return [
+        ...plinth(),
+        { g: G.gaja, m: 'body' },
+        { g: G.gajaEar, m: 'body', p: [0, 0, 0.14] },
+        { g: G.gajaEar, m: 'body', p: [0, 0, -0.14] },
+        ...[-0.06, 0.06].map((z): Part => ({ g: G.tusk, m: 'ivory', p: [tx - 0.05, ty - 0.03, z], r: [0, 0, 2.3] })),
+        { g: G.howdahBase, m: 'brass', p: [hx, hy - 0.005, 0] },
+        { g: G.howdah, m: 'brass', p: [hx, hy + 0.01, 0], s: [1, 0.8, 1] },
+        { g: G.finial, m: 'brass', p: [hx, hy + 0.08, 0], s: 0.6 },
+      ]
     }
     case 2: {
       const [ex, ey] = svgToWorld(45, 32, 0.0095)
-      return (
-        <group>
-          <Plinth body={body} />
-          <mesh geometry={G.ashva} material={body} castShadow />
-          {[-0.14, 0.14].map((z) => (
-            <mesh key={z} geometry={G.eye} material={brass} position={[ex, ey, z]} />
-          ))}
-        </group>
-      )
+      return [
+        ...plinth(),
+        { g: G.ashva, m: 'body' },
+        ...[-0.14, 0.14].map((z): Part => ({ g: G.eye, m: 'brass', p: [ex, ey, z] })),
+      ]
     }
   }
+}
+
+function merge(parts: Part[]): THREE.BufferGeometry | null {
+  if (parts.length === 0) return null
+  const m = new THREE.Matrix4()
+  const q = new THREE.Quaternion()
+  const geoms = parts.map((part) => {
+    const s = part.s ?? 1
+    q.setFromEuler(new THREE.Euler(...(part.r ?? [0, 0, 0])))
+    m.compose(
+      new THREE.Vector3(...(part.p ?? [0, 0, 0])),
+      q,
+      typeof s === 'number' ? new THREE.Vector3(s, s, s) : new THREE.Vector3(...s),
+    )
+    // Mixed indexed/non-indexed sources (extrusions are non-indexed) must match to merge.
+    const g = part.g.index ? part.g.toNonIndexed() : part.g.clone()
+    g.applyMatrix4(m)
+    for (const name of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(name)) g.deleteAttribute(name)
+    return g
+  })
+  const merged = mergeGeometries(geoms, false)
+  geoms.forEach((g) => g.dispose())
+  return merged
+}
+
+interface Merged { body: THREE.BufferGeometry; brass: THREE.BufferGeometry; ivory: THREE.BufferGeometry | null; bodyWithIvory: THREE.BufferGeometry }
+const mergedCache = new Map<PieceKind, Merged>()
+
+/**
+ * Each piece merged into one geometry per material (body, brass, and ivory tusks), so a piece
+ * costs 2-3 draw calls instead of 10-20. Built once per kind and shared by every piece.
+ */
+function mergedFor(kind: PieceKind): Merged {
+  let cached = mergedCache.get(kind)
+  if (!cached) {
+    const parts = partsFor(kind)
+    const pick = (mat: Mat) => parts.filter((p) => p.m === mat)
+    cached = {
+      body: merge(pick('body'))!,
+      brass: merge(pick('brass'))!,
+      ivory: merge(pick('ivory')),
+      bodyWithIvory: merge([...pick('body'), ...pick('ivory')])!,
+    }
+    mergedCache.set(kind, cached)
+  }
+  return cached
+}
+
+export const PieceModel = memo(function PieceModel({ kind, white }: { kind: PieceKind; white: boolean }) {
+  const g = mergedFor(kind)
+  return (
+    <group>
+      {/* White's tusks are ivory like its body, so they share the body mesh. */}
+      <mesh geometry={white ? g.bodyWithIvory : g.body} material={white ? ivory : ebony} castShadow receiveShadow />
+      <mesh geometry={g.brass} material={brass} castShadow />
+      {!white && g.ivory && <mesh geometry={g.ivory} material={ivory} castShadow />}
+    </group>
+  )
 })
 
 /** Flat-view token: a disc with the piece glyph, for the top-down view and slow machines. */
@@ -211,7 +257,10 @@ export function PieceWarmup() {
   const [done, setDone] = useState(false)
   useEffect(() => {
     const t = setTimeout(() => setDone(true), 1500)
-    return () => clearTimeout(t)
+    return () => {
+      clearTimeout(t)
+      markShadowsDirty()
+    }
   }, [])
   if (done) return null
   const kinds: PieceKind[] = [1, 2, 3, 4, 5, 6]

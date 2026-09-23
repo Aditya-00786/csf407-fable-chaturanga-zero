@@ -6,13 +6,15 @@ import { ASHVA, GAJA, PIECES, type PieceKind } from '../lib/pieces'
 import type { LabelMode } from '../state/settings'
 import { squareToWorld } from './coords'
 import { PieceModel, PieceToken } from './PieceModel'
+import { markShadowsDirty } from './shadows'
 
 interface Props {
   piece: number
   sq: number
   lifted: boolean
   flat: boolean
-  flipped: boolean
+  /** Only used to place flat-view labels on the viewer's side; false when labels are off. */
+  labelFlipped: boolean
   labels: LabelMode
   reducedMotion: boolean
   onPick: (e: ThreeEvent<PointerEvent>, sq: number) => void
@@ -23,7 +25,7 @@ const smoothstep = (a: number, b: number, v: number) => {
   return x * x * (3 - 2 * x)
 }
 
-export const AnimatedPiece = memo(function AnimatedPiece({ piece, sq, lifted, flat, flipped, labels, reducedMotion, onPick }: Props) {
+export const AnimatedPiece = memo(function AnimatedPiece({ piece, sq, lifted, flat, labelFlipped, labels, reducedMotion, onPick }: Props) {
   const kind = Math.abs(piece) as PieceKind
   const white = piece > 0
   const from = useRef(sq)
@@ -38,6 +40,7 @@ export const AnimatedPiece = memo(function AnimatedPiece({ piece, sq, lifted, fl
       to: { t: 1 },
       immediate: reducedMotion,
       config: { duration: 360, easing: easings.easeOutQuart },
+      onChange: markShadowsDirty,
       onRest: () => { from.current = sq },
     })
   }, [sq, api, reducedMotion])
@@ -48,13 +51,25 @@ export const AnimatedPiece = memo(function AnimatedPiece({ piece, sq, lifted, fl
       pop: lifted && flat ? 1.1 : 1,
       immediate: reducedMotion,
       config: { duration: 180, easing: easings.easeOutQuart },
+      onChange: markShadowsDirty,
     })
   }, [lifted, flat, api, reducedMotion])
 
   // Morph between the carved piece and the flat token, in step with the camera's glide.
   useEffect(() => {
-    api.start({ f: flat ? 1 : 0, immediate: reducedMotion, config: { duration: 420, easing: easings.easeInOutCubic } })
+    api.start({
+      f: flat ? 1 : 0,
+      immediate: reducedMotion,
+      config: { duration: 420, easing: easings.easeInOutCubic },
+      onChange: markShadowsDirty,
+    })
   }, [flat, api, reducedMotion])
+
+  // Appearing, disappearing (capture) or changing kind (promotion) changes the shadows too.
+  useEffect(() => {
+    markShadowsDirty()
+    return markShadowsDirty
+  }, [piece, sq, flat, lifted])
 
   // Leapers (Gaja, Ashva) hop in an arc; everything else glides.
   const arc = kind === GAJA || kind === ASHVA ? 0.55 : 0.12
@@ -68,8 +83,9 @@ export const AnimatedPiece = memo(function AnimatedPiece({ piece, sq, lifted, fl
   })
 
   const info = PIECES[kind]
-  // Profile pieces face left for White and right for Black, like knights in a chess set.
-  const facing = (white ? 1 : -1) * (flipped ? -1 : 1)
+  // Profile pieces face left for White and right for Black, like knights in a chess set. The
+  // models are symmetric front-to-back, so turning the board needs no change here at all.
+  const facing = white ? 1 : -1
   // The model settles into its base over the first part of the morph; the token rises over the rest.
   const modelScale = to([f], (v: number) => [facing, Math.max(0.001, 1 - smoothstep(0, 0.6, v)), 1] as [number, number, number])
   const tokenScale = to([f, pop], (v: number, p: number) => {
@@ -78,7 +94,7 @@ export const AnimatedPiece = memo(function AnimatedPiece({ piece, sq, lifted, fl
   })
   return (
     <animated.group position={position} onPointerDown={(e: ThreeEvent<PointerEvent>) => onPick(e, sq)}>
-      <animated.group scale={modelScale} rotation={[0, flipped ? Math.PI : 0, 0]} visible={f.to((v) => v < 0.999)}>
+      <animated.group scale={modelScale} visible={f.to((v) => v < 0.999)}>
         <PieceModel kind={kind} white={white} />
       </animated.group>
       {/* Tokens keep a fixed orientation: each side's glyphs face their own player. */}
@@ -86,7 +102,7 @@ export const AnimatedPiece = memo(function AnimatedPiece({ piece, sq, lifted, fl
         <PieceToken kind={kind} white={white} />
       </animated.group>
       {labels !== 'off' && (
-        <Html position={flat ? [0, 0.1, flipped ? -0.52 : 0.52] : [0, 1.05, 0]} center zIndexRange={[5, 0]} style={{ pointerEvents: 'none' }}>
+        <Html position={flat ? [0, 0.1, labelFlipped ? -0.52 : 0.52] : [0, 1.05, 0]} center zIndexRange={[5, 0]} style={{ pointerEvents: 'none' }}>
           <span
             className={
               'whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium shadow-sm ' +

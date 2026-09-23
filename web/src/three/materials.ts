@@ -139,8 +139,9 @@ export function makeCoordinateTexture(flipped: boolean) {
   return tex
 }
 
+// Clear-coat gives the polish; sheen was dropped as it is one of the costliest shading terms.
 export const ivory = new THREE.MeshPhysicalMaterial({
-  color: '#efe3c8', roughness: 0.42, clearcoat: 0.35, clearcoatRoughness: 0.35, sheen: 0.4, sheenColor: '#fff4dd',
+  color: '#efe3c8', roughness: 0.42, clearcoat: 0.35, clearcoatRoughness: 0.35,
 })
 export const ebony = new THREE.MeshPhysicalMaterial({
   color: '#2a1d18', roughness: 0.36, clearcoat: 0.75, clearcoatRoughness: 0.22,

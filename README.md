@@ -228,6 +228,7 @@ The server keeps no game state, so undo and review are just shorter move lists.
 **Performance on slower machines**
 - **On-demand rendering:** the 3D scene draws only when something changes, such as a move, hover or camera move. It uses no GPU at all while you think.
 - **Low-power mode:** machines with 4 or fewer CPU cores, or 4 GB of memory or less, get a lower pixel ratio and smaller shadows.
+- **Few draw calls:** each carved piece is merged into one mesh per material (body, brass). Shadows are redrawn only when a piece moves, lifts, morphs or disappears, so turning the board or orbiting costs a single pass per frame.
 - **Cheap theme switching:** the page crossfades on the GPU (View Transitions API), and the 3D lighting eases across. The set of lights never changes, so switching theme never forces shaders to recompile.
 
 **Developer aids** (development builds only)

@@ -13,6 +13,7 @@ import { PIECES, type PieceKind } from '../lib/pieces'
 import { prefersReducedMotion, useSettings, type Theme } from '../state/settings'
 import { AnimatedPiece } from './AnimatedPiece'
 import { PieceWarmup } from './PieceModel'
+import { markShadowsDirty, takeShadowsDirty } from './shadows'
 import { Board } from './Board'
 import { worldToSquare } from './coords'
 import { Highlights, type HighlightColors } from './Highlights'
@@ -118,6 +119,13 @@ function Lights({ theme, instant }: { theme: Theme; instant: boolean }) {
       <directionalLight ref={rim} position={[-5, 4, -6]} intensity={l.rim} color="#c9d4ff" />
     </>
   )
+}
+
+function ShadowUpdater() {
+  useFrame(({ gl }) => {
+    if (takeShadowsDirty()) gl.shadowMap.needsUpdate = true
+  }, -2)
+  return null
 }
 
 /** Rendered once: its layout effect re-applies scene settings on every render, so keep it still. */
@@ -362,6 +370,9 @@ export function BoardScene(props: BoardSceneProps) {
           // The scene renders on demand, so after idling (a refresh, another window) the first
           // frame's delta can be seconds long, and camera smoothing would jump straight to the
           // end of a glide. Cap each step; the clock's elapsed time still tracks real time.
+          // Shadows are redrawn only when a caster changes (see shadows.ts).
+          state.gl.shadowMap.autoUpdate = false
+          markShadowsDirty()
           const clock = state.clock
           const rawDelta = clock.getDelta.bind(clock)
           clock.getDelta = () => Math.min(rawDelta(), MAX_FRAME_DELTA)
@@ -372,6 +383,7 @@ export function BoardScene(props: BoardSceneProps) {
         <Lights theme={theme} instant={reducedMotion} />
         <StudioEnvironment />
         <PieceWarmup />
+        <ShadowUpdater />
         <Board flipped={flipped} />
         <Highlights
           colors={SCENE[theme].colors}
@@ -398,7 +410,7 @@ export function BoardScene(props: BoardSceneProps) {
             sq={p.sq}
             lifted={p.sq === selected}
             flat={flat}
-            flipped={flipped}
+            labelFlipped={labels !== 'off' && flipped}
             labels={labels}
             reducedMotion={reducedMotion}
             onPick={pick}
