@@ -3,13 +3,20 @@ import { useEffect, useMemo, useRef } from 'react'
 import type { Color, GameView } from '../lib/api'
 import { colorName, describeMove, explainOutcome, squareName } from '../lib/board'
 import { useGame, type Mode, type Pace } from '../state/game'
-import { useSettings } from '../state/settings'
+import { useDetail, useSettings, type DetailPart } from '../state/settings'
 import { PieceGlyph } from './PieceGlyph'
 import { Button, SectionTitle, Segmented, Switch } from './ui'
 
 const AGENTS = [
   { value: 'greedy', label: 'Greedy', title: 'Looks two plies ahead: grabs material, avoids losing pieces' },
   { value: 'random', label: 'Random', title: 'Plays a random legal move' },
+]
+
+const DETAIL_PARTS: { part: DetailPart; label: string }[] = [
+  { part: 'hints', label: 'Move hints' },
+  { part: 'counters', label: 'Move and quiet-ply counters' },
+  { part: 'explanation', label: 'Why the game ended' },
+  { part: 'rules', label: 'Rule sources' },
 ]
 
 const VALUE: Record<number, number> = { 1: 1, 2: 3, 3: 1.5, 4: 5, 5: 1.5, 6: 0 }
@@ -27,16 +34,17 @@ function Swatch({ color }: { color: Color }) {
 
 /**
  * Whose turn it is, shown in the floating card over the board. "Essential" detail keeps it to
- * the headline plus urgent tags (check, thinking); "Full" adds the hint and the counters.
+ * the headline plus urgent tags (check, thinking); "Full" can add the hint and the counters.
  */
 export function Status({ view }: { view: GameView | null }) {
   const { mode, humanColor, status, reviewPly } = useGame()
-  const full = useSettings((s) => s.details) === 'full'
+  const showHint = useDetail('hints')
+  const showCounters = useDetail('counters')
   if (!view) {
     return (
       <div aria-busy="true">
         <div className="h-6 w-40 animate-pulse rounded-md bg-surface-2" />
-        {full && <div className="mt-2 h-4 w-56 animate-pulse rounded bg-surface-2" />}
+        {showHint && <div className="mt-2 h-4 w-56 animate-pulse rounded bg-surface-2" />}
       </div>
     )
   }
@@ -75,8 +83,8 @@ export function Status({ view }: { view: GameView | null }) {
           </span>
         )}
       </p>
-      {full && hint && <p className={`mt-1 text-[13.5px] leading-snug ${tag?.danger ? 'text-danger' : 'text-ink-muted'}`}>{hint}</p>}
-      {full && (
+      {showHint && hint && <p className={`mt-1 text-[13.5px] leading-snug ${tag?.danger ? 'text-danger' : 'text-ink-muted'}`}>{hint}</p>}
+      {showCounters && (
         <p className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[12px] text-ink-faint tabular-nums">
           <span>Move {Math.floor(view.ply / 2) + 1}</span>
           <span title="Plies since the last capture or Padati move. At 140 the game is drawn.">
@@ -254,11 +262,19 @@ export function PlayPanel({ view, onClose, onRotate }: { view: GameView | null; 
               { value: 'essential', label: 'Essential', title: 'Headlines only: whose turn it is, check, and the result' },
               { value: 'full', label: 'Full', title: 'Also hints, move and quiet-ply counters, and the rule behind each result' },
             ]} />
-          <p className="-mt-1.5 text-[12.5px] leading-snug text-ink-faint">
-            {settings.details === 'essential'
-              ? 'Showing headlines only. Full adds hints, move counters and the rule behind each result.'
-              : 'Showing hints, move counters and the rule behind each result.'}
-          </p>
+          {settings.details === 'essential' ? (
+            <p className="-mt-1.5 text-[12.5px] leading-snug text-ink-faint">
+              Showing headlines only. Full lets you add hints, move counters and the rule behind each result.
+            </p>
+          ) : (
+            <fieldset className="-mt-1 space-y-2.5 rounded-lg bg-bg px-3 py-3">
+              <legend className="sr-only">Details to show</legend>
+              {DETAIL_PARTS.map((p) => (
+                <Switch key={p.part} label={p.label} checked={settings.detailParts[p.part]}
+                  onChange={(on) => settings.setDetailPart(p.part, on)} />
+              ))}
+            </fieldset>
+          )}
           <Switch label="Sound" checked={settings.sound} onChange={settings.setSound} />
           <Button size="sm" onClick={onRotate} icon={<FlipVertical2 size={15} />}>Rotate the board</Button>
         </section>

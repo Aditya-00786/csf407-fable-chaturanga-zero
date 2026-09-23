@@ -5,7 +5,7 @@ import { Button } from '../components/ui'
 import type { Color } from '../lib/api'
 import { explainOutcome, INITIAL_BOARD } from '../lib/board'
 import { useGame } from '../state/game'
-import { prefersReducedMotion, useSettings } from '../state/settings'
+import { prefersReducedMotion, useDetail } from '../state/settings'
 import { BoardScene } from '../three/BoardScene'
 
 // Let the moving piece land before the board turns to the next player.
@@ -13,7 +13,8 @@ const TURN_DELAY_MS = 520
 
 function GameEnd() {
   const { game, newGame, review, reviewPly } = useGame()
-  const full = useSettings((s) => s.details) === 'full'
+  const showExplanation = useDetail('explanation')
+  const showRule = useDetail('rules')
   const [hiddenAtPly, setHiddenAtPly] = useState<number | null>(null)
   if (!game?.outcome || reviewPly !== null || hiddenAtPly === game.ply) return null
   const text = explainOutcome(game.outcome, game.side)
@@ -30,12 +31,8 @@ function GameEnd() {
             <X size={17} />
           </button>
         </div>
-        {full && (
-          <>
-            <p className="mt-1.5 max-w-[60ch] text-sm leading-relaxed text-ink-muted">{text.detail}</p>
-            <p className="mt-2 text-[12.5px] text-ink-faint">Rule: {text.source}</p>
-          </>
-        )}
+        {showExplanation && <p className="mt-1.5 max-w-[60ch] text-sm leading-relaxed text-ink-muted">{text.detail}</p>}
+        {showRule && <p className="mt-2 text-[12.5px] text-ink-faint">Rule: {text.source}</p>}
         <div className="mt-4 flex flex-wrap gap-2">
           <Button variant="primary" onClick={newGame} icon={<RotateCcw size={16} />}>Play again</Button>
           <Button onClick={() => review(Math.max(0, game.ply - 1))} icon={<History size={16} />}>Review moves</Button>
@@ -97,7 +94,8 @@ const FLOAT = 'rounded-xl border border-line bg-surface/92 shadow-[0_12px_32px_-
 
 export function PlayView() {
   const g = useGame()
-  useEffect(() => g.init(), []) // eslint-disable-line react-hooks/exhaustive-deps
+  const init = g.init
+  useEffect(() => init(), [init]) // init is stable; it changes only when hot reload rebuilds the store
 
   const [panelOpen, setPanelOpen] = useState(false)
   // Quick actions (Undo, Full screen, New game) stay tucked away until asked for.
