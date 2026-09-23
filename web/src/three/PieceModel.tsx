@@ -1,88 +1,215 @@
 /**
- * Procedural piece models. Turned (lathe) bodies for the human figures, extruded carved
- * silhouettes for the elephant and horse, and a built-up chariot. All share a plinth with a
- * brass ring. Geometries are created once and reused by every piece.
+ * Procedural piece models in classical turned proportions: a graduated base, a tapering stem
+ * and a collar, crowned by each piece's own emblem (an onion dome and kalash for the Raja, a
+ * lotus coronet for the Mantri, a pavilion and wheels for the Ratha). The Gaja and Ashva are
+ * carved busts on a turned stand, like the knight of a Staunton set. Geometries are built once
+ * and shared by every piece.
  */
 
 import { memo, useEffect, useState } from 'react'
 import * as THREE from 'three'
 import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js'
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import { mergeGeometries, toCreasedNormals } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import type { PieceKind } from '../lib/pieces'
 import { brass, getTokenMaterials, ivory, ivoryLite, pieceMaterials } from './materials'
 import { markShadowsDirty } from './shadows'
 
-const PLINTH_TOP = 0.1
+/** A turned profile as (radius, height) points, drawn with lines and quadratic curves. */
+class Profile {
+  pts = [new THREE.Vector2(0, 0)]
+  L(r: number, y: number) {
+    this.pts.push(new THREE.Vector2(r, y))
+    return this
+  }
+  Q(cr: number, cy: number, r: number, y: number, n = 6) {
+    const a = this.pts[this.pts.length - 1].clone()
+    for (let i = 1; i <= n; i++) {
+      const t = i / n
+      const u = 1 - t
+      this.pts.push(new THREE.Vector2(u * u * a.x + 2 * u * t * cr + t * t * r, u * u * a.y + 2 * u * t * cy + t * t * y))
+    }
+    return this
+  }
+  lathe(segments = 44) {
+    return new THREE.LatheGeometry(this.pts, segments)
+  }
+}
 
-const lathe = (pts: [number, number][], segments = 48) =>
-  new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), segments)
+/** The shared graduated base: felt edge, rounded rim, a notch for the brass ring, then a bead. */
+const base = (R: number) => new Profile()
+  .L(R, 0).L(R, 0.022)
+  .Q(R * 1.012, 0.052, R * 0.93, 0.06)
+  .L(R * 0.86, 0.066)
+  .Q(R * 0.905, 0.084, R * 0.84, 0.1)
+  .L(R * 0.72, 0.108)
 
-function extrudeSvg(d: string, scale: number, depth: number, lift: number, cx: number) {
+const R = { padati: 0.26, ashva: 0.3, gaja: 0.31, ratha: 0.31, mantri: 0.3, raja: 0.33 }
+
+/** The short column the Gaja and Ashva busts stand on; its top is STAND_TOP. */
+const STAND_TOP = 0.2
+const stand = (r: number) => base(r)
+  .Q(0.17, 0.114, 0.158, 0.16)
+  .L(0.15, 0.172)
+  .Q(0.19, 0.172, 0.19, 0.187)
+  .Q(0.19, 0.202, 0.16, 0.206)
+  .L(0, 0.206)
+  .lathe()
+
+interface Bust {
+  scale: number
+  depth: number
+  round: number
+  cx: number
+  /**
+   * Thickness factor by SVG x, so the bust narrows toward the muzzle or trunk. Linear, which
+   * keeps the sides flat (a curved side would shade in streaks across its long triangles).
+   */
+  taper?: (x: number) => number
+}
+
+/** Extrude an SVG path (100-unit box, facing left, baseline y = 80) as a rounded, tapered slab. */
+function carve(d: string, { scale, depth, round, cx, taper }: Bust) {
   const data = new SVGLoader().parse(`<svg xmlns="http://www.w3.org/2000/svg"><path d="${d}"/></svg>`)
   const shapes = data.paths.flatMap((p) => p.toShapes())
   const geom = new THREE.ExtrudeGeometry(shapes, {
-    depth,
+    depth: depth / scale,
     bevelEnabled: true,
-    bevelSize: 2.6,
-    bevelThickness: 0.03,
+    // The rounding eats inward, so the silhouette stays exactly the drawn path.
+    bevelSize: round / scale,
+    bevelOffset: -round / scale,
+    bevelThickness: round / scale,
     bevelSegments: 4,
-    curveSegments: 18,
+    curveSegments: 10,
   })
+  if (taper) {
+    const pos = geom.attributes.position
+    const mid = depth / scale / 2
+    for (let i = 0; i < pos.count; i++) pos.setZ(i, mid + (pos.getZ(i) - mid) * taper(pos.getX(i)))
+  }
   // Flip y (SVG is y-down) and z together so the triangle winding stays correct.
-  geom.scale(scale, -scale, -1)
-  geom.translate(-cx * scale, 80 * scale + lift, depth / 2)
-  geom.computeVertexNormals()
-  return geom
+  geom.scale(scale, -scale, -scale)
+  geom.translate(-cx * scale, 80 * scale + STAND_TOP, depth / 2)
+  geom.deleteAttribute('normal')
+  // Smooth shading around the rounded bevel...
+  const out = toCreasedNormals(geom, Math.PI / 3)
+  // ...but the flat sides (group 0) keep their true face normal: every side vertex lies on the
+  // outline, so smoothed normals there would streak across the face.
+  const caps = out.groups[0]
+  const pos = out.attributes.position
+  const normal = out.attributes.normal
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), n = new THREE.Vector3(), was = new THREE.Vector3()
+  for (let i = caps.start; i < caps.start + caps.count; i += 3) {
+    a.fromBufferAttribute(pos, i)
+    b.fromBufferAttribute(pos, i + 1)
+    c.fromBufferAttribute(pos, i + 2)
+    n.subVectors(c, b).cross(a.sub(b)).normalize()
+    if (n.dot(was.fromBufferAttribute(normal, i)) < 0) n.negate()
+    for (let k = 0; k < 3; k++) normal.setXYZ(i + k, n.x, n.y, n.z)
+  }
+  return out
 }
 
+// Bust dimensions, shared with the accents placed on them. The trunk and the muzzle are
+// narrower than the head and neck behind them.
+const GAJA_BUST: Bust = { scale: 0.0102, depth: 0.16, round: 0.034, cx: 50, taper: (x) => 0.55 + 0.45 * (x - 18) / 62 }
+const ASHVA_BUST: Bust = {
+  scale: 0.0104, depth: 0.13, round: 0.032, cx: 48,
+  taper: (x) => 0.6 + 0.4 * (x - 14) / 62,
+}
+
+/** Half the bust's thickness at an SVG point, for setting accents on its surface. */
+const bustSide = (b: Bust, x: number) => (b.depth / 2 + b.round) * (b.taper?.(x) ?? 1)
+
+/** The same SVG → world mapping the busts use, for placing accents. */
+const onBust = (x: number, y: number, bust: { scale: number; cx: number }): [number, number] =>
+  [(x - bust.cx) * bust.scale, (80 - y) * bust.scale + STAND_TOP]
+
+const petal = new THREE.SphereGeometry(1, 12, 8)
+const ring = (r: number, tube = 0.012) => new THREE.TorusGeometry(r, tube, 8, 44)
+
 const G = {
-  plinth: lathe([[0, 0], [0.36, 0], [0.378, 0.022], [0.372, 0.06], [0.335, 0.083], [0.3, 0.1], [0, 0.1]]),
-  plinthRing: new THREE.TorusGeometry(0.3, 0.017, 12, 48),
-  padati: lathe([[0, 0.1], [0.26, 0.1], [0.2, 0.15], [0.155, 0.22], [0.13, 0.33], [0.125, 0.37], [0.165, 0.39],
-    [0.165, 0.415], [0.1, 0.43], [0, 0.43]]),
-  padatiHead: new THREE.SphereGeometry(0.105, 32, 20),
-  padatiHelmet: new THREE.ConeGeometry(0.06, 0.1, 24),
-  mantri: lathe([[0, 0.1], [0.25, 0.1], [0.2, 0.14], [0.15, 0.21], [0.12, 0.31], [0.115, 0.42], [0.165, 0.45],
-    [0.165, 0.48], [0.1, 0.5], [0, 0.5]]),
-  pole: new THREE.CylinderGeometry(0.02, 0.02, 0.22, 12),
-  chhatri: new THREE.SphereGeometry(0.31, 48, 12, 0, Math.PI * 2, 0, Math.PI / 3),
-  chhatriRim: new THREE.TorusGeometry(0.268, 0.014, 10, 56),
-  bead: new THREE.SphereGeometry(0.02, 10, 8),
-  finial: new THREE.SphereGeometry(0.038, 16, 12),
-  raja: lathe([[0, 0.1], [0.3, 0.1], [0.23, 0.17], [0.185, 0.33], [0.16, 0.58], [0.215, 0.61], [0.215, 0.655],
-    [0.14, 0.685], [0, 0.685]]),
-  crownBand: new THREE.TorusGeometry(0.155, 0.032, 12, 40),
-  crownPoint: new THREE.ConeGeometry(0.036, 0.13, 16),
-  crownTop: new THREE.ConeGeometry(0.05, 0.16, 20),
-  rathaBase: lathe([[0, 0], [0.36, 0], [0.378, 0.022], [0.372, 0.06], [0.335, 0.083], [0.3, 0.1], [0, 0.1]]),
-  rathaBody: new THREE.BoxGeometry(0.46, 0.24, 0.34),
-  wheel: new THREE.TorusGeometry(0.15, 0.03, 12, 36),
-  spoke: new THREE.BoxGeometry(0.27, 0.022, 0.022),
-  hub: new THREE.CylinderGeometry(0.035, 0.035, 0.06, 16),
-  post: new THREE.CylinderGeometry(0.018, 0.018, 0.2, 10),
-  roof: new THREE.ConeGeometry(0.34, 0.18, 4),
-  // Carved elephant, facing left, with ears and a small howdah on its back.
-  gaja: extrudeSvg(
-    'M83 80 L83 56 Q83 33 61 31 Q47 29 39 33 Q27 29 20 40 Q14 49 16 60 Q17 70 12 75 Q9 80 15 80 Q22 79 24 69 Q25 61 30 58 L34 80 Z',
-    0.009, 0.24, PLINTH_TOP, 47,
+  padati: base(R.padati)
+    .Q(0.12, 0.118, 0.112, 0.2)
+    .Q(0.086, 0.31, 0.08, 0.42)
+    .L(0.08, 0.438)
+    .Q(0.15, 0.438, 0.153, 0.456)
+    .Q(0.156, 0.476, 0.108, 0.486)
+    .L(0.074, 0.498)
+    .L(0.07, 0.53)
+    .L(0, 0.53)
+    .lathe(),
+  mantri: base(R.mantri)
+    .Q(0.13, 0.116, 0.124, 0.22)
+    .Q(0.094, 0.44, 0.084, 0.64)
+    .L(0.084, 0.658)
+    .Q(0.168, 0.658, 0.172, 0.678)
+    .Q(0.176, 0.698, 0.118, 0.708)
+    .L(0.128, 0.718)
+    .Q(0.138, 0.728, 0.098, 0.738)
+    .Q(0.086, 0.84, 0.185, 0.925)
+    .L(0.196, 0.945)
+    .Q(0.188, 0.962, 0.14, 0.962)
+    .L(0, 0.962)
+    .lathe(),
+  raja: base(R.raja)
+    .Q(0.145, 0.116, 0.138, 0.24)
+    .Q(0.104, 0.5, 0.094, 0.74)
+    .L(0.094, 0.758)
+    .Q(0.188, 0.758, 0.192, 0.782)
+    .Q(0.196, 0.804, 0.128, 0.814)
+    .L(0.142, 0.825)
+    .Q(0.152, 0.836, 0.108, 0.846)
+    .Q(0.096, 0.96, 0.198, 1.045)
+    .L(0.208, 1.066)
+    .Q(0.2, 1.082, 0.15, 1.082)
+    .L(0.132, 1.09)
+    // Onion dome, swelling out and drawing up to a spire.
+    .Q(0.212, 1.11, 0.198, 1.19, 10)
+    .Q(0.184, 1.27, 0.07, 1.32, 10)
+    .Q(0.028, 1.345, 0.022, 1.38)
+    .L(0, 1.38)
+    .lathe(),
+  rathaBody: base(R.ratha)
+    .Q(0.214, 0.114, 0.212, 0.16)
+    .Q(0.218, 0.4, 0.2, 0.54)
+    .Q(0.2, 0.572, 0.25, 0.588)
+    .L(0.255, 0.642)
+    .Q(0.257, 0.662, 0.234, 0.664)
+    .L(0.206, 0.664)
+    .L(0.194, 0.65)
+    .L(0, 0.65)
+    .lathe(),
+  // Pavilion canopy over the chariot: a shallow dome with an upturned rim.
+  rathaCanopy: new Profile()
+    .L(0.215, 0)
+    .Q(0.232, 0.004, 0.228, 0.022)
+    .Q(0.2, 0.024, 0.18, 0.04)
+    .Q(0.12, 0.11, 0.03, 0.125)
+    .L(0, 0.128)
+    .lathe(),
+  gajaStand: stand(R.gaja),
+  ashvaStand: stand(R.ashva),
+  // Elephant bust facing left: domed brow, the trunk falling clear of the chest and curling in.
+  gaja: carve(
+    'M46 80 L80 80 Q85 60 79 42 Q74 22 62 13 Q52 7 42 10 Q33 13 30 24 Q28 34 25 44 Q21 56 20 66 Q19 76 26 77 Q31 77 31 72 Q30 66 32 58 Q34 50 38 48 Q42 50 44 56 Q46 64 47 70 Q48 76 46 80 Z',
+    GAJA_BUST,
   ),
-  gajaEar: extrudeSvg('M40 36 Q56 33 57 48 Q56 62 42 58 Q37 47 40 36 Z', 0.009, 0.04, PLINTH_TOP, 47),
-  tusk: new THREE.ConeGeometry(0.02, 0.13, 12),
-  howdah: new THREE.SphereGeometry(0.075, 24, 10, 0, Math.PI * 2, 0, Math.PI / 2),
-  howdahBase: new THREE.CylinderGeometry(0.09, 0.09, 0.03, 24),
-  // Carved horse head, facing left.
-  ashva: extrudeSvg(
-    'M71 80 L69 60 Q72 40 63 28 L66 14 L56 21 Q50 17 44 21 Q33 28 25 42 Q21 50 26 54 Q33 58 40 54 Q46 51 51 55 Q45 66 40 80 Z',
-    0.0095, 0.22, PLINTH_TOP, 47,
+  gajaEar: carve('M53 20 Q67 18 72 31 Q75 44 67 54 Q62 60 57 64 Q55 52 54 42 Q51 30 53 20 Z', { ...GAJA_BUST, depth: 0.004, round: 0.01, taper: undefined }),
+  // Horse head facing left: arched neck, pricked ears.
+  ashva: carve(
+    'M36 80 L76 80 Q79 62 74 46 Q70 32 63 22 L66 9 L58 15 Q54 11 50 12 L47 5 L43 15 Q32 21 26 32 Q20 42 16 49 Q13 55 17 58 Q23 61 30 57 Q36 53 42 51 Q45 57 41 65 Q37 72 36 80 Z',
+    ASHVA_BUST,
   ),
-  eye: new THREE.SphereGeometry(0.022, 12, 10),
+  bead: new THREE.SphereGeometry(1, 16, 12),
+  tusk: new THREE.ConeGeometry(0.017, 0.13, 14),
+  post: new THREE.CylinderGeometry(0.011, 0.011, 0.14, 10),
+  wheel: new THREE.TorusGeometry(0.125, 0.016, 10, 40),
+  spoke: new THREE.BoxGeometry(0.23, 0.012, 0.012),
+  hub: new THREE.CylinderGeometry(0.028, 0.028, 0.05, 16),
+  spire: new THREE.ConeGeometry(0.016, 0.1, 16),
   token: new THREE.CylinderGeometry(0.4, 0.4, 0.08, 48),
   tokenRim: new THREE.TorusGeometry(0.4, 0.02, 10, 48),
 }
-
-// The same SVG → world mapping the extrusions use, for placing accents.
-const svgToWorld = (x: number, y: number, scale: number, cx = 47): [number, number] =>
-  [(x - cx) * scale, (80 - y) * scale + PLINTH_TOP]
 
 type Mat = 'body' | 'brass' | 'ivory'
 interface Part {
@@ -90,91 +217,110 @@ interface Part {
   m: Mat
   p?: [number, number, number]
   r?: [number, number, number]
+  /** Euler order for r; 'YXZ' reads as "turn to face, then tilt". */
+  o?: THREE.EulerOrder
   s?: [number, number, number] | number
 }
 
 const X90: [number, number, number] = [Math.PI / 2, 0, 0]
-const plinth = (): Part[] => [{ g: G.plinth, m: 'body' }, { g: G.plinthRing, m: 'brass', p: [0, PLINTH_TOP, 0], r: X90 }]
+/** The brass ring that sits in every base's notch. */
+const baseRing = (r: number): Part => ({ g: ring(r * 0.875, 0.013), m: 'brass', p: [0, 0.064, 0], r: X90 })
+const bead = (p: [number, number, number], r: number): Part => ({ g: G.bead, m: 'brass', p, s: r })
 
 /** Every piece as a list of parts: geometry, material and placement. */
 function partsFor(kind: PieceKind): Part[] {
   switch (kind) {
     case 1:
       return [
-        ...plinth(),
         { g: G.padati, m: 'body' },
-        { g: G.padatiHead, m: 'body', p: [0, 0.52, 0] },
-        { g: G.padatiHelmet, m: 'brass', p: [0, 0.645, 0] },
+        baseRing(R.padati),
+        { g: G.bead, m: 'body', p: [0, 0.636, 0], s: 0.118 },
+        bead([0, 0.762, 0], 0.022),
       ]
     case 5:
       return [
-        ...plinth(),
         { g: G.mantri, m: 'body' },
-        { g: G.pole, m: 'brass', p: [0, 0.6, 0] },
-        // Chhatri: a shallow royal parasol with a beaded brass fringe.
-        { g: G.chhatri, m: 'body', p: [0, 0.58, 0], s: [1, 0.5, 1] },
-        { g: G.chhatriRim, m: 'brass', p: [0, 0.657, 0], r: X90 },
-        ...Array.from({ length: 14 }, (_, i): Part => {
-          const a = (i / 14) * Math.PI * 2
-          return { g: G.bead, m: 'brass', p: [Math.cos(a) * 0.268, 0.63, Math.sin(a) * 0.268] }
+        baseRing(R.mantri),
+        { g: ring(0.17), m: 'brass', p: [0, 0.679, 0], r: X90 },
+        // Lotus coronet: petals leaning out around a domed centre.
+        ...Array.from({ length: 10 }, (_, i): Part => {
+          const a = (i / 10) * Math.PI * 2
+          return {
+            g: petal, m: 'body',
+            p: [Math.cos(a) * 0.132, 1.01, Math.sin(a) * 0.132],
+            r: [0.42, Math.PI / 2 - a, 0], o: 'YXZ',
+            s: [0.048, 0.078, 0.02],
+          }
         }),
-        { g: G.finial, m: 'brass', p: [0, 0.77, 0] },
+        { g: G.bead, m: 'body', p: [0, 0.975, 0], s: [0.1, 0.085, 0.1] },
+        { g: ring(0.1, 0.01), m: 'brass', p: [0, 0.972, 0], r: X90 },
+        bead([0, 1.085, 0], 0.034),
       ]
     case 6:
       return [
-        ...plinth(),
         { g: G.raja, m: 'body' },
-        { g: G.crownBand, m: 'brass', p: [0, 0.71, 0], r: X90 },
-        ...[0, 1, 2, 3, 4, 5].map((i): Part => {
-          const a = (i / 6) * Math.PI * 2
-          return {
-            g: G.crownPoint, m: 'brass',
-            p: [Math.cos(a) * 0.14, 0.79, Math.sin(a) * 0.14],
-            r: [Math.sin(a) * 0.35, 0, -Math.cos(a) * 0.35],
-          }
-        }),
-        { g: G.crownTop, m: 'body', p: [0, 0.8, 0] },
-        { g: G.finial, m: 'brass', p: [0, 0.9, 0] },
+        baseRing(R.raja),
+        { g: ring(0.19), m: 'brass', p: [0, 0.783, 0], r: X90 },
+        { g: ring(0.14, 0.014), m: 'brass', p: [0, 1.092, 0], r: X90 },
+        // Kalash finial: a brass pot and spire.
+        bead([0, 1.41, 0], 0.038),
+        { g: G.bead, m: 'brass', p: [0, 1.452, 0], s: [0.022, 0.012, 0.022] },
+        { g: G.spire, m: 'brass', p: [0, 1.5, 0] },
       ]
     case 4:
       return [
-        { g: G.rathaBase, m: 'body' },
-        { g: G.plinthRing, m: 'brass', p: [0, PLINTH_TOP, 0], r: X90 },
-        { g: G.rathaBody, m: 'body', p: [0, 0.3, 0] },
+        { g: G.rathaBody, m: 'body' },
+        baseRing(R.ratha),
+        { g: ring(0.252), m: 'brass', p: [0, 0.615, 0], r: X90 },
+        // Wheels on the axle, one each side.
         ...[-1, 1].flatMap((side): Part[] => {
-          const p: [number, number, number] = [0, 0.27, side * 0.2]
+          const p: [number, number, number] = [0, 0.31, side * 0.228]
           return [
             { g: G.wheel, m: 'brass', p },
-            { g: G.spoke, m: 'brass', p },
-            { g: G.spoke, m: 'brass', p, r: [0, 0, Math.PI / 3] },
-            { g: G.spoke, m: 'brass', p, r: [0, 0, -Math.PI / 3] },
+            ...[0, 1, 2, 3].map((i): Part => ({ g: G.spoke, m: 'brass', p, r: [0, 0, (i * Math.PI) / 4] })),
             { g: G.hub, m: 'brass', p, r: X90 },
           ]
         }),
-        ...[[-0.19, -0.13], [0.19, -0.13], [-0.19, 0.13], [0.19, 0.13]].map(([x, z]): Part => ({ g: G.post, m: 'brass', p: [x, 0.52, z] })),
-        { g: G.roof, m: 'body', p: [0, 0.7, 0], r: [0, Math.PI / 4, 0] },
-        { g: G.finial, m: 'brass', p: [0, 0.81, 0] },
+        // Pavilion: slender posts carrying the canopy.
+        ...[0, 1, 2, 3, 4, 5].map((i): Part => {
+          const a = (i / 6) * Math.PI * 2 + Math.PI / 6
+          return { g: G.post, m: 'brass', p: [Math.cos(a) * 0.15, 0.715, Math.sin(a) * 0.15] }
+        }),
+        { g: G.rathaCanopy, m: 'body', p: [0, 0.778, 0] },
+        bead([0, 0.906, 0], 0.028),
       ]
     case 3: {
-      const [tx, ty] = svgToWorld(24, 61, 0.009)
-      const [hx, hy] = svgToWorld(62, 31, 0.009)
+      const [tx, ty] = onBust(39, 53, GAJA_BUST)
+      const [ex, ey] = onBust(42, 24, GAJA_BUST)
+      const side = bustSide(GAJA_BUST, 62)
+      const eye = bustSide(GAJA_BUST, 42) - 0.008
+      // Tusks run forward and down beside the trunk.
+      const dir = new THREE.Vector2(-0.75, -0.66)
+      const tusk = (z: number): Part => ({
+        g: G.tusk, m: 'ivory', p: [tx + dir.x * 0.065, ty + dir.y * 0.065, z], r: [0, 0, Math.atan2(-dir.x, dir.y)],
+      })
       return [
-        ...plinth(),
+        { g: G.gajaStand, m: 'body' },
+        baseRing(R.gaja),
         { g: G.gaja, m: 'body' },
-        { g: G.gajaEar, m: 'body', p: [0, 0, 0.14] },
-        { g: G.gajaEar, m: 'body', p: [0, 0, -0.14] },
-        ...[-0.06, 0.06].map((z): Part => ({ g: G.tusk, m: 'ivory', p: [tx - 0.05, ty - 0.03, z], r: [0, 0, 2.3] })),
-        { g: G.howdahBase, m: 'brass', p: [hx, hy - 0.005, 0] },
-        { g: G.howdah, m: 'brass', p: [hx, hy + 0.01, 0], s: [1, 0.8, 1] },
-        { g: G.finial, m: 'brass', p: [hx, hy + 0.08, 0], s: 0.6 },
+        // Ears lie against the head and flare out behind.
+        { g: G.gajaEar, m: 'body', p: [0, 0, side], r: [0, -0.28, 0] },
+        { g: G.gajaEar, m: 'body', p: [0, 0, -side], r: [0, 0.28, 0] },
+        tusk(0.072),
+        tusk(-0.072),
+        bead([ex, ey, eye], 0.017),
+        bead([ex, ey, -eye], 0.017),
       ]
     }
     case 2: {
-      const [ex, ey] = svgToWorld(45, 32, 0.0095)
+      const [ex, ey] = onBust(44, 25, ASHVA_BUST)
+      const eye = bustSide(ASHVA_BUST, 44) - 0.01
       return [
-        ...plinth(),
+        { g: G.ashvaStand, m: 'body' },
+        baseRing(R.ashva),
         { g: G.ashva, m: 'body' },
-        ...[-0.14, 0.14].map((z): Part => ({ g: G.eye, m: 'brass', p: [ex, ey, z] })),
+        bead([ex, ey, eye], 0.016),
+        bead([ex, ey, -eye], 0.016),
       ]
     }
   }
@@ -186,7 +332,7 @@ function merge(parts: Part[]): THREE.BufferGeometry | null {
   const q = new THREE.Quaternion()
   const geoms = parts.map((part) => {
     const s = part.s ?? 1
-    q.setFromEuler(new THREE.Euler(...(part.r ?? [0, 0, 0])))
+    q.setFromEuler(new THREE.Euler(...(part.r ?? [0, 0, 0]), part.o ?? 'XYZ'))
     m.compose(
       new THREE.Vector3(...(part.p ?? [0, 0, 0])),
       q,

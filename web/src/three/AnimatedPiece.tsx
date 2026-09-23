@@ -4,7 +4,7 @@ import type { ThreeEvent } from '@react-three/fiber'
 import { memo, useEffect, useRef } from 'react'
 import { ASHVA, GAJA, PIECES, type PieceKind } from '../lib/pieces'
 import type { LabelMode } from '../state/settings'
-import { squareToWorld } from './coords'
+import { PIECE_TOP, squareToWorld } from './coords'
 import { PieceModel, PieceToken } from './PieceModel'
 import { markShadowsDirty } from './shadows'
 
@@ -103,7 +103,7 @@ export const AnimatedPiece = memo(function AnimatedPiece({ piece, sq, lifted, fl
         <PieceToken kind={kind} white={white} lite={lite} />
       </animated.group>
       {labels !== 'off' && (
-        <Html position={flat ? [0, 0.1, labelFlipped ? -0.52 : 0.52] : [0, 1.05, 0]} center zIndexRange={[5, 0]} style={{ pointerEvents: 'none' }}>
+        <Html position={flat ? [0, 0.1, labelFlipped ? -0.52 : 0.52] : [0, PIECE_TOP[kind] + 0.14, 0]} center zIndexRange={[5, 0]} style={{ pointerEvents: 'none' }}>
           <span
             className={
               'whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium shadow-sm ' +

@@ -233,7 +233,7 @@ The server keeps no game state, so undo and review are just shorter move lists.
 - **Cheap theme switching:** the page crossfades on the GPU (View Transitions API), and the 3D lighting eases across. The set of lights never changes, so switching theme never forces shaders to recompile.
 
 **Developer aids** (development builds only)
-- `?showcase` shows every piece model side by side.
+- `?showcase` shows every piece model side by side; `?showcase&kind=3` shows one piece up close (kinds 1–6: Padati, Ashva, Gaja, Ratha, Mantri, Raja).
 - `window.__game` exposes the Play store in the browser console.
 
 Design intent and audience are captured in [PRODUCT.md](PRODUCT.md).
