@@ -28,6 +28,7 @@ interface Lesson {
   facts: string[]
   task: Task | null
   emphasis: string[]
+  /** Where the lesson's facts come from, for authors checking it against docs/RULES.md. Not shown. */
   source: string
 }
 
@@ -261,7 +262,6 @@ export function LearnView({ lessonId }: { lessonId: string | null }) {
             <Button onClick={reset} icon={<RotateCcw size={16} />}>Reset board</Button>
           </div>
 
-          <p className="border-t border-line pt-4 text-[12.5px] text-ink-faint">Source: {lesson.source}</p>
         </div>
       </article>
     </div>
