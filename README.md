@@ -6,7 +6,7 @@ The agent is given nothing but the rules of the game. It combines a residual neu
 (policy + value heads) with Monte Carlo Tree Search, and improves by playing against itself.
 Everything is scaled down to train on a single consumer GPU or a free Google Colab instance.
 
-> Course project, Artificial Intelligence, BITS Pilani K. K. Birla Goa Campus.
+> Course project for **CS F407 Artificial Intelligence**, BITS Pilani K. K. Birla Goa Campus, by **Team Fable**.
 
 ---
 
@@ -72,8 +72,8 @@ the same commit that completes the work.
 ## Quick start
 
 ```bash
-git clone https://github.com/Aditya-00786/chaturanga-zero.git
-cd chaturanga-zero
+git clone https://github.com/Aditya-00786/csf407-fable-chaturanga-zero.git
+cd csf407-fable-chaturanga-zero
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
@@ -88,8 +88,8 @@ python -m pytest -q
 
 1. **Clone the repository.**
    ```bash
-   git clone https://github.com/Aditya-00786/chaturanga-zero.git
-   cd chaturanga-zero
+   git clone https://github.com/Aditya-00786/csf407-fable-chaturanga-zero.git
+   cd csf407-fable-chaturanga-zero
    ```
 2. **Create and activate a virtual environment.** This keeps the project's packages separate from the system Python.
    ```bash
@@ -160,7 +160,7 @@ FEN letters: `K` Raja, `M` Mantri, `R` Ratha, `G` Gaja, `N` Ashva, `P` Padati. U
 ## Project structure
 
 ```
-chaturanga-zero/
+csf407-fable-chaturanga-zero/
 ├── chaturanga/              # rules engine (Python package)
 │   ├── config.py            # RulesConfig: rule options, defaults = docs/RULES.md
 │   ├── constants.py         # piece codes, colours, square helpers
@@ -235,6 +235,8 @@ The full specification, with every source and the reference counts, is in [docs/
 ---
 
 ## Team
+
+**Team Fable**, CS F407 Artificial Intelligence.
 
 | Role | Responsibilities |
 |---|---|
