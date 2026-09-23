@@ -42,24 +42,36 @@ export const AnimatedPiece = memo(function AnimatedPiece({ piece, sq, taken, lif
   const white = piece > 0
   const captured = taken !== null
   const target = useMemo(() => placeOf(piece, sq, taken), [piece, sq, taken])
-  const from = useRef(target)
+  // The current journey's end points. They change only when its animation starts, together with
+  // resetting t, so a new place is never drawn before the piece has travelled there (a delayed
+  // start would otherwise show the piece at its destination, then snap back and fly again).
+  const journey = useRef({ from: target, to: target, arc: 0 })
   // t: travel between squares. lift: raised when selected (3D). pop: enlarged when selected
   // (flat, where a lift can't be seen from above). f: 0 = 3D model, 1 = flat token.
   const [{ t, lift, pop, f }, api] = useSpring(() => ({ t: 1, lift: 0, pop: 1, f: flat ? 1 : 0 }))
 
+  // Leapers (Gaja, Ashva) hop in an arc, captured pieces are lifted clear of the board, and
+  // everything else glides.
+  const arc = captured ? 1.1 : kind === GAJA || kind === ASHVA ? 0.55 : 0.12
+
   useEffect(() => {
-    if (from.current === target) return
+    const j = journey.current
+    if (j.to === target) return
+    // Set off from wherever the piece is now, even if it is still on its way (or mid-hop) elsewhere.
+    const v = t.get()
+    const here = j.from.map((a, i) => a + (j.to[i] - a) * v) as Place
+    here[1] += Math.sin(Math.PI * v) * j.arc
+    journey.current = { from: here, to: target, arc }
+    api.set({ t: 0 })
     api.start({
-      from: { t: 0 },
-      to: { t: 1 },
+      t: 1,
       immediate: reducedMotion,
       // A captured piece waits a beat for its captor, then is carried off to the side.
       delay: captured ? 140 : 0,
       config: { duration: captured ? 620 : 360, easing: captured ? easings.easeInOutCubic : easings.easeOutQuart },
       onChange: markShadowsDirty,
-      onRest: () => { from.current = target },
     })
-  }, [target, captured, api, reducedMotion])
+  }, [target, captured, arc, t, api, reducedMotion])
 
   useEffect(() => {
     api.start({
@@ -87,19 +99,17 @@ export const AnimatedPiece = memo(function AnimatedPiece({ piece, sq, taken, lif
     return markShadowsDirty
   }, [piece, sq, flat, lifted])
 
-  // Leapers (Gaja, Ashva) hop in an arc, captured pieces are lifted clear of the board, and
-  // everything else glides.
-  const arc = captured ? 1.1 : kind === GAJA || kind === ASHVA ? 0.55 : 0.12
   // The callbacks run per animation frame, not during render, so reading the ref is safe
-  // (and needed: they must see the latest starting place).
+  // (and needed: they must see the current journey).
   // oxlint-disable-next-line react/refs
   const position = to([t, lift], (v: number, l: number) => {
-    const a = from.current
-    return [a[0] + (target[0] - a[0]) * v, a[1] + (target[1] - a[1]) * v + Math.sin(Math.PI * v) * arc + l, a[2] + (target[2] - a[2]) * v] as [number, number, number]
+    const { from: a, to: b, arc: h } = journey.current
+    return [a[0] + (b[0] - a[0]) * v, a[1] + (b[1] - a[1]) * v + Math.sin(Math.PI * v) * h + l, a[2] + (b[2] - a[2]) * v] as [number, number, number]
   })
   // oxlint-disable-next-line react/refs
   const size = to([t], (v: number) => {
-    const s = from.current[3] + (target[3] - from.current[3]) * v
+    const { from: a, to: b } = journey.current
+    const s = a[3] + (b[3] - a[3]) * v
     return [s, s, s] as [number, number, number]
   })
 
