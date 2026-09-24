@@ -23,6 +23,9 @@ interface Props {
   onPick: (e: ThreeEvent<PointerEvent>, sq: number) => void
 }
 
+/** How high a piece is lifted on its way to or from a capture tray. */
+const CAPTURE_ARC = 1.1
+
 /** Where a piece stands and at what size: x, y, z, scale. */
 type Place = [number, number, number, number]
 
@@ -52,7 +55,7 @@ export const AnimatedPiece = memo(function AnimatedPiece({ piece, sq, taken, lif
 
   // Leapers (Gaja, Ashva) hop in an arc, captured pieces are lifted clear of the board, and
   // everything else glides.
-  const arc = captured ? 1.1 : kind === GAJA || kind === ASHVA ? 0.55 : 0.12
+  const arc = captured ? CAPTURE_ARC : kind === GAJA || kind === ASHVA ? 0.55 : 0.12
 
   useEffect(() => {
     const j = journey.current
@@ -61,7 +64,10 @@ export const AnimatedPiece = memo(function AnimatedPiece({ piece, sq, taken, lif
     const v = t.get()
     const here = j.from.map((a, i) => a + (j.to[i] - a) * v) as Place
     here[1] += Math.sin(Math.PI * v) * j.arc
-    journey.current = { from: here, to: target, arc }
+    // Anything going to or from a tray (a capture, or a capture undone in review) is lifted clear
+    // of the frame.
+    const viaTray = here[3] !== 1 || target[3] !== 1
+    journey.current = { from: here, to: target, arc: viaTray ? CAPTURE_ARC : arc }
     api.set({ t: 0 })
     api.start({
       t: 1,
