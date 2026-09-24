@@ -10,6 +10,11 @@ import { moveText } from '../lib/board'
 import { playMoveSound } from '../lib/sound'
 
 export type Mode = 'hvh' | 'hvc' | 'cvc'
+
+/** The computer vs computer control's label: Start before the first move, then Pause / Resume. */
+export function runLabel(running: boolean, moves: number) {
+  return running ? 'Pause' : moves === 0 ? 'Start' : 'Resume'
+}
 export type Pace = 'slow' | 'normal' | 'fast'
 
 const PACE_MS: Record<Pace, number> = { slow: 1400, normal: 700, fast: 220 }
@@ -24,7 +29,7 @@ interface GameStore {
   whiteAgent: string
   blackAgent: string
   pace: Pace
-  running: boolean // computer vs computer: playing or paused
+  running: boolean // computer vs computer: playing, or waiting for Start / paused
   orientation: Color // side shown at the bottom of the board
   autoRotate: boolean // two players: turn the board to face the side to move
 
@@ -222,7 +227,8 @@ export const useGame = create<GameStore>((set, get) => {
     },
 
     newGame: () => {
-      set({ status: get().game ? 'ready' : 'connecting' })
+      // Computer vs computer waits for Start rather than beginning on its own.
+      set({ status: get().game ? 'ready' : 'connecting', running: get().mode !== 'cvc' })
       void load([])
     },
 
@@ -259,7 +265,9 @@ export const useGame = create<GameStore>((set, get) => {
     },
 
     setMode: (mode) => {
-      set(mode === 'hvc' ? { mode, running: true, orientation: get().humanColor } : { mode, running: true })
+      // Switching to computer vs computer does not start it: the user presses Start.
+      const running = mode !== 'cvc'
+      set(mode === 'hvc' ? { mode, running, orientation: get().humanColor } : { mode, running })
       generation++
       schedule()
     },
