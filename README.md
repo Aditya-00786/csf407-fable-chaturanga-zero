@@ -101,11 +101,17 @@ python -m chaturanga_server           # then open http://127.0.0.1:8000
 **Requirements:** Python 3.10 or newer (developed on 3.14), git, and Node.js 20 or newer for the web app
 (developed on 24). PyTorch is added in Milestone 2.
 
-1. **Clone the repository.**
+1. **Fork, then clone your fork.** Collaborators can't push to this repository (see
+   [Workflow](#workflow)), so each of you works in your own fork. On GitHub, click **Fork** at the
+   top of the repository page, then:
    ```bash
-   git clone https://github.com/Aditya-00786/csf407-fable-chaturanga-zero.git
+   git clone https://github.com/<your-username>/csf407-fable-chaturanga-zero.git
    cd csf407-fable-chaturanga-zero
+   git remote add upstream https://github.com/Aditya-00786/csf407-fable-chaturanga-zero.git
    ```
+   `origin` is now your fork (you push there) and `upstream` is this repository (you pull from it).
+   A fork of this private repository stays private. The repository owner clones this repository
+   directly and skips the fork.
 2. **Create and activate a virtual environment.** This keeps the project's packages separate from the system Python.
    ```bash
    python3 -m venv .venv
@@ -347,7 +353,25 @@ The full specification, with every source and the reference counts, is in [docs/
 
 ### Workflow
 
-1. **Get the latest code:** `git pull` on `main` before starting.
+Changes reach `main` only through pull requests, and the repository owner reviews and merges every
+one. Collaborators work in their own fork (**fork → branch → pull request**). Repository rulesets
+enforce this for every collaborator, present and future:
+
+| | Collaborators | Owner |
+|---|---|---|
+| Fork, open and review pull requests, use issues | Yes | Yes |
+| Create, push to or delete branches in this repository | No | Yes |
+| Create or move tags | No | Yes |
+| Merge pull requests into `main` | No | Yes |
+| Force-push to or delete `main` | No | No (can bypass in an emergency) |
+
+1. **Sync your fork** before starting, so you branch from the latest `main`:
+   ```bash
+   git checkout main
+   git pull upstream main
+   git push origin main
+   ```
+   (The **Sync fork** button on your fork's GitHub page does the same.)
 2. **Work on a branch**, never directly on `main`:
    ```bash
    git checkout -b feat/mcts-node-expansion
@@ -358,7 +382,20 @@ The full specification, with every source and the reference counts, is in [docs/
    - Run `python -m pytest -q`; all tests must pass.
    - If you touched the engine, also run `python scripts/random_play.py --games 1000`.
    - If you touched `web/`, also run `cd web && npx tsc -b && npx oxlint src`.
-5. **Open a pull request** into `main`. Another team member reviews it before it is merged.
+5. **Push the branch to your fork:**
+   ```bash
+   git push -u origin feat/mcts-node-expansion
+   ```
+6. **Open a pull request** from your fork's branch into this repository's `main`, with GitHub's
+   **Compare & pull request** button or:
+   ```bash
+   gh pr create --repo Aditya-00786/csf407-fable-chaturanga-zero --base main
+   ```
+   Describe what changed and how you tested it. To answer review comments, push more commits to the
+   same branch; the pull request updates itself.
+7. **After it is merged**, delete the branch and sync your fork again (step 1).
+
+The owner follows the same steps from branches in this repository instead of a fork.
 
 ### Commit messages
 
