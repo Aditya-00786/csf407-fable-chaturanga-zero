@@ -1,4 +1,4 @@
-import { AlertTriangle, History, Maximize, Minimize, PanelRight, Play, RotateCcw, Undo2, X } from 'lucide-react'
+import { AlertTriangle, History, Maximize, Minimize, PanelRight, RotateCcw, Undo2, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { PlayPanel, Status } from '../components/PlayPanel'
@@ -16,7 +16,7 @@ import { BoardScene } from '../three/BoardScene'
 const TURN_DELAY_MS = 520
 
 function GameEnd() {
-  const { game, newGame, review, reviewPly, startReplay } = useGame()
+  const { game, newGame, review, reviewPly } = useGame()
   const showExplanation = useDetail('explanation')
   const showRule = useDetail('rules')
   const [hiddenAtPly, setHiddenAtPly] = useState<number | null>(null)
@@ -40,7 +40,6 @@ function GameEnd() {
         <div className="mt-4 flex flex-wrap gap-2">
           <Button variant="primary" onClick={newGame} icon={<RotateCcw size={16} />}>Play again</Button>
           <Button onClick={() => review(Math.max(0, game.ply - 1))} icon={<History size={16} />}>Review moves</Button>
-          <Button onClick={startReplay} icon={<Play size={16} />}>Replay</Button>
         </div>
       </div>
     </div>
@@ -177,7 +176,7 @@ export function PlayView() {
           </div>
         </div>
       )}
-      {reviewing && <ReviewBar view={view} />}
+      {reviewing && <ReviewBar />}
       <GameEnd />
 
       {/* Game panel: a drawer over the board, closed by default. */}

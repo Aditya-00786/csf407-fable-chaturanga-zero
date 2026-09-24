@@ -236,11 +236,6 @@ export function PlayPanel({ view, onClose, onRotate }: { view: GameView | null; 
             <span id="moves-title">Moves</span>
           </SectionTitle>
           <MoveList view={g.game} />
-          {g.moves.length > 0 && (
-            <Button size="sm" className="mt-3" icon={<Play size={15} />} onClick={() => { g.startReplay(); onClose() }}>
-              Replay the game
-            </Button>
-          )}
         </section>
 
         <section aria-labelledby="captured-title">

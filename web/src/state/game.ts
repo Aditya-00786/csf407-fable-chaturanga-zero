@@ -65,6 +65,18 @@ let timer: ReturnType<typeof setTimeout> | null = null
 let replayTimer: ReturnType<typeof setTimeout> | null = null
 // Positions already fetched for review, by move sequence: stepping back and forth is instant.
 const reviewCache = new Map<string, GameView>()
+// The position being fetched for review, if any. The reviewed ply and its position are only
+// shown together, so the board, status and review bar never show a half-updated state.
+let pendingPly: number | null = null
+
+const reviewKey = (moves: string[], ply: number) => moves.slice(0, ply).join(' ')
+
+/** Fetch a review position into the cache ahead of need (the neighbours of the one on show). */
+function prefetch(moves: string[], ply: number) {
+  if (ply < 0 || ply >= moves.length) return
+  const key = reviewKey(moves, ply)
+  if (!reviewCache.has(key)) void api.game(moves.slice(0, ply)).then((v) => reviewCache.set(key, v), () => {})
+}
 
 function soundFor(view: GameView) {
   const last = view.history[view.history.length - 1]
@@ -122,6 +134,7 @@ export const useGame = create<GameStore>((set, get) => {
       const game = await api.game(moves)
       if (gen !== generation) return
       if (replayTimer) clearTimeout(replayTimer)
+      pendingPly = null
       set({ moves, game, status: 'ready', error: null, reviewPly: null, reviewGame: null, replaying: false })
       schedule()
     } catch (err) {
@@ -149,6 +162,7 @@ export const useGame = create<GameStore>((set, get) => {
     const s = get()
     if (ply === null || ply > s.moves.length || !s.game) {
       if (replayTimer) clearTimeout(replayTimer)
+      pendingPly = null
       set({ reviewPly: null, reviewGame: null, replaying: false })
       generation++
       schedule()
@@ -156,22 +170,31 @@ export const useGame = create<GameStore>((set, get) => {
     }
     if (timer) clearTimeout(timer)
     const gen = ++generation
-    const key = s.moves.slice(0, ply).join(' ')
-    const known = ply === s.moves.length ? s.game : reviewCache.get(key)
-    if (known) {
-      set({ reviewPly: ply, reviewGame: known, status: 'ready' })
+    const moves = s.moves
+    const show = (reviewGame: GameView) => {
+      pendingPly = null
+      set({ reviewPly: ply, reviewGame, status: 'ready' })
+      prefetch(moves, ply + 1)
+      prefetch(moves, ply - 1)
       scheduleReplay()
+    }
+    const key = reviewKey(moves, ply)
+    const known = ply === moves.length ? s.game : reviewCache.get(key)
+    if (known) {
+      show(known)
       return
     }
-    set({ reviewPly: ply, status: 'ready' })
-    void api.game(s.moves.slice(0, ply)).then(
+    pendingPly = ply
+    void api.game(moves.slice(0, ply)).then(
       (reviewGame) => {
         reviewCache.set(key, reviewGame)
-        if (gen !== generation) return
-        set({ reviewGame })
-        scheduleReplay()
+        if (gen === generation) show(reviewGame)
       },
-      (err) => gen === generation && fail(err),
+      (err) => {
+        if (gen !== generation) return
+        pendingPly = null
+        fail(err)
+      },
     )
   }
 
@@ -265,7 +288,7 @@ export const useGame = create<GameStore>((set, get) => {
     step: (to) => {
       const s = get()
       const total = s.moves.length
-      const at = s.reviewPly ?? total
+      const at = pendingPly ?? s.reviewPly ?? total
       const target = to === 'start' ? 0 : to === 'end' ? total : Math.min(total, Math.max(0, at + (to === 'back' ? -1 : 1)))
       set({ replaying: false })
       if (target !== s.reviewPly) reviewAt(target)

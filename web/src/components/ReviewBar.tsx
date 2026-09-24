@@ -5,7 +5,6 @@
 
 import { History, Pause, Play, SkipBack, SkipForward, StepBack, StepForward } from 'lucide-react'
 import { useEffect, type ReactNode } from 'react'
-import type { GameView } from '../lib/api'
 import { describeMove } from '../lib/board'
 import { useGame, type Pace } from '../state/game'
 import { Button, Segmented } from './ui'
@@ -37,11 +36,12 @@ function StepButton({ label, onClick, disabled, children }: {
   )
 }
 
-export function ReviewBar({ view }: { view: GameView | null }) {
-  const { moves, reviewPly, replaying, replaySpeed, step, startReplay, stopReplay, setReplaySpeed, review } = useGame()
+export function ReviewBar() {
+  const { game, moves, reviewPly, replaying, replaySpeed, step, startReplay, stopReplay, setReplaySpeed, review } = useGame()
   const total = moves.length
   const at = reviewPly ?? total
-  const last = view && at > 0 ? view.history[at - 1] : undefined
+  // From the full game record, so the text always matches the move number on show.
+  const last = at > 0 ? game?.history[at - 1] : undefined
 
   // Arrow keys step through the moves, except while the board itself (which uses the arrows to
   // move its cursor) or a form control has the focus.
@@ -65,10 +65,12 @@ export function ReviewBar({ view }: { view: GameView | null }) {
         aria-label="Review moves"
         className="cz-rise pointer-events-auto flex max-w-full flex-wrap items-center justify-center gap-x-2 gap-y-1.5 rounded-2xl border border-line-strong bg-surface/95 p-1.5 shadow-[0_18px_44px_-20px_rgb(0_0_0/0.6)]"
       >
-        <p className="flex min-w-0 items-center gap-2 pr-1 pl-2.5 text-[13px] text-ink" aria-live="polite">
+        {/* Fixed width: the move text varies in length, and a centred bar that resized with it
+            would shift every button sideways on each step. */}
+        <p className="flex w-[9.5rem] min-w-0 items-center gap-2 pl-2.5 text-[13px] text-ink sm:w-[18.5rem]" aria-live="polite">
           <History size={15} className="shrink-0 text-accent" aria-hidden />
-          <span className="tabular-nums whitespace-nowrap">{at === 0 ? 'Start' : `Move ${at} of ${total}`}</span>
-          {last && <span className="hidden truncate text-ink-muted sm:inline">· {describeMove(last)}</span>}
+          <span className="shrink-0 tabular-nums whitespace-nowrap">{at === 0 ? 'Start' : `Move ${at} of ${total}`}</span>
+          {last && <span className="hidden min-w-0 truncate text-ink-muted sm:inline">· {describeMove(last)}</span>}
         </p>
 
         <div className="flex items-center">
