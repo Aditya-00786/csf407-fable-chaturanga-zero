@@ -15,7 +15,7 @@ def test_health_and_meta():
     assert client.get("/api/health").json() == {"status": "ok"}
     meta = client.get("/api/meta").json()
     assert meta["rules"]["setup"] == "crosswise"
-    assert {a["id"] for a in meta["agents"]} == {"random", "greedy"}
+    assert {a["id"] for a in meta["agents"]} == {"random", "greedy", "mcts"}
 
 
 def test_initial_game():
@@ -56,6 +56,13 @@ def test_agent_move():
     r = client.post("/api/agent-move", json={"moves": ["e2e3"], "agent": "greedy", "seed": 1}).json()
     assert r["game"]["ply"] == 2
     assert r["game"]["history"][-1]["move"] == r["move"]
+
+
+def test_mcts_agent_move_is_legal_and_takes_a_free_win():
+    r = client.post("/api/agent-move", json={"moves": [], "agent": "mcts", "seed": 0}).json()
+    assert r["game"]["ply"] == 1 and r["game"]["history"][0]["move"] == r["move"]
+    trap = {"start_fen": "7k/7p/4K2P/8/8/8/8/R7 w", "moves": [], "agent": "mcts"}
+    assert client.post("/api/agent-move", json=trap).json()["move"] == "a1a8"
 
 
 def test_agent_move_rejects_unknown_agent_and_finished_games():

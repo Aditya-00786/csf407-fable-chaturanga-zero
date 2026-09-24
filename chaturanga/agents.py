@@ -1,11 +1,12 @@
-"""Baseline players.
+"""Players: baselines and the MCTS agent.
 
-Used as the "Computer" opponent in the web app before the AlphaZero agent exists, and as
-benchmark opponents in Milestone 4. They use hand-written material values, which is
-fine for baselines. The AlphaZero agent itself gets no such knowledge.
+Random and Greedy are the "Computer" opponents in the web app and the benchmark opponents for
+Milestone 4. Greedy uses hand-written material values, which is fine for a baseline. The MCTS
+agent gets no such knowledge: only the rules, the results of finished games, and its network.
 """
 
 import random
+from functools import lru_cache
 from typing import Optional
 
 from .constants import ASHVA, GAJA, MANTRI, PADATI, RAJA, RATHA
@@ -73,7 +74,32 @@ class GreedyAgent:
         return worst
 
 
-AGENTS = {agent.id: agent for agent in (RandomAgent, GreedyAgent)}
+@lru_cache(maxsize=1)
+def _untrained_evaluator():
+    """One untrained network (fixed seed, so every run plays the same), shared by all MCTS agents."""
+    from .net import NetworkEvaluator, new_network
+
+    return NetworkEvaluator(new_network(seed=0))
+
+
+class MCTSAgent:
+    id = "mcts"
+    name = "MCTS (untrained)"
+    description = ("Searches 50 positions ahead for every move, guided by a network that has not been trained "
+                   "yet: it knows only the rules and how games end.")
+
+    def __init__(self, seed: Optional[int] = None, simulations: int = 50, evaluator=None):
+        from .mcts import MCTS, MCTSConfig
+
+        # No root noise and the most visited move: this agent plays to win, it is not exploring.
+        self.mcts = MCTS(evaluator or _untrained_evaluator(), MCTSConfig(simulations=simulations), seed)
+
+    def select_move(self, state: GameState) -> int:
+        root = self.mcts.search(state)
+        return self.mcts.choose_move(root, temperature=0.0)
+
+
+AGENTS = {agent.id: agent for agent in (RandomAgent, GreedyAgent, MCTSAgent)}
 
 
 def make_agent(agent_id: str, seed: Optional[int] = None):
