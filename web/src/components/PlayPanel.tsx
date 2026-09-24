@@ -9,8 +9,13 @@ import { DrawerHeader } from './stage'
 import { Button, Collapse, SectionTitle, Segmented, Switch } from './ui'
 
 const AGENTS = [
-  { value: 'greedy', label: 'Greedy', title: 'Looks two plies ahead: grabs material, avoids losing pieces' },
   { value: 'random', label: 'Random', title: 'Plays a random legal move' },
+  { value: 'greedy', label: 'Greedy', title: 'Looks two plies ahead: grabs material, avoids losing pieces' },
+  {
+    value: 'mcts',
+    label: 'MCTS',
+    title: 'Monte Carlo Tree Search: 50 simulations per move, guided by a network that is not trained yet',
+  },
 ]
 
 const DETAIL_PARTS: { part: DetailPart; label: string }[] = [
@@ -202,7 +207,7 @@ export function PlayPanel({ view, onClose, onRotate }: { view: GameView | null; 
             <Switch label="Turn the board after each move" checked={g.autoRotate} onChange={g.setAutoRotate} />
           )}
           {g.mode === 'hvc' && (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-3">
               <Segmented<Color> label="You play" value={g.humanColor} onChange={g.setHumanColor} size="sm"
                 options={[{ value: 1, label: 'White' }, { value: -1, label: 'Black' }]} />
               <Segmented label="Opponent" value={g.opponent} onChange={g.setOpponent} size="sm" options={AGENTS} />
@@ -210,10 +215,8 @@ export function PlayPanel({ view, onClose, onRotate }: { view: GameView | null; 
           )}
           {g.mode === 'cvc' && (
             <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <Segmented label="White" value={g.whiteAgent} onChange={(v) => g.setAgent(1, v)} size="sm" options={AGENTS} />
-                <Segmented label="Black" value={g.blackAgent} onChange={(v) => g.setAgent(-1, v)} size="sm" options={AGENTS} />
-              </div>
+              <Segmented label="White" value={g.whiteAgent} onChange={(v) => g.setAgent(1, v)} size="sm" options={AGENTS} />
+              <Segmented label="Black" value={g.blackAgent} onChange={(v) => g.setAgent(-1, v)} size="sm" options={AGENTS} />
               <div className="flex items-end gap-3">
                 <div className="flex-1">
                   <Segmented<Pace> label="Pace" value={g.pace} onChange={g.setPace} size="sm"
