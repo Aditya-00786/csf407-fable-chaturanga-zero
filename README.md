@@ -395,7 +395,10 @@ enforce this for every collaborator, present and future:
    same branch; the pull request updates itself.
 7. **After it is merged**, delete the branch and sync your fork again (step 1).
 
-The owner follows the same steps from branches in this repository instead of a fork.
+The owner follows the same steps from branches in this repository instead of a fork. Because
+merging updates `main`, which the rulesets reserve for the owner, a merge always goes through the
+owner's bypass: tick **Merge without waiting for requirements to be met (bypass rules)** on GitHub,
+or run `gh pr merge <number> --merge --admin --delete-branch`.
 
 ### Commit messages
 
