@@ -397,8 +397,9 @@ enforce this for every collaborator, present and future:
 
 The owner follows the same steps from branches in this repository instead of a fork. Because
 merging updates `main`, which the rulesets reserve for the owner, a merge always goes through the
-owner's bypass: tick **Merge without waiting for requirements to be met (bypass rules)** on GitHub,
-or run `gh pr merge <number> --merge --admin --delete-branch`.
+owner's bypass: on GitHub, select **Merge without waiting for requirements to be met (bypass rules)**,
+or run `gh pr merge <number> --merge --admin --delete-branch`. Only the repository admin (the
+owner) can bypass the rulesets; collaborators don't see that option and `--admin` fails for them.
 
 ### Commit messages
 
