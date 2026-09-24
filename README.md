@@ -290,7 +290,8 @@ pi = MCTS.policy_target(root)                            # 4,096-long training t
   moves (`choose_move(root, temperature)`), and tree reuse: searching the position after the
   opponent's reply keeps the work already done on it.
 - **Agent:** `make_agent("mcts")` plays with 50 simulations per move and no noise. It is the
-  "MCTS" computer opponent in the web app.
+  "MCTS" computer opponent in the web app. The API server loads PyTorch and the network in the
+  background as it starts, so the first MCTS move is as quick as the rest.
 - **Tests** (`tests/test_mcts.py`, `tests/test_net.py`):
   - the search finds mate, bare-king wins and the stalemate trap for both colours, with uniform
     priors and with the untrained network;

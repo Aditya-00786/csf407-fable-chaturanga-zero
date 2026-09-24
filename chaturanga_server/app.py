@@ -5,6 +5,10 @@ so far, and the server replays them. This keeps undo, review and lessons trivial
 Python engine remains the only implementation of the rules.
 """
 
+import logging
+import threading
+import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import List, Optional
 
@@ -13,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from chaturanga import DEFAULT_RULES, GameState, move_to_str, parse_move
-from chaturanga.agents import AGENTS, make_agent
+from chaturanga.agents import AGENTS, make_agent, warm_up
 from chaturanga.constants import PADATI
 from chaturanga.tables import LAST_RANK
 
@@ -81,7 +85,28 @@ def game_view(state: GameState, history: list) -> dict:
     }
 
 
-app = FastAPI(title="ChaturangZero", version="0.1.0")
+log = logging.getLogger("uvicorn.error")
+
+
+def _warm_up_mcts() -> None:
+    t = time.perf_counter()
+    try:
+        warm_up()
+    except Exception:  # the other agents still work; MCTS will try again on first use
+        log.exception("Could not load the MCTS network")
+        return
+    log.info("MCTS network ready (%.1f s)", time.perf_counter() - t)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Load PyTorch and the network in the background: the server answers at once (Random and
+    # Greedy need neither), and an early MCTS move simply waits for the load to finish.
+    threading.Thread(target=_warm_up_mcts, name="mcts-warm-up", daemon=True).start()
+    yield
+
+
+app = FastAPI(title="ChaturangZero", version="0.1.0", lifespan=lifespan)
 
 
 @app.get("/api/health")

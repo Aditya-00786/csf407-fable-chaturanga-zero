@@ -69,3 +69,20 @@ def test_agent_move_rejects_unknown_agent_and_finished_games():
     assert client.post("/api/agent-move", json={"agent": "alphazero"}).status_code == 400
     over = {"start_fen": "k7/7p/1K6/8/8/8/8/6R1 w", "moves": ["g1g8"], "agent": "random"}
     assert client.post("/api/agent-move", json=over).status_code == 400
+
+
+def test_startup_loads_the_mcts_network_in_the_background():
+    import threading
+    import time
+
+    from chaturanga import agents
+
+    with TestClient(app) as started:  # runs the app's start-up hook
+        assert started.get("/api/health").json() == {"status": "ok"}  # answers while loading
+        for thread in threading.enumerate():
+            if thread.name == "mcts-warm-up":
+                thread.join(timeout=60)
+        deadline = time.time() + 60
+        while agents._evaluator is None and time.time() < deadline:
+            time.sleep(0.05)
+        assert agents._evaluator is not None

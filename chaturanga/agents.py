@@ -6,7 +6,7 @@ agent gets no such knowledge: only the rules, the results of finished games, and
 """
 
 import random
-from functools import lru_cache
+import threading
 from typing import Optional
 
 from .constants import ASHVA, GAJA, MANTRI, PADATI, RAJA, RATHA
@@ -74,12 +74,28 @@ class GreedyAgent:
         return worst
 
 
-@lru_cache(maxsize=1)
-def _untrained_evaluator():
-    """One untrained network (fixed seed, so every run plays the same), shared by all MCTS agents."""
-    from .net import NetworkEvaluator, new_network
+_evaluator = None
+_evaluator_lock = threading.Lock()
 
-    return NetworkEvaluator(new_network(seed=0))
+
+def untrained_evaluator():
+    """One untrained network (fixed seed, so every run plays the same), shared by all MCTS agents.
+
+    Built on first use; a caller arriving while another thread builds it waits for that build.
+    """
+    global _evaluator
+    with _evaluator_lock:
+        if _evaluator is None:
+            from .net import NetworkEvaluator, new_network
+
+            _evaluator = NetworkEvaluator(new_network(seed=0))
+    return _evaluator
+
+
+def warm_up() -> None:
+    """Load PyTorch and the network and run one evaluation, so the first MCTS move is as fast as
+    the rest. Importing PyTorch alone takes a few seconds."""
+    untrained_evaluator().evaluate(GameState.initial())
 
 
 class MCTSAgent:
@@ -92,7 +108,7 @@ class MCTSAgent:
         from .mcts import MCTS, MCTSConfig
 
         # No root noise and the most visited move: this agent plays to win, it is not exploring.
-        self.mcts = MCTS(evaluator or _untrained_evaluator(), MCTSConfig(simulations=simulations), seed)
+        self.mcts = MCTS(evaluator or untrained_evaluator(), MCTSConfig(simulations=simulations), seed)
 
     def select_move(self, state: GameState) -> int:
         root = self.mcts.search(state)
