@@ -26,13 +26,20 @@ interface Props {
 /** How high a piece is lifted on its way to or from a capture tray. */
 const CAPTURE_ARC = 1.1
 
-/** Where a piece stands and at what size: x, y, z, scale. */
-type Place = [number, number, number, number]
+/**
+ * Extra turn for a piece in a capture tray, so it faces the board. On the board a model faces the
+ * opponent; a quarter-turn more points White's (on the left tray) and Black's (on the right tray)
+ * inwards alike.
+ */
+const TRAY_TURN = -Math.PI / 2
+
+/** Where a piece stands, at what size and turned how far from its usual facing: x, y, z, scale, turn. */
+type Place = [number, number, number, number, number]
 
 function placeOf(piece: number, sq: number, taken: number | null): Place {
-  if (taken !== null) return [...takenToWorld(piece, taken), TAKEN_SCALE]
+  if (taken !== null) return [...takenToWorld(piece, taken), TAKEN_SCALE, TRAY_TURN]
   const [x, z] = squareToWorld(sq)
-  return [x, 0, z, 1]
+  return [x, 0, z, 1, 0]
 }
 
 const smoothstep = (a: number, b: number, v: number) => {
@@ -118,6 +125,12 @@ export const AnimatedPiece = memo(function AnimatedPiece({ piece, sq, taken, lif
     const s = a[3] + (b[3] - a[3]) * v
     return [s, s, s] as [number, number, number]
   })
+  // The model turns to face the board on its way into a tray, and back on its way out.
+  // oxlint-disable-next-line react/refs
+  const turn = to([t], (v: number) => {
+    const { from: a, to: b } = journey.current
+    return [0, a[4] + (b[4] - a[4]) * v, 0] as [number, number, number]
+  })
 
   const info = PIECES[kind]
   // Each model faces its own way (see PieceModel), independent of how the board is turned.
@@ -134,7 +147,7 @@ export const AnimatedPiece = memo(function AnimatedPiece({ piece, sq, taken, lif
       // Captured pieces are out of play: clicks on them do nothing.
       onPointerDown={captured ? undefined : (e: ThreeEvent<PointerEvent>) => onPick(e, sq)}
     >
-      <animated.group scale={modelScale} visible={f.to((v) => v < 0.999)}>
+      <animated.group scale={modelScale} rotation={turn} visible={f.to((v) => v < 0.999)}>
         <PieceModel kind={kind} white={white} lite={lite} />
       </animated.group>
       {/* Tokens keep a fixed orientation: each side's glyphs face their own player. */}
