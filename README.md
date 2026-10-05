@@ -12,22 +12,22 @@ Everything is scaled down to train on a single consumer GPU or a free Google Col
 
 ## Progress
 
-**Current milestone: 2 of 4 — MCTS with an untrained network**
+**Current milestone: 3 of 4 — self-play training pipeline**
 
 ```
-Overall   ██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  25%   (1 of 4 milestones done)
+Overall   ████████████████████░░░░░░░░░░░░░░░░░░░░  50%   (2 of 4 milestones done)
 ```
 
 | # | Milestone | Progress | Status |
 |:-:|---|---|---|
 | 1 | Rules engine, state/move encoding, unit tests | `██████████` 100% | Done |
-| 2 | MCTS integrated with an untrained network | `░░░░░░░░░░`   0% | Up next |
-| 3 | Self-play training pipeline (50–100 games, loss tracking) | `░░░░░░░░░░`   0% | Planned |
+| 2 | MCTS integrated with an untrained network | `██████████` 100% | Done |
+| 3 | Self-play training pipeline (50–100 games, loss tracking) | `░░░░░░░░░░`   0% | Up next |
 | 4 | Benchmarking vs random, heuristic and earlier agents | `░░░░░░░░░░`   0% | Planned |
 
 Also shipped: the **web app, phase 1**. It has a 3D board, three play modes, interactive lessons
-and a rules reference. The AlphaZero opponent and the live "Watch training" view follow
-Milestones 2–3.
+and a rules reference. The untrained MCTS agent from Milestone 2 is already one of its computer
+opponents; the trained agent and the live "Watch training" view follow Milestone 3.
 
 <details>
 <summary>How to update the progress bars</summary>
@@ -46,6 +46,7 @@ the same commit that completes the work.
 - [Setting up the repo locally](#setting-up-the-repo-locally)
 - [Essential commands](#essential-commands)
 - [Using the engine](#using-the-engine)
+- [Search and network](#search-and-network)
 - [Web app](#web-app)
 - [Project structure](#project-structure)
 - [The rules in brief](#the-rules-in-brief)
@@ -60,8 +61,11 @@ the same commit that completes the work.
 
 - **Researched ruleset.** Every rule is backed by historical sources, and contested rules are
   settled by counting references. See [docs/RULES.md](docs/RULES.md).
-- **Verified rules engine.** 99 tests, a cross-check against an independent reference
-  move generator, and a 10,000-game random-play stress test.
+- **Verified rules engine.** A cross-check against an independent reference move generator and a
+  10,000-game random-play stress test; 129 tests in all.
+- **AlphaZero search.** PUCT Monte Carlo Tree Search guided by a residual policy-value network
+  (6 blocks × 64 filters, about 1M parameters), with exact values for finished games, root noise,
+  temperature and tree reuse for self-play. Planted bugs in the search are all caught by the tests.
 - **Browser app.** A carved rosewood-and-brass 3D board in light and dark themes, with:
   - a figural piece set after Indian court chess sets: a crowned Raja, a turbaned Mantri, a temple-car
     Ratha, a caparisoned Gaja with its howdah, a Marwari Ashva, and spear-and-shield Padatis;
@@ -74,10 +78,11 @@ the same commit that completes the work.
 - **Configurable rules.** Contested historical rules (setup, promotion, stalemate) can be switched
   in `RulesConfig` for experiments.
 
-| Engine benchmark (random play, Apple M1) | |
+| Benchmark (Apple M1) | |
 |---|---|
-| Single core | ~41,000 positions/s |
-| 8 cores | ~208,000 positions/s |
+| Engine, random play, single core | ~41,000 positions/s |
+| Engine, random play, 8 cores | ~208,000 positions/s |
+| MCTS with the network (CPU, 1 thread) | ~1,000 simulations/s, ~50 ms per 50-simulation move |
 
 ---
 
@@ -99,7 +104,8 @@ python -m chaturanga_server           # then open http://127.0.0.1:8000
 ## Setting up the repo locally
 
 **Requirements:** Python 3.10 or newer (developed on 3.14), git, and Node.js 20 or newer for the web app
-(developed on 24). PyTorch is added in Milestone 2.
+(developed on 24). PyTorch is installed with the package; it runs on the CPU, or on CUDA when
+available (Colab already has it).
 
 1. **Fork, then clone your fork.** Collaborators can't push to this repository (see
    [Workflow](#workflow)), so each of you works in your own fork. On GitHub, click **Fork** at the
@@ -124,7 +130,7 @@ python -m chaturanga_server           # then open http://127.0.0.1:8000
    "Editable" means changes to the code under `chaturanga/` take effect without reinstalling.
 4. **Check that everything works.**
    ```bash
-   python -m pytest -q                # expect: 99 passed
+   python -m pytest -q                # expect: 129 passed
    ```
 5. **Install the web app's packages** (only needed for the browser app):
    ```bash
@@ -148,6 +154,8 @@ The commands below assume the virtual environment is active. If it isn't, prefix
 | Quick random-play benchmark (1 core) | `python scripts/random_play.py --games 200 --workers 1` |
 | Random play with alternative rules | `python scripts/random_play.py --setup facing --promotion file` |
 | Show all script options | `python scripts/random_play.py --help` |
+| MCTS speed only | `python scripts/mcts_benchmark.py --speed-only --threads 1` |
+| Untrained MCTS vs Random and Greedy | `python scripts/mcts_benchmark.py --sims 50 --games 10 --threads 1` |
 | Start the API server | `python -m chaturanga_server` (add `--reload` while developing) |
 | Start the web dev server | `npm run dev --prefix web`, then open http://localhost:5173 |
 | Type-check and lint the web app | `cd web && npx tsc -b && npx oxlint src` |
@@ -156,6 +164,7 @@ The commands below assume the virtual environment is active. If it isn't, prefix
 
 `random_play.py` prints how the games ended, how long they were and how fast the engine ran.
 Every move comes from the legal-move list and every game must end, so a crash or a hang means a bug.
+`mcts_benchmark.py` prints the search speed and match results, game by game, with colours alternating.
 
 ---
 
@@ -222,7 +231,7 @@ The server keeps no game state, so undo and review are just shorter move lists.
 
 | Screen | What it does |
 |---|---|
-| **Play** | The board fills the screen. A floating card shows whose turn it is. The toolbar has **Game**, which opens a drawer (Esc closes it) with the mode, move list (click to review), captured pieces, display options (including Reduced graphics) and Rotate. Beside it, a ‹ button slides out quick actions: Undo, Full screen and New game. Opening the drawer tucks them away again. **Details** in the drawer switches between *Essential*, which shows headlines only and is the default, and *Full*. Under Full, four toggles turn individual extras on or off: move hints, move and quiet-ply counters, why the game ended, and rule sources. Modes: two players (the board turns to face the player to move after each move; Rotate overrides it only until the turn next changes hands, and a switch turns it off), vs computer (greedy or random), or computer vs computer with a pace control. |
+| **Play** | The board fills the screen. A floating card shows whose turn it is. The toolbar has **Game**, which opens a drawer (Esc closes it) with the mode, move list (click to review), captured pieces, display options (including Reduced graphics) and Rotate. Beside it, a ‹ button slides out quick actions: Undo (Start / Pause against computers), Full screen and New game. Opening the drawer tucks them away again. **Details** in the drawer switches between *Essential*, which shows headlines only and is the default, and *Full*. Under Full, four toggles turn individual extras on or off: move hints, move and quiet-ply counters, why the game ended, and rule sources. While reviewing, a bar at the foot of the board steps through the moves (⏮ ◀ ▶ ⏭, or ← → Home End) and replays the game at Slow, Normal or Fast; stepping back plays the move in reverse, captured pieces returning from their tray. Modes: two players (the board turns to face the player to move after each move; Rotate overrides it only until the turn next changes hands, and a switch turns it off), vs computer (Random, Greedy or MCTS), or computer vs computer with a pace control; it waits for **Start** (in the drawer, or in the quick actions, where it takes Undo's place) and can be paused and resumed. |
 | **Learn** | 11 lessons: the board, each piece, check and checkmate, bare king, stalemate and draws. Most end with a one-move task that the engine checks. Like Play, the board fills the screen: a floating card shows the lesson, its task, feedback and a hint; **Lessons** opens the lesson list from the left and **Lesson** opens the lesson text from the right (both closed by default, Esc closes them); a ‹ button slides out Reset board, previous and next lesson, and Full screen. `tests/test_lessons.py` checks that every lesson position is legal and every task can be solved. |
 | **Rules** | A compact reference: setup, the pieces and how a game ends. The sources behind each rule are in `docs/RULES.md`, not in the app. |
 
@@ -249,6 +258,60 @@ Design intent and audience are captured in [PRODUCT.md](PRODUCT.md).
 
 ---
 
+## Search and network
+
+Milestone 2 joins the rules engine to AlphaZero's two learned-search parts. The network is
+still untrained, so for now the search runs on noise plus the exact results of finished games.
+
+```python
+from chaturanga import GameState, move_to_str
+from chaturanga.mcts import MCTS, MCTSConfig
+from chaturanga.net import NetworkEvaluator, new_network
+
+evaluator = NetworkEvaluator(new_network(seed=0))         # untrained 6x64 ResNet, CPU or CUDA
+mcts = MCTS(evaluator, MCTSConfig(simulations=50), seed=0)
+
+state = GameState.from_fen("7k/7p/4K2P/8/8/8/8/R7 w")
+root = mcts.search(state)                                # 50 simulations from this position
+print(move_to_str(mcts.choose_move(root)))               # a1a8: mate, avoiding the stalemate trap
+print(MCTS.visit_counts(root), MCTS.root_value(root))    # visits per move, value for White
+pi = MCTS.policy_target(root)                            # 4,096-long training target (Milestone 3)
+```
+
+- **Network** (`chaturanga/net.py`): a residual CNN over the 15 input planes. The policy head gives
+  4,096 logits; the evaluator masks the illegal moves and applies a softmax. The value head gives
+  the expected result for the side to move, from −1 to 1. The size is set in `NetConfig`, and
+  `new_network(seed=…)` always builds the same weights for the same seed.
+- **Search** (`chaturanga/mcts.py`): each simulation descends by the PUCT rule
+  `Q + c_puct · P · √N / (1 + n)`, expands the first new position with the evaluator, and backs
+  the value up, changing its sign at each level. Finished games are scored exactly by the engine,
+  never by the network.
+- **Self-play controls:** Dirichlet noise at the root (`add_noise=True`), temperature for choosing
+  moves (`choose_move(root, temperature)`), and tree reuse: searching the position after the
+  opponent's reply keeps the work already done on it.
+- **Agent:** `make_agent("mcts")` plays with 50 simulations per move and no noise. It is the
+  "MCTS" computer opponent in the web app. The API server loads PyTorch and the network in the
+  background as it starts, so the first MCTS move is as quick as the rest.
+- **Tests** (`tests/test_mcts.py`, `tests/test_net.py`):
+  - the search finds mate, bare-king wins and the stalemate trap for both colours, with uniform
+    priors and with the untrained network;
+  - values have the right sign, visits add up, and only legal moves are searched;
+  - root noise, temperature, tree reuse, policy targets, network shapes, seeding and
+    checkpoints behave as intended.
+
+  Nine bugs planted in the search, one at a time, each made the tests fail.
+
+**Baseline results** (`scripts/mcts_benchmark.py --sims 50 --games 10 --threads 1`, Apple M1):
+
+| Untrained MCTS, 50 simulations per move | Wins | Draws | Losses | Notes |
+|---|:-:|:-:|:-:|---|
+| vs Random | 5 | 5 | 0 | Every win is a bare king; the draws reach the 300-ply cap |
+| vs Greedy | 0 | 0 | 10 | Greedy knows piece values; the untrained network does not yet |
+
+These are the numbers self-play training (Milestone 3) has to improve on.
+
+---
+
 ## Project structure
 
 ```
@@ -260,7 +323,9 @@ csf407-fable-chaturanga-zero/
 │   ├── zobrist.py           # position hashing for repetition detection
 │   ├── game.py              # GameState: legal moves, apply(), outcome()
 │   ├── encoding.py          # network input planes, action space, legal mask
-│   └── agents.py            # baseline players: random, greedy (2-ply material)
+│   ├── net.py               # policy-value ResNet, evaluator for MCTS, checkpoints
+│   ├── mcts.py              # PUCT Monte Carlo Tree Search
+│   └── agents.py            # players: random, greedy (2-ply material), MCTS
 ├── chaturanga_server/       # FastAPI app used by the web client (stateless)
 ├── web/                     # browser app (React + Three.js)
 │   └── src/
@@ -272,9 +337,10 @@ csf407-fable-chaturanga-zero/
 │       └── lib/             # API client, piece data, notation, sounds
 ├── tests/                   # pytest suite
 │   ├── reference.py         # independent, deliberately naive move generator
-│   └── test_*.py            # engine, agents, API server and lesson content
+│   └── test_*.py            # engine, search, network, agents, API server, lessons
 ├── scripts/
-│   └── random_play.py       # random-vs-random stress test and benchmark
+│   ├── random_play.py       # random-vs-random stress test and benchmark
+│   └── mcts_benchmark.py    # MCTS speed and matches against the baselines
 ├── docs/
 │   ├── RULES.md             # rules specification with source tallies
 │   └── Handouts/            # source PDFs cited in RULES.md (linked from there)
@@ -283,8 +349,8 @@ csf407-fable-chaturanga-zero/
 └── README.md
 ```
 
-Planned for later milestones: `chaturanga_zero/` (network, MCTS, self-play, training),
-`checkpoints/` and `runs/` (git-ignored training outputs).
+Planned for Milestone 3: self-play, the replay buffer and the training loop, with `checkpoints/`
+and `runs/` for (git-ignored) training outputs.
 
 ---
 
@@ -319,7 +385,7 @@ The full specification, with every source and the reference counts, is in [docs/
 
 ```
             ┌──────────────────┐   planes, legal mask    ┌────────────────────────┐
-            │  Rules engine    │ ──────────────────────▶ │  ResNet (4–6 blocks)   │
+            │  Rules engine    │ ──────────────────────▶ │  ResNet (6 × 64)       │
             │  chaturanga/     │                         │  policy head: 4096     │
             └──────────────────┘ ◀────────────────────── │  value head:  [-1, 1]  │
                    ▲    │           priors P(s,a), v(s)  └────────────────────────┘
@@ -381,6 +447,7 @@ enforce this for every collaborator, present and future:
 4. **Before every commit:**
    - Run `python -m pytest -q`; all tests must pass.
    - If you touched the engine, also run `python scripts/random_play.py --games 1000`.
+   - If you touched the search or the network, also run `python scripts/mcts_benchmark.py --games 4`.
    - If you touched `web/`, also run `cd web && npx tsc -b && npx oxlint src`.
 5. **Push the branch to your fork:**
    ```bash

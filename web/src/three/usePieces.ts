@@ -1,8 +1,9 @@
 /**
  * Gives every piece a stable identity across positions, so a move animates the moving piece
  * instead of re-creating the board, and a captured piece leaves its square for its place beside
- * the board. When the new position is not exactly one move on from the previous one (new game,
- * undo, review jump), identities are rebuilt from the board and the list of captures.
+ * the board. Going one move back (stepping back through a review) plays the move in reverse,
+ * bringing a captured piece back from its tray. Any other change (new game, a jump in review)
+ * rebuilds the identities from the board and the list of captures.
  */
 
 import { useState } from 'react'
@@ -16,9 +17,12 @@ export interface TrackedPiece {
   taken: number | null
 }
 
+type Move = { from: number; to: number }
+
 interface Snapshot {
   board: number[]
   ply: number
+  lastMove: Move | null
   pieces: TrackedPiece[]
 }
 
@@ -41,24 +45,49 @@ function sameExcept(a: number[], b: number[], skip: number[]) {
   return true
 }
 
-function advance(prev: Snapshot, board: number[], ply: number, lastMove: { from: number; to: number } | null, captured: number[]): Snapshot {
+function advance(prev: Snapshot, board: number[], ply: number, lastMove: Move | null, captured: number[]): Snapshot {
+  const next = (pieces: TrackedPiece[]): Snapshot => ({ board, ply, lastMove, pieces })
   const oneMoveOn =
     lastMove && ply === prev.ply + 1 &&
     prev.board[lastMove.from] !== 0 && board[lastMove.from] === 0 && board[lastMove.to] !== 0 &&
     sameExcept(prev.board, board, [lastMove.from, lastMove.to])
-  if (!oneMoveOn || !lastMove) return { board, ply, pieces: build(board, captured) }
-  const pieces = prev.pieces.map((p) => {
-    if (p.taken !== null) return p
-    if (p.sq === lastMove.to) return { ...p, taken: takenCount(prev.pieces, p.piece > 0) }
-    if (p.sq === lastMove.from) return { ...p, sq: lastMove.to, piece: board[lastMove.to] }
-    return p
-  })
-  return { board, ply, pieces }
+  if (oneMoveOn && lastMove) {
+    return next(prev.pieces.map((p) => {
+      if (p.taken !== null) return p
+      if (p.sq === lastMove.to) return { ...p, taken: takenCount(prev.pieces, p.piece > 0) }
+      if (p.sq === lastMove.from) return { ...p, sq: lastMove.to, piece: board[lastMove.to] }
+      return p
+    }))
+  }
+  const undone = prev.lastMove
+  const oneMoveBack =
+    undone && ply === prev.ply - 1 &&
+    prev.board[undone.from] === 0 && board[undone.from] !== 0 &&
+    sameExcept(prev.board, board, [undone.from, undone.to])
+  if (oneMoveBack && undone) {
+    // The piece that moved goes back (as it was before promoting); a piece it captured, the
+    // latest one taken of its colour, returns from the tray.
+    const back = board[undone.to]
+    let returning: TrackedPiece | null = null
+    if (back !== 0) {
+      for (const p of prev.pieces) {
+        if (p.taken !== null && p.piece === back && (returning === null || p.taken > (returning.taken ?? -1))) returning = p
+      }
+    }
+    if (back === 0 || returning) {
+      return next(prev.pieces.map((p) => {
+        if (p === returning) return { ...p, sq: undone.to, taken: null }
+        if (p.taken === null && p.sq === undone.to) return { ...p, sq: undone.from, piece: board[undone.from] }
+        return p
+      }))
+    }
+  }
+  return next(build(board, captured))
 }
 
 /** `captured` lists the pieces taken so far (signed codes), in the order they were taken. */
-export function usePieces(board: number[], ply: number, lastMove: { from: number; to: number } | null, captured: number[]) {
-  const [snap, setSnap] = useState<Snapshot>(() => ({ board, ply, pieces: build(board, captured) }))
+export function usePieces(board: number[], ply: number, lastMove: Move | null, captured: number[]) {
+  const [snap, setSnap] = useState<Snapshot>(() => ({ board, ply, lastMove, pieces: build(board, captured) }))
   if (snap.board !== board) {
     // Derive from the previous render's snapshot (React's "adjust state on prop change" pattern).
     const next = advance(snap, board, ply, lastMove, captured)

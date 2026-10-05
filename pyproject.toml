@@ -7,7 +7,7 @@ name = "chaturanga-zero"
 version = "0.1.0"
 description = "AlphaZero-style self-play agent for Chaturanga"
 requires-python = ">=3.10"
-dependencies = ["numpy>=1.24"]
+dependencies = ["numpy>=1.24", "torch>=2.4"]
 
 [project.optional-dependencies]
 server = ["fastapi>=0.115", "uvicorn[standard]>=0.30"]

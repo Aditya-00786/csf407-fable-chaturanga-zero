@@ -1,7 +1,11 @@
+import importlib.util
+
 import pytest
 
 pytest.importorskip("fastapi")
-pytest.importorskip("httpx")
+# Starlette's test client uses httpx2 (the successor to httpx), or httpx on older versions.
+if not (importlib.util.find_spec("httpx2") or importlib.util.find_spec("httpx")):
+    pytest.skip("the API tests need httpx2: pip install -e '.[dev]'", allow_module_level=True)
 
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -15,7 +19,7 @@ def test_health_and_meta():
     assert client.get("/api/health").json() == {"status": "ok"}
     meta = client.get("/api/meta").json()
     assert meta["rules"]["setup"] == "crosswise"
-    assert {a["id"] for a in meta["agents"]} == {"random", "greedy"}
+    assert {a["id"] for a in meta["agents"]} == {"random", "greedy", "mcts"}
 
 
 def test_initial_game():
@@ -58,7 +62,63 @@ def test_agent_move():
     assert r["game"]["history"][-1]["move"] == r["move"]
 
 
+def test_mcts_agent_move_is_legal_and_takes_a_free_win():
+    r = client.post("/api/agent-move", json={"moves": [], "agent": "mcts", "seed": 0}).json()
+    assert r["game"]["ply"] == 1 and r["game"]["history"][0]["move"] == r["move"]
+    trap = {"start_fen": "7k/7p/4K2P/8/8/8/8/R7 w", "moves": [], "agent": "mcts"}
+    assert client.post("/api/agent-move", json=trap).json()["move"] == "a1a8"
+
+
 def test_agent_move_rejects_unknown_agent_and_finished_games():
     assert client.post("/api/agent-move", json={"agent": "alphazero"}).status_code == 400
     over = {"start_fen": "k7/7p/1K6/8/8/8/8/6R1 w", "moves": ["g1g8"], "agent": "random"}
     assert client.post("/api/agent-move", json=over).status_code == 400
+
+
+def test_startup_loads_the_mcts_network_in_the_background():
+    import threading
+    import time
+
+    from chaturanga import agents
+
+    with TestClient(app) as started:  # runs the app's start-up hook
+        assert started.get("/api/health").json() == {"status": "ok"}  # answers while loading
+        for thread in threading.enumerate():
+            if thread.name == "mcts-warm-up":
+                thread.join(timeout=60)
+        deadline = time.time() + 60
+        while agents._evaluator is None and time.time() < deadline:
+            time.sleep(0.05)
+        assert agents._evaluator is not None
+
+
+def test_mcts_reports_a_failed_network_load_clearly(monkeypatch):
+    from chaturanga import agents
+
+    monkeypatch.setattr(agents, "_evaluator", None)
+    monkeypatch.setattr(agents, "_load_error", "reading PyTorch's files from disk timed out")
+    r = client.post("/api/agent-move", json={"moves": [], "agent": "mcts"})
+    assert r.status_code == 503
+    assert "could not be loaded" in r.json()["detail"] and "Restart the API server" in r.json()["detail"]
+    # The other computer players are unaffected.
+    assert client.post("/api/agent-move", json={"moves": [], "agent": "greedy"}).status_code == 200
+
+
+def test_mcts_does_not_wait_forever_for_a_slow_load(monkeypatch):
+    import threading
+
+    import pytest
+
+    from chaturanga import agents
+
+    monkeypatch.setattr(agents, "_evaluator", None)
+    monkeypatch.setattr(agents, "_evaluator_lock", threading.Lock())
+    monkeypatch.setattr(agents, "NETWORK_WAIT_SECONDS", 0.2)
+    agents._evaluator_lock.acquire()  # another thread is "still loading"
+    try:
+        with pytest.raises(agents.NetworkUnavailable, match="still loading"):
+            agents.make_agent("mcts")
+        r = client.post("/api/agent-move", json={"moves": [], "agent": "mcts"})
+        assert r.status_code == 503 and "still loading" in r.json()["detail"]
+    finally:
+        agents._evaluator_lock.release()

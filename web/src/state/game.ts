@@ -10,10 +10,17 @@ import { moveText } from '../lib/board'
 import { playMoveSound } from '../lib/sound'
 
 export type Mode = 'hvh' | 'hvc' | 'cvc'
+
+/** The computer vs computer control's label: Start before the first move, then Pause / Resume. */
+export function runLabel(running: boolean, moves: number) {
+  return running ? 'Pause' : moves === 0 ? 'Start' : 'Resume'
+}
 export type Pace = 'slow' | 'normal' | 'fast'
 
 const PACE_MS: Record<Pace, number> = { slow: 1400, normal: 700, fast: 220 }
 const HUMAN_OPPONENT_DELAY = 420
+/** Time on each position during a replay; long enough for the move's animation to finish. */
+const REPLAY_MS: Record<Pace, number> = { slow: 1700, normal: 1000, fast: 520 }
 
 interface GameStore {
   mode: Mode
@@ -22,7 +29,7 @@ interface GameStore {
   whiteAgent: string
   blackAgent: string
   pace: Pace
-  running: boolean // computer vs computer: playing or paused
+  running: boolean // computer vs computer: playing, or waiting for Start / paused
   orientation: Color // side shown at the bottom of the board
   autoRotate: boolean // two players: turn the board to face the side to move
 
@@ -31,8 +38,10 @@ interface GameStore {
   status: 'connecting' | 'ready' | 'thinking' | 'error'
   error: string | null
 
-  reviewPly: number | null
+  reviewPly: number | null // null: showing the live game
   reviewGame: GameView | null
+  replaying: boolean // stepping through the review automatically
+  replaySpeed: Pace
 
   init: () => void
   newGame: () => void
@@ -44,13 +53,35 @@ interface GameStore {
   setAgent: (color: Color, id: string) => void
   setPace: (p: Pace) => void
   setRunning: (on: boolean) => void
+  /** Show the position after `ply` moves (0 to all of them); null returns to the live game. */
   review: (ply: number | null) => void
+  /** Step through the review: -1 / +1 a move, or to the start / end. Pauses a replay. */
+  step: (to: 'start' | 'back' | 'forward' | 'end') => void
+  /** Replay the game from the start (or carry on from the reviewed position). */
+  startReplay: () => void
+  stopReplay: () => void
+  setReplaySpeed: (p: Pace) => void
   flip: () => void
   setAutoRotate: (on: boolean) => void
 }
 
 let generation = 0
 let timer: ReturnType<typeof setTimeout> | null = null
+let replayTimer: ReturnType<typeof setTimeout> | null = null
+// Positions already fetched for review, by move sequence: stepping back and forth is instant.
+const reviewCache = new Map<string, GameView>()
+// The position being fetched for review, if any. The reviewed ply and its position are only
+// shown together, so the board, status and review bar never show a half-updated state.
+let pendingPly: number | null = null
+
+const reviewKey = (moves: string[], ply: number) => moves.slice(0, ply).join(' ')
+
+/** Fetch a review position into the cache ahead of need (the neighbours of the one on show). */
+function prefetch(moves: string[], ply: number) {
+  if (ply < 0 || ply >= moves.length) return
+  const key = reviewKey(moves, ply)
+  if (!reviewCache.has(key)) void api.game(moves.slice(0, ply)).then((v) => reviewCache.set(key, v), () => {})
+}
 
 function soundFor(view: GameView) {
   const last = view.history[view.history.length - 1]
@@ -107,11 +138,69 @@ export const useGame = create<GameStore>((set, get) => {
     try {
       const game = await api.game(moves)
       if (gen !== generation) return
-      set({ moves, game, status: 'ready', error: null, reviewPly: null, reviewGame: null })
+      if (replayTimer) clearTimeout(replayTimer)
+      pendingPly = null
+      set({ moves, game, status: 'ready', error: null, reviewPly: null, reviewGame: null, replaying: false })
       schedule()
     } catch (err) {
       if (gen === generation) fail(err)
     }
+  }
+
+  // Advance a running replay once the position on show has loaded; stop at the last move.
+  const scheduleReplay = () => {
+    if (replayTimer) clearTimeout(replayTimer)
+    replayTimer = null
+    const s = get()
+    if (!s.replaying || s.reviewPly === null) return
+    if (s.reviewPly >= s.moves.length) {
+      set({ replaying: false })
+      return
+    }
+    replayTimer = setTimeout(() => {
+      const t = get()
+      if (t.replaying && t.reviewPly !== null) reviewAt(t.reviewPly + 1)
+    }, REPLAY_MS[s.replaySpeed])
+  }
+
+  const reviewAt = (ply: number | null) => {
+    const s = get()
+    if (ply === null || ply > s.moves.length || !s.game) {
+      if (replayTimer) clearTimeout(replayTimer)
+      pendingPly = null
+      set({ reviewPly: null, reviewGame: null, replaying: false })
+      generation++
+      schedule()
+      return
+    }
+    if (timer) clearTimeout(timer)
+    const gen = ++generation
+    const moves = s.moves
+    const show = (reviewGame: GameView) => {
+      pendingPly = null
+      set({ reviewPly: ply, reviewGame, status: 'ready' })
+      prefetch(moves, ply + 1)
+      prefetch(moves, ply - 1)
+      scheduleReplay()
+    }
+    const key = reviewKey(moves, ply)
+    const known = ply === moves.length ? s.game : reviewCache.get(key)
+    if (known) {
+      show(known)
+      return
+    }
+    pendingPly = ply
+    void api.game(moves.slice(0, ply)).then(
+      (reviewGame) => {
+        reviewCache.set(key, reviewGame)
+        if (gen === generation) show(reviewGame)
+      },
+      (err) => {
+        if (gen !== generation) return
+        pendingPly = null
+        fail(err)
+      },
+    )
   }
 
   return {
@@ -130,13 +219,16 @@ export const useGame = create<GameStore>((set, get) => {
     error: null,
     reviewPly: null,
     reviewGame: null,
+    replaying: false,
+    replaySpeed: 'normal',
 
     init: () => {
       if (!get().game) void load([])
     },
 
     newGame: () => {
-      set({ status: get().game ? 'ready' : 'connecting' })
+      // Computer vs computer waits for Start rather than beginning on its own.
+      set({ status: get().game ? 'ready' : 'connecting', running: get().mode !== 'cvc' })
       void load([])
     },
 
@@ -173,7 +265,9 @@ export const useGame = create<GameStore>((set, get) => {
     },
 
     setMode: (mode) => {
-      set(mode === 'hvc' ? { mode, running: true, orientation: get().humanColor } : { mode, running: true })
+      // Switching to computer vs computer does not start it: the user presses Start.
+      const running = mode !== 'cvc'
+      set(mode === 'hvc' ? { mode, running, orientation: get().humanColor } : { mode, running })
       generation++
       schedule()
     },
@@ -195,20 +289,33 @@ export const useGame = create<GameStore>((set, get) => {
     setAutoRotate: (autoRotate) => set({ autoRotate }),
 
     review: (ply) => {
+      set({ replaying: false })
+      reviewAt(ply)
+    },
+
+    step: (to) => {
       const s = get()
-      if (ply === null || ply >= s.moves.length) {
-        set({ reviewPly: null, reviewGame: null })
-        generation++
-        schedule()
-        return
-      }
-      if (timer) clearTimeout(timer)
-      const gen = ++generation
-      set({ reviewPly: ply, status: 'ready' })
-      void api.game(s.moves.slice(0, ply)).then(
-        (reviewGame) => gen === generation && set({ reviewGame }),
-        (err) => gen === generation && fail(err),
-      )
+      const total = s.moves.length
+      const at = pendingPly ?? s.reviewPly ?? total
+      const target = to === 'start' ? 0 : to === 'end' ? total : Math.min(total, Math.max(0, at + (to === 'back' ? -1 : 1)))
+      set({ replaying: false })
+      if (target !== s.reviewPly) reviewAt(target)
+    },
+
+    startReplay: () => {
+      const s = get()
+      if (s.moves.length === 0) return
+      set({ replaying: true })
+      if (s.reviewPly === null || s.reviewPly >= s.moves.length) reviewAt(0)
+      else scheduleReplay()
+    },
+    stopReplay: () => {
+      if (replayTimer) clearTimeout(replayTimer)
+      set({ replaying: false })
+    },
+    setReplaySpeed: (replaySpeed) => {
+      set({ replaySpeed })
+      scheduleReplay() // restart the wait at the new speed
     },
   }
 })

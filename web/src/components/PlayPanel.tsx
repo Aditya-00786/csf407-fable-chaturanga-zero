@@ -2,15 +2,20 @@ import { FlipVertical2, Pause, Play } from 'lucide-react'
 import { useEffect, useMemo, useRef } from 'react'
 import type { Color, GameView } from '../lib/api'
 import { colorName, describeMove, explainOutcome, squareName } from '../lib/board'
-import { useGame, type Mode, type Pace } from '../state/game'
+import { runLabel, useGame, type Mode, type Pace } from '../state/game'
 import { useDetail, useSettings, type DetailPart } from '../state/settings'
 import { PieceGlyph } from './PieceGlyph'
 import { DrawerHeader } from './stage'
 import { Button, Collapse, SectionTitle, Segmented, Switch } from './ui'
 
 const AGENTS = [
-  { value: 'greedy', label: 'Greedy', title: 'Looks two plies ahead: grabs material, avoids losing pieces' },
   { value: 'random', label: 'Random', title: 'Plays a random legal move' },
+  { value: 'greedy', label: 'Greedy', title: 'Looks two plies ahead: grabs material, avoids losing pieces' },
+  {
+    value: 'mcts',
+    label: 'MCTS',
+    title: 'Monte Carlo Tree Search: 50 simulations per move, guided by a network that is not trained yet',
+  },
 ]
 
 const DETAIL_PARTS: { part: DetailPart; label: string }[] = [
@@ -38,7 +43,7 @@ function Swatch({ color }: { color: Color }) {
  * the headline plus urgent tags (check, thinking); "Full" can add the hint and the counters.
  */
 export function Status({ view }: { view: GameView | null }) {
-  const { mode, humanColor, status, reviewPly } = useGame()
+  const { mode, humanColor, status, reviewPly, running, moves } = useGame()
   const showHint = useDetail('hints')
   const showCounters = useDetail('counters')
   if (!view) {
@@ -66,7 +71,9 @@ export function Status({ view }: { view: GameView | null }) {
   } else if (mode === 'hvc') {
     hint = side === humanColor ? 'Your move. Select a piece to see where it can go.' : "The computer's move."
   } else if (mode === 'cvc') {
-    hint = 'Computer against computer.'
+    hint = running
+      ? 'Computer against computer.'
+      : moves.length === 0 ? 'Press Start to begin.' : 'Paused. Press Resume to carry on.'
   } else {
     hint = 'Select a piece to see where it can go.'
   }
@@ -202,7 +209,7 @@ export function PlayPanel({ view, onClose, onRotate }: { view: GameView | null; 
             <Switch label="Turn the board after each move" checked={g.autoRotate} onChange={g.setAutoRotate} />
           )}
           {g.mode === 'hvc' && (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-3">
               <Segmented<Color> label="You play" value={g.humanColor} onChange={g.setHumanColor} size="sm"
                 options={[{ value: 1, label: 'White' }, { value: -1, label: 'Black' }]} />
               <Segmented label="Opponent" value={g.opponent} onChange={g.setOpponent} size="sm" options={AGENTS} />
@@ -210,18 +217,16 @@ export function PlayPanel({ view, onClose, onRotate }: { view: GameView | null; 
           )}
           {g.mode === 'cvc' && (
             <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <Segmented label="White" value={g.whiteAgent} onChange={(v) => g.setAgent(1, v)} size="sm" options={AGENTS} />
-                <Segmented label="Black" value={g.blackAgent} onChange={(v) => g.setAgent(-1, v)} size="sm" options={AGENTS} />
-              </div>
+              <Segmented label="White" value={g.whiteAgent} onChange={(v) => g.setAgent(1, v)} size="sm" options={AGENTS} />
+              <Segmented label="Black" value={g.blackAgent} onChange={(v) => g.setAgent(-1, v)} size="sm" options={AGENTS} />
               <div className="flex items-end gap-3">
                 <div className="flex-1">
                   <Segmented<Pace> label="Pace" value={g.pace} onChange={g.setPace} size="sm"
                     options={[{ value: 'slow', label: 'Slow' }, { value: 'normal', label: 'Normal' }, { value: 'fast', label: 'Fast' }]} />
                 </div>
-                <Button size="sm" onClick={() => g.setRunning(!g.running)} disabled={!!view?.outcome}
-                  icon={g.running ? <Pause size={15} /> : <Play size={15} />}>
-                  {g.running ? 'Pause' : 'Resume'}
+                <Button size="sm" variant={g.running ? 'secondary' : 'primary'} onClick={() => g.setRunning(!g.running)}
+                  disabled={!!view?.outcome} icon={g.running ? <Pause size={15} /> : <Play size={15} />}>
+                  {runLabel(g.running, g.moves.length)}
                 </Button>
               </div>
             </div>

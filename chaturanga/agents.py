@@ -1,11 +1,13 @@
-"""Baseline players.
+"""Players: baselines and the MCTS agent.
 
-Used as the "Computer" opponent in the web app before the AlphaZero agent exists, and as
-benchmark opponents in Milestone 4. They use hand-written material values, which is
-fine for baselines. The AlphaZero agent itself gets no such knowledge.
+Random and Greedy are the "Computer" opponents in the web app and the benchmark opponents for
+Milestone 4. Greedy uses hand-written material values, which is fine for a baseline. The MCTS
+agent gets no such knowledge: only the rules, the results of finished games, and its network.
 """
 
+import errno
 import random
+import threading
 from typing import Optional
 
 from .constants import ASHVA, GAJA, MANTRI, PADATI, RAJA, RATHA
@@ -73,7 +75,82 @@ class GreedyAgent:
         return worst
 
 
-AGENTS = {agent.id: agent for agent in (RandomAgent, GreedyAgent)}
+class NetworkUnavailable(RuntimeError):
+    """The MCTS network is not available: it failed to load, or is still loading."""
+
+
+# How long an MCTS move waits for the network while another thread is still loading it.
+NETWORK_WAIT_SECONDS = 60.0
+
+_evaluator = None
+_load_error: Optional[str] = None
+_evaluator_lock = threading.Lock()
+
+
+def _describe(exc: BaseException) -> str:
+    if isinstance(exc, OSError) and exc.errno == errno.ETIMEDOUT:
+        return ("reading PyTorch's files from disk timed out. If the project is in a folder synced by "
+                "iCloud Drive, macOS may have offloaded them; keep the folder downloaded")
+    return f"{type(exc).__name__}: {exc}"
+
+
+def untrained_evaluator(timeout: Optional[float] = None):
+    """One untrained network (fixed seed, so every run plays the same), shared by all MCTS agents.
+
+    Built on first use. A caller arriving while another thread builds it waits for that build, for
+    at most `timeout` seconds (None: as long as it takes). Raises NetworkUnavailable if the build
+    failed or the wait ran out.
+
+    A failed load is final for the process: a half-imported PyTorch cannot be imported again (it
+    fails registering its operators twice), so later calls report the first failure instead.
+    """
+    global _evaluator, _load_error
+    if _evaluator is not None:
+        return _evaluator
+    if not _evaluator_lock.acquire(timeout=-1 if timeout is None else timeout):
+        raise NetworkUnavailable("The MCTS network is still loading. Try again in a moment.")
+    try:
+        if _evaluator is None and _load_error is None:
+            try:
+                from .net import NetworkEvaluator, new_network
+
+                _evaluator = NetworkEvaluator(new_network(seed=0))
+            except Exception as exc:
+                _load_error = _describe(exc)
+        if _evaluator is None:
+            raise NetworkUnavailable(f"The MCTS network could not be loaded: {_load_error}. "
+                                     "Restart the API server to try again.")
+        return _evaluator
+    finally:
+        _evaluator_lock.release()
+
+
+def warm_up() -> None:
+    """Load PyTorch and the network and run one evaluation, so the first MCTS move is as fast as
+    the rest. Importing PyTorch alone takes a few seconds."""
+    untrained_evaluator().evaluate(GameState.initial())
+
+
+class MCTSAgent:
+    id = "mcts"
+    name = "MCTS (untrained)"
+    description = ("Searches 50 positions ahead for every move, guided by a network that has not been trained "
+                   "yet: it knows only the rules and how games end.")
+
+    def __init__(self, seed: Optional[int] = None, simulations: int = 50, evaluator=None):
+        from .mcts import MCTS, MCTSConfig
+
+        # No root noise and the most visited move: this agent plays to win, it is not exploring.
+        if evaluator is None:
+            evaluator = untrained_evaluator(timeout=NETWORK_WAIT_SECONDS)
+        self.mcts = MCTS(evaluator, MCTSConfig(simulations=simulations), seed)
+
+    def select_move(self, state: GameState) -> int:
+        root = self.mcts.search(state)
+        return self.mcts.choose_move(root, temperature=0.0)
+
+
+AGENTS = {agent.id: agent for agent in (RandomAgent, GreedyAgent, MCTSAgent)}
 
 
 def make_agent(agent_id: str, seed: Optional[int] = None):

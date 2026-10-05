@@ -1,13 +1,14 @@
-import { AlertTriangle, History, Maximize, Minimize, PanelRight, RotateCcw, Undo2, X } from 'lucide-react'
+import { AlertTriangle, History, Maximize, Minimize, Pause, PanelRight, Play, RotateCcw, Undo2, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { PlayPanel, Status } from '../components/PlayPanel'
+import { ReviewBar } from '../components/ReviewBar'
 import { Covered, Drawer, DrawerToggle, Floating, QuickActions, QuickToggle, ToolButton } from '../components/stage'
 import { Button } from '../components/ui'
 import type { Color } from '../lib/api'
 import { captures, explainOutcome, INITIAL_BOARD } from '../lib/board'
 import { useFullscreen } from '../lib/useFullscreen'
-import { useGame } from '../state/game'
+import { runLabel, useGame } from '../state/game'
 import { prefersReducedMotion, useDetail } from '../state/settings'
 import { BoardScene } from '../three/BoardScene'
 
@@ -73,7 +74,7 @@ export function PlayView() {
   useEffect(() => init(), [init]) // init is stable; it changes only when hot reload rebuilds the store
 
   const [panelOpen, setPanelOpen] = useState(false)
-  // Quick actions (Undo, Full screen, New game) stay tucked away until asked for.
+  // Quick actions (Undo, or Start / Pause against computers; Full screen; New game) stay tucked away until asked for.
   const [quickOpen, setQuickOpen] = useState(false)
   const [fullscreen, toggleFullscreen, canFullscreen] = useFullscreen()
   const panelRef = useRef<HTMLElement>(null)
@@ -138,8 +139,14 @@ export function PlayView() {
         <Covered by={panelOpen} onHidden={() => setQuickOpen(false)} className="shrink-0">
           <Floating className="flex items-center gap-0.5 p-1">
             <QuickActions id="quick-actions" open={quickOpen}>
-              <ToolButton label="Undo" icon={<Undo2 size={17} />} onClick={g.undo}
-                disabled={busy || g.moves.length === 0 || (g.status === 'thinking' && g.mode !== 'cvc')} />
+              {g.mode === 'cvc' ? (
+                // Computer vs computer has no move of the user's to take back; it needs Start / Pause instead.
+                <ToolButton label={runLabel(g.running, g.moves.length)} icon={g.running ? <Pause size={17} /> : <Play size={17} />}
+                  onClick={() => g.setRunning(!g.running)} disabled={busy || !!g.game?.outcome || reviewing} />
+              ) : (
+                <ToolButton label="Undo" icon={<Undo2 size={17} />} onClick={g.undo}
+                  disabled={busy || g.moves.length === 0 || g.status === 'thinking'} />
+              )}
               {canFullscreen && (
                 <ToolButton label={fullscreen ? 'Exit full screen' : 'Full screen'}
                   icon={fullscreen ? <Minimize size={17} /> : <Maximize size={17} />} onClick={toggleFullscreen} />
@@ -147,7 +154,7 @@ export function PlayView() {
               <ToolButton label="New game" icon={<RotateCcw size={17} />} onClick={g.newGame} disabled={busy} />
             </QuickActions>
             <QuickToggle open={quickOpen} controls="quick-actions" onClick={() => setQuickOpen((open) => !open)}
-              describe="undo, full screen, new game" />
+              describe={`${g.mode === 'cvc' ? 'start or pause' : 'undo'}, full screen, new game`} />
             <DrawerToggle
               ref={toggleRef}
               open={panelOpen}
@@ -175,15 +182,7 @@ export function PlayView() {
           </div>
         </div>
       )}
-      {reviewing && (
-        <div className="absolute inset-x-0 bottom-5 z-[var(--z-stage-overlay)] flex justify-center px-4">
-          <div className="flex items-center gap-3 rounded-full border border-line-strong bg-surface py-1.5 pr-1.5 pl-4 text-[13px] text-ink shadow-md">
-            <History size={15} className="text-accent" />
-            Reviewing after ply {g.reviewPly}
-            <Button size="sm" variant="primary" onClick={() => g.review(null)}>Back to game</Button>
-          </div>
-        </div>
-      )}
+      {reviewing && <ReviewBar />}
       <GameEnd />
 
       {/* Game panel: a drawer over the board, closed by default. */}
