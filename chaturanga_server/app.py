@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from chaturanga import DEFAULT_RULES, GameState, move_to_str, parse_move
-from chaturanga.agents import AGENTS, make_agent, warm_up
+from chaturanga.agents import AGENTS, NetworkUnavailable, make_agent, warm_up
 from chaturanga.constants import PADATI
 from chaturanga.tables import LAST_RANK
 
@@ -92,8 +92,8 @@ def _warm_up_mcts() -> None:
     t = time.perf_counter()
     try:
         warm_up()
-    except Exception:  # the other agents still work; MCTS will try again on first use
-        log.exception("Could not load the MCTS network")
+    except NetworkUnavailable as exc:  # the other agents still work; MCTS moves report this error
+        log.error("%s", exc)
         return
     log.info("MCTS network ready (%.1f s)", time.perf_counter() - t)
 
@@ -142,6 +142,10 @@ def agent_move(req: AgentRequest):
         agent = make_agent(req.agent, req.seed)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+    except NetworkUnavailable as exc:
+        # 503: the server is fine, the MCTS network is not (yet) available. The app shows the
+        # message with a Retry button.
+        raise HTTPException(503, str(exc)) from exc
     move = agent.select_move(state)
     history.append(_history_entry(state, move))
     state = state.apply(move)
