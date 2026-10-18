@@ -4,7 +4,6 @@ import type { Color, GameView } from '../lib/api'
 import { colorName, describeMove, explainOutcome, squareName } from '../lib/board'
 import { runLabel, useGame, type AgentSlot, type Level, type Mode, type Pace } from '../state/game'
 import { useDetail, useSettings, type DetailPart } from '../state/settings'
-import { ASHVA, GLYPHS, PADATI, RAJA, RATHA, type PieceKind } from '../lib/pieces'
 import { PieceGlyph } from './PieceGlyph'
 import { DrawerHeader } from './stage'
 import { Button, Collapse, SectionTitle, Segmented, Switch } from './ui'
@@ -31,16 +30,16 @@ const LEVELS: { value: Level; label: string; note: string }[] = [
   { value: 'impossible', label: 'Impossible', note: '800 simulations per move, always its best move; about a second to think.' },
 ]
 
-// Each level is drawn as a piece of rising rank: foot soldier, horse, chariot, king.
-const LEVEL_PIECE: PieceKind[] = [PADATI, ASHVA, RATHA, RAJA]
-
-/** A level's piece, as a one-colour silhouette that lights up in brass when chosen. */
-function LevelPiece({ level, on }: { level: number; on: boolean }) {
+/** One to four dots under a level's name: how strong it plays. */
+function Pips({ level, on }: { level: number; on: boolean }) {
   return (
-    <svg viewBox="0 0 100 100" width={24} height={24} aria-hidden
-      className={`shrink-0 transition-colors duration-200 ${on ? 'text-accent' : 'text-ink-muted'}`}>
-      <path d={GLYPHS[LEVEL_PIECE[level]]} fillRule="evenodd" fill="currentColor" />
-    </svg>
+    <span aria-hidden className="flex gap-[3px]">
+      {[0, 1, 2, 3].map((i) => (
+        <span key={i} className={`h-[7px] w-[7px] rounded-full transition-colors duration-200 ${
+          i > level ? 'bg-line' : on ? 'bg-accent' : 'bg-ink-muted'
+        }`} />
+      ))}
+    </span>
   )
 }
 
@@ -66,8 +65,8 @@ function LevelPicker({ slot }: { slot: AgentSlot }) {
                 }`}>
                 <input type="radio" name={name} className="peer sr-only" checked={on} onChange={() => setLevel(slot, l.value)} />
                 <span className="pointer-events-none absolute inset-0 rounded-md peer-focus-visible:outline-2 peer-focus-visible:outline-accent" />
-                <LevelPiece level={i} on={on} />
                 {l.label}
+                <Pips level={i} on={on} />
               </label>
             )
           })}
