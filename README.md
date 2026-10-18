@@ -47,6 +47,7 @@ the same commit that completes the work.
 - [Essential commands](#essential-commands)
 - [Using the engine](#using-the-engine)
 - [Search and network](#search-and-network)
+- [Training by self-play](#training-by-self-play)
 - [Web app](#web-app)
 - [Project structure](#project-structure)
 - [The rules in brief](#the-rules-in-brief)
@@ -62,14 +63,19 @@ the same commit that completes the work.
 - **Researched ruleset.** Every rule is backed by historical sources, and contested rules are
   settled by counting references. See [docs/RULES.md](docs/RULES.md).
 - **Verified rules engine.** A cross-check against an independent reference move generator and a
-  10,000-game random-play stress test; 129 tests in all.
+  10,000-game random-play stress test; 166 tests in all.
 - **AlphaZero search.** PUCT Monte Carlo Tree Search guided by a residual policy-value network
   (6 blocks × 64 filters, about 1M parameters), with exact values for finished games, root noise,
   temperature and tree reuse for self-play. Planted bugs in the search are all caught by the tests.
+- **Self-play training.** Parallel self-play, a replay buffer and AlphaZero's loss, with every
+  generation evaluated, checkpointed and logged. Runs resume after any interruption, on a laptop
+  or on Colab, and teammates can contribute self-play games from their own machines.
 - **Browser app.** A carved rosewood-and-brass 3D board in light and dark themes, with:
   - a figural piece set after Indian court chess sets: a crowned Raja, a turbaned Mantri, a temple-car
     Ratha, a caparisoned Gaja with its howdah, a Marwari Ashva, and spear-and-shield Padatis;
-  - Human vs Human, Human vs Computer and Computer vs Computer;
+  - Human vs Human, Human vs Computer and Computer vs Computer, including the trained agent at four
+    levels;
+  - a Watch training page that follows a run live and replays its self-play games;
   - 11 interactive lessons, each position checked against the engine;
   - captured pieces carried off to trays beside the board, on the capturing player's right;
   - an explanation of why every game ended.
@@ -156,6 +162,12 @@ The commands below assume the virtual environment is active. If it isn't, prefix
 | Show all script options | `python scripts/random_play.py --help` |
 | MCTS speed only | `python scripts/mcts_benchmark.py --speed-only --threads 1` |
 | Untrained MCTS vs Random and Greedy | `python scripts/mcts_benchmark.py --sims 50 --games 10 --threads 1` |
+| Trained network vs Random and Greedy | `python scripts/mcts_benchmark.py --checkpoint checkpoints/best.pt --threads 1` |
+| Train (20 generations of 50 games) | `python scripts/train.py` (Ctrl+C stops; the same command resumes) |
+| Train further | `python scripts/train.py --generations 40` |
+| A quick test run | `python scripts/train.py --run quick --games 8 --generations 2 --eval-games 4` |
+| Plot a run's curves | `python scripts/plot_training.py` (needs `pip install -e ".[train]"`) |
+| Self-play games for a teammate's run | `python scripts/selfplay.py --checkpoint gen_0005.pt --games 50 --name <you>` |
 | Start the API server | `python -m chaturanga_server` (add `--reload` while developing) |
 | Start the web dev server | `npm run dev --prefix web`, then open http://localhost:5173 |
 | Type-check and lint the web app | `cd web && npx tsc -b && npx oxlint src` |
@@ -231,9 +243,10 @@ The server keeps no game state, so undo and review are just shorter move lists.
 
 | Screen | What it does |
 |---|---|
-| **Play** | The board fills the screen. A floating card shows whose turn it is. The toolbar has **Game**, which opens a drawer (Esc closes it) with the mode, move list (click to review), captured pieces, display options (including Reduced graphics) and Rotate. Beside it, a ‹ button slides out quick actions: Undo (Start / Pause against computers), Full screen and New game. Opening the drawer tucks them away again. **Details** in the drawer switches between *Essential*, which shows headlines only and is the default, and *Full*. Under Full, four toggles turn individual extras on or off: move hints, move and quiet-ply counters, why the game ended, and rule sources. While reviewing, a bar at the foot of the board steps through the moves (⏮ ◀ ▶ ⏭, or ← → Home End) and replays the game at Slow, Normal or Fast; stepping back plays the move in reverse, captured pieces returning from their tray. Modes: two players (the board turns to face the player to move after each move; Rotate overrides it only until the turn next changes hands, and a switch turns it off), vs computer (Random, Greedy or MCTS), or computer vs computer with a pace control; it waits for **Start** (in the drawer, or in the quick actions, where it takes Undo's place) and can be paused and resumed. |
+| **Play** | The board fills the screen. A floating card shows whose turn it is. The toolbar has **Game**, which opens a drawer (Esc closes it) with the mode, move list (click to review), captured pieces, display options (including Reduced graphics) and Rotate. Beside it, a ‹ button slides out quick actions: Undo (Start / Pause against computers), Full screen and New game. Opening the drawer tucks them away again. **Details** in the drawer switches between *Essential*, which shows headlines only and is the default, and *Full*. Under Full, four toggles turn individual extras on or off: move hints, move and quiet-ply counters, why the game ended, and rule sources. While reviewing, a bar at the foot of the board steps through the moves (⏮ ◀ ▶ ⏭, or ← → Home End) and replays the game at Slow, Normal or Fast; stepping back plays the move in reverse, captured pieces returning from their tray. Modes: two players (the board turns to face the player to move after each move; Rotate overrides it only until the turn next changes hands, and a switch turns it off), vs computer (Random, Greedy, MCTS or Trained; the trained agent has four levels, Easy, Medium, Hard and Impossible, set by its search budget), or computer vs computer with a pace control; it waits for **Start** (in the drawer, or in the quick actions, where it takes Undo's place) and can be paused and resumed. |
 | **Learn** | 11 lessons: the board, each piece, check and checkmate, bare king, stalemate and draws. Most end with a one-move task that the engine checks. Like Play, the board fills the screen: a floating card shows the lesson, its task, feedback and a hint; **Lessons** opens the lesson list from the left and **Lesson** opens the lesson text from the right (both closed by default, Esc closes them); a ‹ button slides out Reset board, previous and next lesson, and Full screen. `tests/test_lessons.py` checks that every lesson position is legal and every task can be solved. |
 | **Rules** | A compact reference: setup, the pieces and how a game ends. The sources behind each rule are in `docs/RULES.md`, not in the app. |
+| **Training** | Follows a training run from `runs/`: what it is doing now (self-play, training or evaluation, with progress), the policy and value losses (including the loss on each generation's new games before training on them, against the score of always predicting a draw), the evaluation scores, the share of decisive self-play games, and a table of every generation. **Watch** on a row replays that generation's shortest decisive self-play game on the Play board. It refreshes every few seconds while the run is live. |
 
 **Camera:** drag to orbit the board. Zoom with the mouse wheel, a two-finger scroll, a trackpad pinch, or a two-finger pinch on a touch screen.
 
@@ -291,7 +304,8 @@ pi = MCTS.policy_target(root)                            # 4,096-long training t
   opponent's reply keeps the work already done on it.
 - **Agent:** `make_agent("mcts")` plays with 50 simulations per move and no noise. It is the
   "MCTS" computer opponent in the web app. The API server loads PyTorch and the network in the
-  background as it starts, so the first MCTS move is as quick as the rest.
+  background as it starts, so the first MCTS move is as quick as the rest. The trained agent,
+  `make_agent("zero", level=…)`, is described under [Training by self-play](#training-by-self-play).
 - **Tests** (`tests/test_mcts.py`, `tests/test_net.py`):
   - the search finds mate, bare-king wins and the stalemate trap for both colours, with uniform
     priors and with the untrained network;
@@ -312,6 +326,103 @@ These are the numbers self-play training (Milestone 3) has to improve on.
 
 ---
 
+## Training by self-play
+
+Milestone 3 closes AlphaZero's loop: the network plays itself with MCTS, learns from those games,
+and the improved network plays the next batch.
+
+```bash
+python scripts/train.py                  # run "main": 20 generations of 50 games, about an hour on an M1
+python scripts/plot_training.py          # runs/main/training.png
+```
+
+**One generation**
+1. **Self-play.** The newest network plays 50 games against itself, one process per CPU core
+   (cores − 2 by default), several games per process sharing batched network calls. Each move
+   uses 50 simulations with Dirichlet noise at the root; for the first 30 plies the move is
+   sampled in proportion to the visit counts so openings vary, and after that the most visited
+   move is played. Every position becomes a training example: the board, the search's visit
+   shares (the policy target) and, once the game ends, the result for the side to move (the value
+   target).
+2. **Teammates' games.** Game files waiting in `runs/<run>/incoming/` are replayed move by move and
+   added if every move and visit count is legal under our rules; anything else is set aside in
+   `games/rejected/`.
+3. **Training.** Batches of 256 positions come from the replay buffer, the most recent 60,000
+   positions (about six generations). The loss is AlphaZero's: the value's squared error plus the
+   policy's cross-entropy against the visit shares, with weight decay in the AdamW optimiser. The
+   number of steps is set so each new position is sampled about four times (at most 300 steps):
+   more passes over a few games make the value head memorise which game a position came from.
+4. **Evaluation.** The new network plays 20 games against the previous generation and 20 against
+   Greedy, without noise (sampling only its first 8 plies, so games differ).
+
+Self-play always uses the newest network, as AlphaZero does. The **best** network is the one that
+has scored highest against Greedy (later generations win ties). It is copied to
+`checkpoints/best.pt`, where the app's Trained opponent picks it up without a restart.
+
+**What a run keeps** (in `runs/<run>/`, git-ignored)
+
+| Path | Contents |
+|---|---|
+| `config.json` | The run's settings |
+| `metrics.jsonl` | One line per event: training losses every 10 steps, self-play results, the loss on each generation's new games before training on them, evaluations |
+| `status.json` | What the run is doing right now; the app's Training page reads it |
+| `games/gen_NNNN.jsonl.gz` | Every self-play game: the moves, the visit counts at each move and the result (about 40 KB per game) |
+| `checkpoints/gen_NNNN.pt` | The network after each generation, plus `best.pt` and `train_state.pt` (the optimiser) |
+| `incoming/` | Drop teammates' game files here |
+
+**Stopping and resuming.** Ctrl+C at any point, then run the same command: the run carries on from
+the last finished generation, refilling the replay buffer from the saved games (and reusing a
+generation's self-play games if only its training was interrupted). To train beyond the planned
+generations, raise `--generations`; nothing caps it.
+
+**Measuring honestly.** A network can lower its training loss by memorising games. So before each
+generation trains on its new self-play games, the loss on those unseen games is logged too, and
+the value loss there is compared with the score of predicting a draw everywhere. The Training page
+and `plot_training.py` show both.
+
+**Team self-play.** Self-play is the slow part, and it parallelises across people as well as
+cores. Whoever runs the training shares a checkpoint (`runs/<run>/checkpoints/gen_NNNN.pt`);
+each teammate runs:
+
+```bash
+python scripts/selfplay.py --checkpoint gen_0005.pt --games 50 --name aadit
+```
+
+and sends back the `.jsonl.gz` file it writes, which goes into `runs/<run>/incoming/`. Game files
+are merged, not trained networks: averaging separately trained weights does not give a better
+network, but more games from the current network always help.
+
+**Colab.** [notebooks/train_colab.ipynb](notebooks/train_colab.ipynb) runs the same pipeline on a
+free Colab GPU and keeps the run in Google Drive, so a disconnect loses nothing: run the cells
+again and it resumes. The repository is private, so the notebook clones it with a read-only
+GitHub token stored in Colab's Secrets. Copy `checkpoints/best.pt` from Drive into your local
+`checkpoints/` to play against it, or the whole run into `runs/` to see it on the Training page.
+
+**Playing the trained agent.** In the app choose **Trained** as the opponent (or for either side
+in Computers mode) and a level:
+
+| Level | Simulations per move | Move choice |
+|---|:-:|---|
+| Easy | 10 | Sampled in proportion to visits: it often strays from its favourite |
+| Medium | 50 | Visits sharpened (temperature 0.5): usually its favourite |
+| Hard | 200 | Always the most visited move |
+| Impossible | 800 | Always the most visited move; about a second per move |
+
+From Python: `make_agent("zero", level="hard")`. The server reads the network from
+`checkpoints/best.pt`, or from the file named by `CHATURANGA_CHECKPOINT`; the Training page reads
+runs from `runs/`, or from `CHATURANGA_RUNS`.
+
+**Tests** (`tests/test_training.py`, `tests/test_training_api.py`): self-play records are legal,
+finished games that replay exactly; the same seed gives the same games, batched or one at a time;
+policy targets equal the search's visit distribution for both colours; tampered records (an
+illegal move, an illegal visit, a wrong result, an unfinished game) are rejected; the buffer keeps
+the newest games within its capacity; a small network overfits a fixed buffer (the loss and
+gradients work); a run trains, publishes, takes a teammate's games, rejects a tampered one, and
+resumes with its optimiser state; the trained agent plays at every level and picks up a newly
+published network; and the Training API lists runs, losses, generations and games.
+
+---
+
 ## Project structure
 
 ```
@@ -325,12 +436,17 @@ csf407-fable-chaturanga-zero/
 │   ├── encoding.py          # network input planes, action space, legal mask
 │   ├── net.py               # policy-value ResNet, evaluator for MCTS, checkpoints
 │   ├── mcts.py              # PUCT Monte Carlo Tree Search
-│   └── agents.py            # players: random, greedy (2-ply material), MCTS
+│   ├── selfplay.py          # self-play games (batched across games), game records, training examples
+│   ├── replay_buffer.py     # the most recent positions, sampled for training
+│   ├── training.py          # the generation loop: self-play, train, evaluate, checkpoint, resume
+│   └── agents.py            # players: random, greedy (2-ply material), MCTS, trained (four levels)
 ├── chaturanga_server/       # FastAPI app used by the web client (stateless)
+│   ├── app.py               # game and computer-move endpoints
+│   └── training_api.py      # read-only view of training runs, for the Training page
 ├── web/                     # browser app (React + Three.js)
 │   └── src/
 │       ├── three/           # 3D board, procedural pieces, highlights, animation
-│       ├── views/           # Play, Learn, Rules screens
+│       ├── views/           # Play, Learn, Rules, Training screens
 │       ├── components/      # top bar, side panel, shared controls
 │       ├── content/         # lessons.json (validated by tests/test_lessons.py)
 │       ├── state/           # game and settings stores (Zustand)
@@ -340,17 +456,20 @@ csf407-fable-chaturanga-zero/
 │   └── test_*.py            # engine, search, network, agents, API server, lessons
 ├── scripts/
 │   ├── random_play.py       # random-vs-random stress test and benchmark
-│   └── mcts_benchmark.py    # MCTS speed and matches against the baselines
+│   ├── mcts_benchmark.py    # MCTS speed and matches against the baselines (untrained or a checkpoint)
+│   ├── train.py             # Milestone 3: self-play training
+│   ├── selfplay.py          # self-play games for a teammate's run
+│   └── plot_training.py     # a run's loss and evaluation curves
+├── notebooks/
+│   └── train_colab.ipynb    # the same training on Google Colab, saved to Drive
 ├── docs/
 │   ├── RULES.md             # rules specification with source tallies
 │   └── Handouts/            # source PDFs cited in RULES.md (linked from there)
+├── runs/, checkpoints/      # training runs and the published network (git-ignored)
 ├── pyproject.toml           # package metadata and dependencies
 ├── PRODUCT.md               # product and design brief for the web app
 └── README.md
 ```
-
-Planned for Milestone 3: self-play, the replay buffer and the training loop, with `checkpoints/`
-and `runs/` for (git-ignored) training outputs.
 
 ---
 
