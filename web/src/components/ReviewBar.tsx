@@ -6,6 +6,7 @@
 import { History, Pause, Play, SkipBack, SkipForward, StepBack, StepForward } from 'lucide-react'
 import { useEffect, type ReactNode } from 'react'
 import { describeMove } from '../lib/board'
+import { href } from '../lib/route'
 import { useGame, type Pace } from '../state/game'
 import { Button, Segmented } from './ui'
 
@@ -37,7 +38,8 @@ function StepButton({ label, onClick, disabled, children }: {
 }
 
 export function ReviewBar() {
-  const { game, moves, reviewPly, replaying, replaySpeed, step, startReplay, stopReplay, setReplaySpeed, review } = useGame()
+  const { game, moves, reviewPly, replaying, replaySpeed, step, startReplay, stopReplay, setReplaySpeed, review, watching,
+    leaveWatch } = useGame()
   const total = moves.length
   const at = reviewPly ?? total
   // From the full game record, so the text always matches the move number on show.
@@ -101,7 +103,14 @@ export function ReviewBar() {
           <Segmented label="Replay speed" hideLabel size="sm" value={replaySpeed} onChange={setReplaySpeed} options={SPEEDS} />
         </div>
 
-        <Button size="sm" onClick={() => review(null)}>Back to game</Button>
+        {watching ? (
+          <Button size="sm" onClick={() => {
+            leaveWatch()
+            location.hash = href('training')
+          }}>Back to training</Button>
+        ) : (
+          <Button size="sm" onClick={() => review(null)}>Back to game</Button>
+        )}
       </div>
     </div>
   )

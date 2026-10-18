@@ -48,6 +48,8 @@ interface GameStore {
   reviewGame: GameView | null
   replaying: boolean // stepping through the review automatically
   replaySpeed: Pace
+  /** Watching a training run's self-play game: the game that was on the board before, to restore. */
+  watching: { moves: string[]; mode: Mode; running: boolean } | null
 
   init: () => void
   newGame: () => void
@@ -62,6 +64,8 @@ interface GameStore {
   refreshTrained: () => void
   /** Load a finished game (a self-play game from training) and replay it from the start. */
   watchGame: (moves: string[]) => void
+  /** Stop watching: put back the game that was on the board before. */
+  leaveWatch: () => void
   setPace: (p: Pace) => void
   setRunning: (on: boolean) => void
   /** Show the position after `ply` moves (0 to all of them); null returns to the live game. */
@@ -195,6 +199,8 @@ export const useGame = create<GameStore>((set, get) => {
       return
     }
     if (timer) clearTimeout(timer)
+    // Opening review starts its controls afresh: Normal speed (the caller says whether to replay).
+    if (s.reviewPly === null && pendingPly === null) set({ replaySpeed: 'normal' })
     const gen = ++generation
     const moves = s.moves
     const show = (reviewGame: GameView) => {
@@ -244,6 +250,7 @@ export const useGame = create<GameStore>((set, get) => {
     reviewGame: null,
     replaying: false,
     replaySpeed: 'normal',
+    watching: null,
 
     init: () => {
       if (!get().game && !loading) void load([])
@@ -251,7 +258,7 @@ export const useGame = create<GameStore>((set, get) => {
 
     newGame: () => {
       // Computer vs computer waits for Start rather than beginning on its own.
-      set({ status: get().game ? 'ready' : 'connecting', running: get().mode !== 'cvc' })
+      set({ status: get().game ? 'ready' : 'connecting', running: get().mode !== 'cvc', watching: null })
       void load([])
     },
 
@@ -290,7 +297,7 @@ export const useGame = create<GameStore>((set, get) => {
     setMode: (mode) => {
       // Switching to computer vs computer does not start it: the user presses Start.
       const running = mode !== 'cvc'
-      set(mode === 'hvc' ? { mode, running, orientation: get().humanColor } : { mode, running })
+      set(mode === 'hvc' ? { mode, running, orientation: get().humanColor, watching: null } : { mode, running, watching: null })
       generation++
       schedule()
     },
@@ -306,12 +313,23 @@ export const useGame = create<GameStore>((set, get) => {
       void api.meta().then((m) => set({ trained: m.trained }), () => {})
     },
     watchGame: (moves) => {
+      const s = get()
+      // Keep the game that was on the board (unless already watching one), to put it back after.
+      const watching = s.watching ?? { moves: s.moves, mode: s.mode, running: s.running }
       // Two players: nobody moves on their own, so the replay has the board to itself.
-      set({ mode: 'hvh', running: true, status: get().game ? 'ready' : 'connecting' })
+      set({ mode: 'hvh', running: true, status: s.game ? 'ready' : 'connecting', watching })
       void load(moves, () => {
-        set({ replaying: true })
-        reviewAt(0)
+        reviewAt(0) // opening review resets its controls...
+        set({ replaying: true }) // ...and a watched game plays straight away
+        scheduleReplay() // (if the start was cached and is already on show; otherwise it starts once it is)
       })
+    },
+    leaveWatch: () => {
+      const before = get().watching
+      if (!before) return
+      // A computer-vs-computer game comes back paused, waiting for Start.
+      set({ watching: null, mode: before.mode, running: before.mode === 'cvc' ? false : before.running, replaying: false })
+      void load(before.moves)
     },
     setPace: (pace) => set({ pace }),
     setRunning: (running) => {
