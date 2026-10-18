@@ -96,16 +96,6 @@ function Spinner() {
   return <LoaderCircle size={14} className="shrink-0 animate-spin" aria-hidden />
 }
 
-/** A dot that breathes while something is under way. */
-function Pulse({ tone }: { tone: 'success' | 'accent' }) {
-  const bg = tone === 'success' ? 'bg-success' : 'bg-accent'
-  return (
-    <span aria-hidden className={`relative inline-flex h-2 w-2 shrink-0 rounded-full ${bg}`}>
-      <span className={`absolute inset-0 animate-ping rounded-full opacity-60 motion-reduce:hidden ${bg}`} />
-    </span>
-  )
-}
-
 /**
  * Eases its height when `swapKey` changes, so the panel grows or shrinks smoothly into what
  * replaces it (the replacement itself fades in with .cz-swap). Size changes within one state,
@@ -202,7 +192,7 @@ function RunControls({ status, total, done, onChange }: {
     body = (
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <p className="flex items-center gap-2.5 text-[13.5px] text-ink" role="status">
-          <Pulse tone="accent" />
+          <Spinner />
           {PENDING[status.pause_requested!]}
         </p>
         <Button size="sm" aria-busy={sending === 'cancel'} onClick={() => act('cancel', () => api.pauseRun(name, null))}
@@ -297,7 +287,7 @@ function StatusPanel({ status, detail, onChange }: { status: RunStatus; detail: 
   const [shown, setShown] = useState({ phase, phaseValue })
   if (phase && (phase !== shown.phase || phaseValue !== shown.phaseValue)) setShown({ phase, phaseValue })
   const title = pausing && status.pause_requested === 'now' ? 'Pausing' : PHASE[state] ?? state
-  const tone = !live ? (state === 'paused' ? 'bg-accent' : 'bg-ink-faint') : pausing ? 'bg-accent' : 'bg-success'
+  const tone = !live ? (state === 'paused' ? 'bg-accent' : 'bg-ink-faint') : 'bg-success'
   const games = detail.generations.reduce((n, g) => n + (g.games ?? 0), 0)
   const positions = detail.generations.reduce((n, g) => n + (g.positions ?? 0), 0)
   const last = [...detail.generations].reverse().find((g) => g.eval.greedy)
