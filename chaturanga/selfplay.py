@@ -74,17 +74,21 @@ class _Game:
 def play_games(evaluator: Evaluator, n_games: int, config: SelfPlayConfig = SelfPlayConfig(),
                seed: int = 0, generation: int = 0, contributor: str = "",
                rules: RulesConfig = DEFAULT_RULES,
-               on_game: Optional[Callable[[GameRecord], None]] = None) -> list[GameRecord]:
-    """Play `n_games` self-play games, `config.concurrent` at a time. Game i uses seed + i, so the
-    same seed and network always produce the same games."""
+               on_game: Optional[Callable[[GameRecord], None]] = None,
+               seeds: Optional[list[int]] = None,
+               should_stop: Optional[Callable[[], bool]] = None) -> list[GameRecord]:
+    """Play `n_games` self-play games, `config.concurrent` at a time. Game i uses seed + i (or
+    the i-th of `seeds`, which replaces both), so the same seed and network always produce the
+    same game. `should_stop` is asked after every move; when it says yes, the finished games are
+    returned and the unfinished ones dropped."""
     mcts_config = MCTSConfig(simulations=config.simulations)
-    waiting = list(range(n_games))
+    waiting = list(seeds) if seeds is not None else [seed + i for i in range(n_games)]
     active: list[_Game] = []
     done: list[GameRecord] = []
     while waiting or active:
         while waiting and len(active) < max(1, config.concurrent):
-            i = waiting.pop(0)
-            active.append(_Game(i, evaluator, mcts_config, seed + i, rules))
+            s = waiting.pop(0)
+            active.append(_Game(s, evaluator, mcts_config, s, rules))
 
         for g in active:
             g.root = g.mcts.prepare(g.state, add_noise=config.noise)
@@ -113,6 +117,8 @@ def play_games(evaluator: Evaluator, n_games: int, config: SelfPlayConfig = Self
             else:
                 still.append(g)
         active = still
+        if should_stop and should_stop():
+            break
     return done
 
 
@@ -185,6 +191,25 @@ def read_games(path: str) -> Iterator[GameRecord]:
         for line in f:
             if line.strip():
                 yield GameRecord.from_json(json.loads(line))
+
+
+def append_games(path: str, records: Iterable[GameRecord]) -> None:
+    """Add records to a gzipped game file (each call appends a gzip member; readers see one file)."""
+    with gzip.open(path, "at", encoding="utf-8") as f:
+        for r in records:
+            f.write(json.dumps(r.to_json(), separators=(",", ":")) + "\n")
+
+
+def read_games_salvaging(path: str) -> list[GameRecord]:
+    """The complete records in a file that may have been cut off mid-write (a run killed while
+    appending): everything before the damage."""
+    out: list[GameRecord] = []
+    try:
+        for r in read_games(path):
+            out.append(r)
+    except (EOFError, OSError, ValueError, TypeError):
+        pass
+    return out
 
 
 def summarise(records: list[GameRecord]) -> dict:

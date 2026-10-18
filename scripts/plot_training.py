@@ -41,7 +41,9 @@ def load(run_dir: str) -> tuple[list[dict], dict]:
                 row["eval"][e["opponent"]] = e
             else:
                 row[e["event"]] = e
-    return [e for e in events if e["event"] == "train"], gens
+    # Training interrupted by a pause is redone with the same step numbers: keep the later points.
+    train = {e["step"]: e for e in events if e["event"] == "train"}
+    return [train[k] for k in sorted(train)], gens
 
 
 def style(ax, title: str, xlabel: str, ylabel: str) -> None:

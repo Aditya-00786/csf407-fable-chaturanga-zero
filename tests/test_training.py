@@ -190,3 +190,147 @@ def test_network_evaluator_drives_self_play():
     ev = NetworkEvaluator(new_network(TINY, seed=0), torch.device("cpu"))
     (g,) = play_games(ev, 1, FAST, seed=0, rules=SHORT)
     assert examples(g)[0].shape[0] == g.plies
+
+
+# ---------------------------------------------------------------------- pausing and resuming
+
+from chaturanga.selfplay import read_games as _read  # noqa: E402
+from chaturanga.training import pending_pause, request_pause  # noqa: E402
+
+PAUSE_CFG = TrainConfig(generations=1, games_per_generation=5, simulations=4, concurrent=1, steps_per_generation=30,
+                        sample_reuse=0, batch_size=16, eval_games=2, eval_opponents=("previous",), blocks=1, channels=16)
+
+
+class PausingRun(TrainingRun):
+    """Asks itself to pause (or raises Ctrl+C) the first time its status matches `condition`."""
+
+    def __init__(self, *args, when, condition, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._when, self._condition, self._asked = when, condition, False
+
+    def set_status(self, **changes):
+        super().set_status(**changes)
+        if not self._asked and self._condition(self.status):
+            self._asked = True
+            if self._when == "ctrl_c":
+                raise KeyboardInterrupt
+            request_pause(self.dir, self._when)
+
+
+def _run(run_dir, cfg=PAUSE_CFG, workers=0, **pause):
+    cls = PausingRun if pause else TrainingRun
+    run = cls(str(run_dir), cfg, workers=workers, device=torch.device("cpu"), log=lambda *_: None, **pause)
+    run.run()
+    return json.loads((run_dir / "status.json").read_text())
+
+
+def _events(run_dir, kind):
+    return [e for e in map(json.loads, open(run_dir / "metrics.jsonl")) if e["event"] == kind]
+
+
+@pytest.fixture(scope="module")
+def uninterrupted(tmp_path_factory):
+    d = tmp_path_factory.mktemp("whole") / "r"
+    _run(d)
+    return d
+
+
+def test_pause_requests_round_trip(tmp_path):
+    assert pending_pause(tmp_path) is None
+    request_pause(tmp_path, "after_phase")
+    assert pending_pause(tmp_path) == "after_phase"
+    request_pause(tmp_path, None)
+    assert pending_pause(tmp_path) is None
+    with pytest.raises(ValueError):
+        request_pause(tmp_path, "tomorrow")
+
+
+def test_pause_now_keeps_finished_self_play_games(tmp_path, uninterrupted):
+    d = tmp_path / "r"
+    status = _run(d, when="now", condition=lambda s: s.get("state") == "selfplay" and s.get("games_done", 0) >= 2)
+    assert status["state"] == "paused" and status["paused_in"] == "selfplay" and status["paused_after"] is None
+    kept = [r for f in (d / "games").glob("gen_0001.partial.*.jsonl.gz") for r in _read(str(f))]
+    assert len(kept) == 2 and not (d / "games" / "gen_0001.jsonl.gz").exists()
+    assert not (d / "control.json").exists()  # the request is used up
+
+    status = _run(d)  # carry on
+    assert status["state"] == "finished"
+    assert not list((d / "games").glob("*.partial.*"))
+    # Only the missing games were played, and they are exactly the games of an uninterrupted run.
+    whole = {r.seed: r.moves for r in _read(str(uninterrupted / "games" / "gen_0001.jsonl.gz"))}
+    resumed = {r.seed: r.moves for r in _read(str(d / "games" / "gen_0001.jsonl.gz"))}
+    assert resumed == whole
+
+
+def test_pause_after_phase_finishes_self_play_first(tmp_path):
+    d = tmp_path / "r"
+    status = _run(d, when="after_phase", condition=lambda s: s.get("state") == "selfplay" and s.get("games_done", 0) >= 1)
+    assert status["state"] == "paused" and status["paused_after"] == "selfplay"
+    assert len(list(_read(str(d / "games" / "gen_0001.jsonl.gz")))) == 5
+    assert not (d / "checkpoints" / "gen_0001.pt").exists()  # training had not started
+    assert _run(d)["state"] == "finished"
+    assert (d / "checkpoints" / "gen_0001.pt").exists()
+
+
+def test_pause_now_during_training_redoes_it_on_resume(tmp_path):
+    d = tmp_path / "r"
+    status = _run(d, when="now", condition=lambda s: s.get("state") == "training" and s.get("step", 0) >= 10)
+    assert status["state"] == "paused" and status["paused_in"] == "training"
+    assert not (d / "checkpoints" / "gen_0001.pt").exists()
+    assert _run(d)["state"] == "finished"
+    assert torch.load(d / "checkpoints" / "train_state.pt", weights_only=True)["step"] == 30  # not 40
+
+
+def test_pause_now_during_evaluation_evaluates_on_resume(tmp_path):
+    d = tmp_path / "r"
+    status = _run(d, when="now", condition=lambda s: s.get("state") == "evaluating")
+    assert status["state"] == "paused" and status["paused_in"] == "evaluating"
+    assert (d / "checkpoints" / "gen_0001.pt").exists() and not _events(d, "generation")
+    assert _run(d)["state"] == "finished"
+    assert [e["generation"] for e in _events(d, "generation")] == [1]
+    assert [e["generation"] for e in _events(d, "eval")] == [1]
+    assert torch.load(d / "checkpoints" / "train_state.pt", weights_only=True)["step"] == 30  # not trained again
+
+
+def test_pause_after_generation_and_carry_on(tmp_path):
+    d = tmp_path / "r"
+    cfg = replace(PAUSE_CFG, generations=2)
+    status = _run(d, cfg, when="after_generation",
+                  condition=lambda s: s.get("state") == "selfplay" and s.get("generation") == 1)
+    assert status["state"] == "paused" and status["paused_after"] == "generation" and status["generation"] == 1
+    assert [e["generation"] for e in _events(d, "generation")] == [1]
+    assert _run(d, cfg)["state"] == "finished"
+    assert [e["generation"] for e in _events(d, "generation")] == [1, 2]
+
+
+def test_ctrl_c_pauses_like_now(tmp_path):
+    d = tmp_path / "r"
+    status = _run(d, when="ctrl_c", condition=lambda s: s.get("state") == "selfplay" and s.get("games_done", 0) >= 1)
+    assert status["state"] == "paused"
+    assert _run(d)["state"] == "finished"
+
+
+def test_pause_now_stops_worker_processes_and_keeps_their_games(tmp_path):
+    d = tmp_path / "r"
+    cfg = replace(PAUSE_CFG, games_per_generation=4)
+    status = _run(d, cfg, workers=2, when="now",
+                  condition=lambda s: s.get("state") == "selfplay" and s.get("games_done", 0) >= 1)
+    assert status["state"] == "paused"
+    kept = {r.seed for f in (d / "games").glob("gen_0001.partial.*.jsonl.gz") for r in _read(str(f))}
+    assert 1 <= len(kept) < 4
+    assert _run(d, cfg, workers=2)["state"] == "finished"
+    assert len({r.seed for r in _read(str(d / "games" / "gen_0001.jsonl.gz"))}) == 4
+
+
+def test_command_line_pause(tmp_path):
+    import subprocess
+    import sys
+
+    TrainingRun(str(tmp_path / "r"), PAUSE_CFG, log=lambda *_: None)
+    script = __import__("pathlib").Path(__file__).resolve().parent.parent / "scripts" / "train.py"
+    out = subprocess.run([sys.executable, str(script), "--runs-dir", str(tmp_path), "--run", "r", "--pause", "after-generation"],
+                         capture_output=True, text=True, check=True).stdout
+    assert "pause after generation" in out and pending_pause(tmp_path / "r") == "after_generation"
+    subprocess.run([sys.executable, str(script), "--runs-dir", str(tmp_path), "--run", "r", "--cancel-pause"], check=True,
+                   capture_output=True)
+    assert pending_pause(tmp_path / "r") is None

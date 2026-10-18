@@ -50,15 +50,18 @@ export function LineChart({
   const [width, setWidth] = useState(480)
   const [hover, setHover] = useState<number | null>(null) // index into xs
 
+  const all = series.flatMap((s) => s.points).concat(reference?.points ?? [])
+  const empty = all.length === 0
+
+  // Re-attached when the placeholder gives way to the chart (a different element).
   useEffect(() => {
     const el = wrap.current
     if (!el) return
     const ro = new ResizeObserver(([e]) => setWidth(Math.max(240, e.contentRect.width)))
     ro.observe(el)
     return () => ro.disconnect()
-  }, [])
+  }, [empty])
 
-  const all = series.flatMap((s) => s.points).concat(reference?.points ?? [])
   const xs = useMemo(() => [...new Set(series.flatMap((s) => s.points.map((p) => p.x)))].sort((a, b) => a - b), [series])
   const x0 = Math.min(...all.map((p) => p.x), integerX ? 1 : 0)
   const x1 = Math.max(...all.map((p) => p.x), x0 + 1)
@@ -103,6 +106,15 @@ export function LineChart({
   })
   const tipLeft = hx === null ? 0 : sx(hx)
   const flip = tipLeft > width * 0.6
+
+  if (empty) {
+    return (
+      <div ref={wrap} className="grid w-full place-items-center rounded-lg border border-dashed border-line text-[13px] text-ink-faint"
+        style={{ height }}>
+        No data yet
+      </div>
+    )
+  }
 
   return (
     <div ref={wrap} className="relative w-full select-none">

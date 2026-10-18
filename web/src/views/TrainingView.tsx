@@ -4,11 +4,11 @@
  * learn screens stay the primary experience.
  */
 
-import { Play, RefreshCw } from 'lucide-react'
+import { Pause, Play, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Legend, LineChart, type Series } from '../components/LineChart'
-import { Button, Segmented } from '../components/ui'
-import { api, ApiError, type GenerationRow, type RunDetail, type RunStatus } from '../lib/api'
+import { Button, Collapse, Segmented } from '../components/ui'
+import { api, ApiError, type GenerationRow, type PauseWhen, type RunDetail, type RunStatus } from '../lib/api'
 import { href } from '../lib/route'
 import { useGame } from '../state/game'
 
@@ -22,6 +22,7 @@ const PHASE: Record<string, string> = {
   evaluating: 'Testing the new network',
   generation_done: 'Generation finished',
   finished: 'Finished',
+  paused: 'Paused',
   stopped: 'Stopped',
   failed: 'Stopped with an error',
 }
@@ -45,10 +46,141 @@ function Progress({ value, label }: { value: number; label: string }) {
   )
 }
 
-function StatusPanel({ status, detail }: { status: RunStatus; detail: RunDetail }) {
+const PHASE_NAME = { selfplay: 'self-play', training: 'training', evaluating: 'testing' } as const
+
+/** Where a paused or stopped run is, in words, and what carrying on will do. */
+function whereItStopped(status: RunStatus): string {
+  const g = status.generation
+  if (status.state === 'paused') {
+    if (status.paused_in === 'selfplay') {
+      return `Paused during generation ${g}'s self-play. The ${status.games_done ?? 0} finished games of ${status.games_total ?? '?'} are kept; carrying on plays the rest.`
+    }
+    if (status.paused_in === 'training') return `Paused while training generation ${g}. Carrying on redoes this training (a few seconds).`
+    if (status.paused_in === 'evaluating') return `Paused while testing generation ${g}. Carrying on runs the test again.`
+    if (status.paused_after === 'selfplay') return `Paused after generation ${g}'s self-play. Training is next.`
+    if (status.paused_after === 'training') return `Paused after training generation ${g}. Testing it is next.`
+    return `Paused after generation ${g}.`
+  }
+  if (status.state === 'failed') return 'Stopped with an error; the details are at the end of the run’s train.log. Carrying on tries again from the last saved point.'
+  return 'The training process ended without pausing (closed or interrupted). Carrying on continues from the last saved point; finished self-play games are kept.'
+}
+
+const PAUSE_OPTIONS: { when: PauseWhen; label: string; note: (s: RunStatus) => string }[] = [
+  {
+    when: 'now', label: 'Pause now',
+    note: () => 'Stops within seconds. Finished games are kept; anything half done is redone when you carry on.',
+  },
+  {
+    when: 'after_phase', label: 'After this phase',
+    note: (s) => s.state === 'selfplay' || s.state === 'training' || s.state === 'evaluating'
+      ? `Finishes the current ${PHASE_NAME[s.state]}, then stops.` : 'Finishes the current step of the generation, then stops.',
+  },
+  {
+    when: 'after_generation', label: 'After this generation',
+    note: (s) => `Finishes generation ${s.generation}, testing included, then stops.`,
+  },
+]
+
+const PENDING: Record<PauseWhen, string> = {
+  now: 'Pausing now…',
+  after_phase: 'Will pause after this phase.',
+  after_generation: 'Will pause after this generation.',
+}
+
+function RunControls({ status, total, done, onChange }: {
+  status: RunStatus; total: number; done: number; onChange: (s?: RunStatus) => void
+}) {
+  const [choosing, setChoosing] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [more, setMore] = useState(10)
+  const act = async (call: () => Promise<RunStatus>) => {
+    setBusy(true)
+    setError(null)
+    try {
+      onChange(await call())
+      setChoosing(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong.')
+    } finally {
+      setBusy(false)
+    }
+  }
+  const name = status.name
+  const finished = status.state === 'finished' && !status.live
+
+  if (status.live) {
+    if (status.pause_requested) {
+      return (
+        <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-line pt-4">
+          <p className="text-[13.5px] text-ink" role="status">{PENDING[status.pause_requested]}</p>
+          <Button size="sm" onClick={() => act(() => api.pauseRun(name, null))} disabled={busy}>Don’t pause</Button>
+          {error && <p className="w-full text-[12.5px] text-danger">{error}</p>}
+        </div>
+      )
+    }
+    return (
+      <div className="mt-5 border-t border-line pt-4">
+        <Button size="sm" onClick={() => setChoosing((c) => !c)} aria-expanded={choosing}
+          icon={<Pause size={14} />} disabled={status.state === 'starting'}>
+          Pause…
+        </Button>
+        <Collapse open={choosing}>
+          <ul className="mt-3 grid gap-2 sm:grid-cols-3">
+            {PAUSE_OPTIONS.map((o) => (
+              <li key={o.when}>
+                <button type="button" disabled={busy} onClick={() => act(() => api.pauseRun(name, o.when))}
+                  className="flex h-full w-full flex-col items-start justify-start rounded-xl border border-line bg-bg px-3.5 py-3 text-left transition-colors duration-150 hover:border-line-strong hover:bg-surface-2 disabled:opacity-50">
+                  <span className="block text-[13.5px] font-semibold text-ink">{o.label}</span>
+                  <span className="mt-1 block text-[12.5px] leading-snug text-ink-muted">{o.note(status)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </Collapse>
+        {error && <p className="mt-2 text-[12.5px] text-danger">{error}</p>}
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-5 space-y-3 border-t border-line pt-4">
+      {!finished && <p className="max-w-[70ch] text-[13.5px] leading-snug text-ink-muted">{whereItStopped(status)}</p>}
+      <div className="flex flex-wrap items-center gap-3">
+        {finished ? (
+          <>
+            <label className="flex items-center gap-2 text-[13px] text-ink-muted">
+              Train further, to
+              <input type="number" min={done + 1} max={10000} value={Math.max(done + 1, total + more)}
+                onChange={(e) => setMore(Math.max(1, Number(e.target.value) - total))}
+                className="h-8 w-20 rounded-lg border border-line bg-bg px-2 text-[13px] text-ink tabular-nums" />
+              generations
+            </label>
+            <Button size="sm" variant="primary" disabled={busy} icon={<Play size={14} />}
+              onClick={() => act(() => api.resumeRun(name, Math.max(done + 1, total + more)))}>
+              {busy ? 'Starting…' : 'Train further'}
+            </Button>
+          </>
+        ) : (
+          <Button size="sm" variant="primary" disabled={busy} icon={<Play size={14} />}
+            onClick={() => act(() => api.resumeRun(name))}>
+            {busy ? 'Starting…' : 'Carry on'}
+          </Button>
+        )}
+        <p className="text-[12.5px] text-ink-faint">
+          or in a terminal: <code className="rounded bg-surface-2 px-1.5 py-0.5">python scripts/train.py --run {name}</code>
+        </p>
+      </div>
+      {error && <p className="text-[12.5px] text-danger">{error}</p>}
+    </div>
+  )
+}
+
+function StatusPanel({ status, detail, onChange }: { status: RunStatus; detail: RunDetail; onChange: (s?: RunStatus) => void }) {
   const live = status.live
-  const state = !live && status.state !== 'finished' && status.state !== 'failed' ? 'stopped' : status.state
-  const total = detail.config.generations
+  // A run whose process ended without saying so (closed, crashed, machine asleep) has stopped.
+  const state = !live && !['finished', 'failed', 'paused'].includes(status.state) ? 'stopped' : status.state
+  const total = status.generations || detail.config.generations
   const done = detail.generations.filter((g) => g.best !== undefined).length
   let phase = ''
   let phaseValue = 0
@@ -69,11 +201,11 @@ function StatusPanel({ status, detail }: { status: RunStatus; detail: RunDetail 
     <section aria-label="Run status" className="rounded-2xl border border-line bg-surface p-5 sm:p-6">
       <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
         <p className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 font-serif text-[22px] font-semibold text-ink">
-          <span aria-hidden className={`relative inline-flex h-2.5 w-2.5 rounded-full ${live ? 'bg-success' : 'bg-ink-faint'}`}>
+          <span aria-hidden className={`relative inline-flex h-2.5 w-2.5 rounded-full ${live ? 'bg-success' : state === 'paused' ? 'bg-accent' : 'bg-ink-faint'}`}>
             {live && <span className="absolute inset-0 animate-ping rounded-full bg-success opacity-60 motion-reduce:hidden" />}
           </span>
           {PHASE[state] ?? state}
-          {live && status.generation > 0 && status.state !== 'generation_done' && (
+          {live && status.generation > 0 && status.state !== 'generation_done' && status.state !== 'starting' && (
             <span className="font-sans text-[15px] font-normal whitespace-nowrap text-ink-muted">for generation {status.generation}</span>
           )}
         </p>
@@ -102,11 +234,7 @@ function StatusPanel({ status, detail }: { status: RunStatus; detail: RunDetail 
           </div>
         ))}
       </dl>
-      {!live && state === 'stopped' && (
-        <p className="mt-4 text-[13px] leading-snug text-ink-muted">
-          Resume it with <code className="rounded bg-surface-2 px-1.5 py-0.5 text-[12.5px]">python scripts/train.py --run {status.name}</code>.
-        </p>
-      )}
+      <RunControls status={{ ...status, state }} total={total} done={done} onChange={onChange} />
     </section>
   )
 }
@@ -326,7 +454,10 @@ export function TrainingView() {
           {(error || (runs && runs.length === 0)) && <Empty error={error} onRetry={() => setTick((t) => t + 1)} />}
           {detail && selected && (
             <>
-              <StatusPanel status={detail.status} detail={detail} />
+              <StatusPanel status={detail.status} detail={detail} onChange={(st) => {
+                if (st) setDetail({ ...detail, status: st })
+                setTick((t) => t + 1)
+              }} />
               <Charts detail={detail} />
               <GenerationTable run={selected} detail={detail} />
               <p className="text-[12.5px] text-ink-faint">

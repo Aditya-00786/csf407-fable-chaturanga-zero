@@ -16,7 +16,6 @@ import math
 import os
 import sys
 import time
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import replace
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -26,6 +25,10 @@ import multiprocessing as mp  # noqa: E402
 from chaturanga.net import load_checkpoint  # noqa: E402
 from chaturanga.selfplay import GameRecord, summarise, write_games  # noqa: E402
 from chaturanga.training import TrainConfig, _init_worker, selfplay_task  # noqa: E402
+
+
+def _play(batch: tuple) -> list[dict]:
+    return selfplay_task(*batch)
 
 
 def main():
@@ -51,13 +54,20 @@ def main():
     chunk = max(1, min(config.concurrent, math.ceil(args.games / (2 * args.workers))))
     records: list[GameRecord] = []
     t0 = time.perf_counter()
-    with ProcessPoolExecutor(args.workers, mp_context=mp.get_context("spawn"), initializer=_init_worker) as pool:
-        futures = [pool.submit(selfplay_task, os.path.abspath(args.checkpoint), min(chunk, args.games - start),
-                               config, seed + start, generation, args.name)
-                   for start in range(0, args.games, chunk)]
-        for fut in as_completed(futures):
-            records.extend(GameRecord.from_json(d) for d in fut.result())
+    batches = [(os.path.abspath(args.checkpoint), list(range(seed + start, seed + min(start + chunk, args.games))),
+                config, generation, args.name) for start in range(0, args.games, chunk)]
+    pool = mp.get_context("spawn").Pool(args.workers, initializer=_init_worker)
+    try:
+        for result in pool.imap_unordered(_play, batches):
+            records.extend(GameRecord.from_json(d) for d in result)
             print(f"  {len(records)}/{args.games} games ({time.perf_counter() - t0:.0f} s)", flush=True)
+        pool.close()
+    except KeyboardInterrupt:  # keep what has finished: those games are still worth sending
+        print(f"Stopped; keeping the {len(records)} finished games.")
+        pool.terminate()
+    pool.join()
+    if not records:
+        sys.exit("No games finished, so nothing was written.")
     records.sort(key=lambda r: r.seed)
     write_games(out, records)
     s = summarise(records)

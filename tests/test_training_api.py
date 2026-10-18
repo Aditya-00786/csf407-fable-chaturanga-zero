@@ -129,3 +129,87 @@ def test_runs_are_unaffected_by_unrelated_folders(tmp_path, monkeypatch):
     (tmp_path / "notes").mkdir()
     monkeypatch.setenv("CHATURANGA_RUNS", str(tmp_path))
     assert client.get("/api/training/runs").json() == {"runs": []}
+
+
+# ---------------------------------------------------------------------- pausing and resuming
+
+def _fake_run(root, name="r", **status):
+    """A run directory with just a config and a status, as the API sees it."""
+    import json
+    import socket
+
+    d = root / name
+    (d / "checkpoints").mkdir(parents=True)
+    (d / "config.json").write_text(json.dumps({"generations": 3}))
+    base = {"run": name, "generation": 1, "generations": 3, "host": socket.gethostname(),
+            "updated": "2026-01-01T00:00:00+00:00"}
+    (d / "status.json").write_text(json.dumps({**base, **status}))
+    return d
+
+
+def test_a_run_whose_process_is_alive_is_live_however_quiet(tmp_path, monkeypatch):
+    monkeypatch.setenv("CHATURANGA_RUNS", str(tmp_path))
+    _fake_run(tmp_path, state="selfplay", pid=os.getpid())
+    (run,) = client.get("/api/training/runs").json()["runs"]
+    assert run["live"] is True
+
+
+def test_a_run_whose_process_died_is_not_live(tmp_path, monkeypatch):
+    monkeypatch.setenv("CHATURANGA_RUNS", str(tmp_path))
+    _fake_run(tmp_path, state="selfplay", pid=2**22 + 12345)  # no such process
+    (run,) = client.get("/api/training/runs").json()["runs"]
+    assert run["live"] is False
+
+
+def test_pause_writes_a_request_the_run_will_read(tmp_path, monkeypatch):
+    from chaturanga.training import pending_pause
+
+    monkeypatch.setenv("CHATURANGA_RUNS", str(tmp_path))
+    d = _fake_run(tmp_path, state="training", pid=os.getpid())
+    r = client.post("/api/training/runs/r/pause", json={"when": "after_phase"})
+    assert r.status_code == 200 and r.json()["pause_requested"] == "after_phase"
+    assert pending_pause(d) == "after_phase"
+    assert client.post("/api/training/runs/r/pause", json={"when": None}).json()["pause_requested"] is None
+    assert client.post("/api/training/runs/r/pause", json={"when": "soon"}).status_code == 422
+
+
+def test_cannot_pause_a_run_that_is_not_running(tmp_path, monkeypatch):
+    monkeypatch.setenv("CHATURANGA_RUNS", str(tmp_path))
+    _fake_run(tmp_path, state="paused", pid=os.getpid())
+    assert client.post("/api/training/runs/r/pause", json={"when": "now"}).status_code == 409
+
+
+def test_resume_starts_the_run_detached(tmp_path, monkeypatch):
+    from chaturanga_server import training_api
+
+    started = {}
+
+    class FakeProcess:
+        pid = os.getpid()  # "alive", so the run now reads as starting and live
+
+    def fake_popen(cmd, **kwargs):
+        started.update(cmd=cmd, **kwargs)
+        return FakeProcess()
+
+    monkeypatch.setenv("CHATURANGA_RUNS", str(tmp_path))
+    monkeypatch.setattr(training_api.subprocess, "Popen", fake_popen)
+    _fake_run(tmp_path, state="paused", pid=2**22 + 12345)
+    r = client.post("/api/training/runs/r/resume", json={})
+    assert r.status_code == 202 and r.json()["state"] == "starting" and r.json()["live"] is True
+    cmd = started["cmd"]
+    assert cmd[cmd.index("--run") + 1] == "r" and "--generations" not in cmd and started["start_new_session"]
+    # Now it is running, so a second resume is refused.
+    assert client.post("/api/training/runs/r/resume", json={}).status_code == 409
+
+
+def test_a_finished_run_resumes_only_to_train_further(tmp_path, monkeypatch):
+    from chaturanga_server import training_api
+
+    monkeypatch.setenv("CHATURANGA_RUNS", str(tmp_path))
+    monkeypatch.setattr(training_api.subprocess, "Popen", lambda cmd, **kw: type("P", (), {"pid": os.getpid()})())
+    d = _fake_run(tmp_path, state="finished", pid=2**22 + 12345)
+    for g in range(4):
+        (d / "checkpoints" / f"gen_{g:04d}.pt").write_bytes(b"")
+    assert client.post("/api/training/runs/r/resume", json={}).status_code == 400
+    r = client.post("/api/training/runs/r/resume", json={"generations": 5})
+    assert r.status_code == 202 and r.json()["generations"] == 5

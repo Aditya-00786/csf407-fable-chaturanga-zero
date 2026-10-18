@@ -5,8 +5,16 @@
     python scripts/train.py --run quick --games 8 --generations 3 --steps 50   # a quick test run
     python scripts/train.py --workers 0 --concurrent 64   # one process, batched on the GPU (Colab)
 
-Stop with Ctrl+C at any time; the same command resumes from the last finished generation. The
-best network is copied to checkpoints/best.pt, where the web app's ChaturangZero opponent finds it.
+Pausing, from another terminal (or the app's Training page):
+
+    python scripts/train.py --pause now                # stop as soon as possible (Ctrl+C does the same)
+    python scripts/train.py --pause after-phase        # finish the current self-play, training or testing first
+    python scripts/train.py --pause after-generation   # finish the whole generation first
+    python scripts/train.py --cancel-pause             # changed your mind
+
+Run the same training command again to carry on from where it paused: finished self-play games are
+kept, so only games that were in progress are replayed. The best network is copied to
+checkpoints/best.pt, where the web app's Trained opponent finds it.
 Losses and results go to runs/<run>/metrics.jsonl; plot them with scripts/plot_training.py.
 """
 
@@ -19,7 +27,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import torch  # noqa: E402
 
-from chaturanga.training import TrainConfig, TrainingRun, training_device  # noqa: E402
+from chaturanga.training import TrainConfig, TrainingRun, request_pause, training_device  # noqa: E402
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 
@@ -42,6 +50,10 @@ def main():
     ap.add_argument("--device", help="training device: cuda, mps or cpu (default: the best available)")
     ap.add_argument("--publish", default=os.path.join(ROOT, "checkpoints", "best.pt"),
                     help="copy the best network here for the web app (default checkpoints/best.pt; '' to skip)")
+    control = ap.add_mutually_exclusive_group()
+    control.add_argument("--pause", choices=["now", "after-phase", "after-generation"],
+                         help="ask the running run to pause, then exit")
+    control.add_argument("--cancel-pause", action="store_true", help="withdraw a pause request, then exit")
     defaults = TrainConfig()
     for flag, name in OPTIONS.items():
         ap.add_argument(f"--{flag.replace('_', '-')}", dest=flag, type=type(getattr(defaults, name)),
@@ -49,6 +61,13 @@ def main():
     args = ap.parse_args()
 
     run_dir = os.path.join(args.runs_dir, args.run)
+    if args.pause or args.cancel_pause:
+        if not os.path.exists(os.path.join(run_dir, "config.json")):
+            sys.exit(f"There is no run named {args.run!r} in {args.runs_dir}.")
+        request_pause(run_dir, args.pause.replace("-", "_") if args.pause else None)
+        print(f"Asked run {args.run!r} to pause {args.pause.replace('-', ' ')}." if args.pause
+              else f"Withdrew the pause request for run {args.run!r}.")
+        return
     config_file = os.path.join(run_dir, "config.json")
     if os.path.exists(config_file):
         import json

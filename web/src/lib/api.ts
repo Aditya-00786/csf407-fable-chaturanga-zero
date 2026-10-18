@@ -113,11 +113,20 @@ export const api = {
     request<{ games: SelfPlayGameInfo[] }>(`/api/training/runs/${encodeURIComponent(name)}/games/${generation}`),
   selfPlayGame: (name: string, generation: number, index: number) =>
     request<SelfPlayGame>(`/api/training/runs/${encodeURIComponent(name)}/games/${generation}/${index}`),
+  /** Ask a running run to pause; null withdraws the request. */
+  pauseRun: (name: string, when: PauseWhen | null) =>
+    request<RunStatus>(`/api/training/runs/${encodeURIComponent(name)}/pause`, { when }),
+  /** Start a run that is not running, carrying on where it stopped (optionally to more generations). */
+  resumeRun: (name: string, generations?: number) =>
+    request<RunStatus>(`/api/training/runs/${encodeURIComponent(name)}/resume`, generations ? { generations } : {}),
 }
 
 // ------------------------------------------------------------------ training (Watch training)
 
-export type RunState = 'starting' | 'selfplay' | 'training' | 'evaluating' | 'generation_done' | 'finished' | 'stopped' | 'failed'
+export type RunState = 'starting' | 'selfplay' | 'training' | 'evaluating' | 'generation_done' | 'finished' | 'paused'
+  | 'stopped' | 'failed'
+export type PauseWhen = 'now' | 'after_phase' | 'after_generation'
+type Phase = 'selfplay' | 'training' | 'evaluating'
 
 export interface RunStatus {
   name: string
@@ -133,6 +142,11 @@ export interface RunStatus {
   best_generation?: number
   updated?: string
   seconds_since_update: number | null
+  /** A pause asked for and not yet reached (live runs only). */
+  pause_requested: PauseWhen | null
+  /** Where a paused run stopped: in the middle of a phase, or just after one. */
+  paused_in?: Phase | null
+  paused_after?: Phase | 'generation' | null
 }
 
 export interface LossPoint {

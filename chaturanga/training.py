@@ -17,17 +17,26 @@ Everything a run produces lives in its directory, so a run stops and resumes at 
       config.json            the run's settings
       metrics.jsonl          one JSON object per event: training losses, self-play results, evaluations
       status.json            what the run is doing now (read by the app's Watch training view)
-      games/gen_0001.jsonl.gz  self-play games of each generation (teammates' games in games/contrib/)
+      control.json           a pause request waiting to be honoured (see `request_pause`)
+      games/gen_0001.jsonl.gz  self-play games of each generation (teammates' games in games/contrib/);
+                             gen_NNNN.partial.jsonl.gz holds the finished games of one still being played
       incoming/              drop teammates' game files here; they are added at the next generation
       checkpoints/gen_0000.pt  one network per generation, best.pt, and train_state.pt (optimiser)
+
+Pausing. `request_pause(run_dir, when)` asks a running run to stop: "now" (as soon as possible:
+finished self-play games are kept, games in progress and a half-done training or evaluation are
+redone on resume), "after_phase" (once the current self-play, training or evaluation is done) or
+"after_generation". Ctrl+C is "now". Starting the run again carries on from where it paused.
 """
 
 import json
 import math
+import multiprocessing as mp
 import os
 import shutil
+import signal
+import socket
 import time
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, fields
 from datetime import datetime, timezone
 from pathlib import Path
@@ -44,7 +53,8 @@ from .game import GameState
 from .mcts import MCTS, MCTSConfig
 from .net import NetConfig, NetworkEvaluator, PolicyValueNet, load_checkpoint, new_network, save_checkpoint
 from .replay_buffer import ReplayBuffer
-from .selfplay import GameRecord, SelfPlayConfig, play_games, read_games, summarise, write_games
+from .selfplay import (GameRecord, SelfPlayConfig, append_games, play_games, read_games, read_games_salvaging,
+                       summarise, write_games)
 
 
 @dataclass(frozen=True)
@@ -110,6 +120,40 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+# ---------------------------------------------------------------------- pausing
+
+PAUSE_WHEN = ("now", "after_phase", "after_generation")
+# Which pause requests take effect at each kind of checkpoint in the loop.
+_HONOURED = {"now": {"now"}, "phase": {"now", "after_phase"},
+             "generation": {"now", "after_phase", "after_generation"}}
+
+
+class Paused(Exception):
+    """A pause request took effect."""
+
+
+def request_pause(run_dir, when: Optional[str]) -> None:
+    """Ask the run in `run_dir` to pause ("now", "after_phase" or "after_generation"); None
+    withdraws the request. The run reads the request from control.json while it works."""
+    path = Path(run_dir) / "control.json"
+    if when is None:
+        path.unlink(missing_ok=True)
+        return
+    if when not in PAUSE_WHEN:
+        raise ValueError(f"when must be one of {PAUSE_WHEN}, got {when!r}")
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps({"pause": when, "requested": _now()}))
+    tmp.replace(path)
+
+
+def pending_pause(run_dir) -> Optional[str]:
+    try:
+        when = json.loads((Path(run_dir) / "control.json").read_text()).get("pause")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return when if when in PAUSE_WHEN else None
+
+
 # ---------------------------------------------------------------------- workers
 
 # One evaluator per worker process, reloaded when the checkpoint changes.
@@ -118,6 +162,8 @@ _worker_cache: dict = {}
 
 def _init_worker() -> None:
     torch.set_num_threads(1)  # one process per core is faster than threads for batch sizes this small
+    # Ctrl+C is for the main process, which pauses the run and stops the workers itself.
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 
 def _evaluator_for(checkpoint: str) -> NetworkEvaluator:
@@ -128,10 +174,18 @@ def _evaluator_for(checkpoint: str) -> NetworkEvaluator:
     return _worker_cache["evaluator"]
 
 
-def selfplay_task(checkpoint: str, n_games: int, config: SelfPlayConfig, seed: int,
-                  generation: int, contributor: str) -> list[dict]:
-    records = play_games(_evaluator_for(checkpoint), n_games, config, seed, generation, contributor)
+def selfplay_task(checkpoint: str, seeds: list[int], config: SelfPlayConfig,
+                  generation: int, contributor: str, save_prefix: Optional[str] = None) -> list[dict]:
+    """Play the games with these seeds. With `save_prefix`, each game is also saved the moment it
+    ends (to <prefix>.<pid>.jsonl.gz), so a pause or crash loses only games still in progress."""
+    save = (lambda r: append_games(f"{save_prefix}.{os.getpid()}.jsonl.gz", [r])) if save_prefix else None
+    records = play_games(_evaluator_for(checkpoint), len(seeds), config, generation=generation,
+                         contributor=contributor, on_game=save, seeds=seeds)
     return [r.to_json() for r in records]
+
+
+def chunks(items: list, size: int) -> list[list]:
+    return [items[i:i + size] for i in range(0, len(items), size)]
 
 
 class SearchPlayer:
@@ -176,7 +230,8 @@ def match_task(checkpoint: str, opponent: str, game_indices: list[int], simulati
 
 def train_steps(net: PolicyValueNet, optimizer: torch.optim.Optimizer, buffer: ReplayBuffer, steps: int,
                 batch_size: int, device: torch.device, rng: np.random.Generator,
-                on_progress: Optional[Callable[[int, dict], None]] = None, report_every: int = 10) -> dict:
+                on_progress: Optional[Callable[[int, dict], None]] = None, report_every: int = 10,
+                before_step: Optional[Callable[[], None]] = None) -> dict:
     """Run `steps` optimiser steps on batches from the buffer. The loss is AlphaZero's: the value's
     squared error plus the policy's cross-entropy against the search's visit shares (weight decay
     is in the optimiser). Returns the mean of each loss over the steps."""
@@ -184,6 +239,8 @@ def train_steps(net: PolicyValueNet, optimizer: torch.optim.Optimizer, buffer: R
     totals = {"loss": 0.0, "value_loss": 0.0, "policy_loss": 0.0, "policy_entropy": 0.0}
     window = dict.fromkeys(totals, 0.0)
     for step in range(1, steps + 1):
+        if before_step:
+            before_step()  # may raise to abandon the training (a pause)
         x, pi, z = buffer.sample(batch_size, rng)
         x, pi, z = (torch.from_numpy(a).to(device) for a in (x, pi, z))
         logits, v = net(x)
@@ -259,14 +316,17 @@ class TrainingRun:
         saved.write_text(json.dumps(self.config.to_json(), indent=2))
 
         self.status: dict = {"run": self.name, "state": "starting", "generation": 0,
-                             "generations": self.config.generations, "pid": os.getpid()}
+                             "generations": self.config.generations, "pid": os.getpid(),
+                             "host": socket.gethostname()}
         self.buffer = ReplayBuffer(self.config.buffer_positions)
         self.net: Optional[PolicyValueNet] = None
         self.optimizer: Optional[torch.optim.Optimizer] = None
         self.step = 0
         self.best = 0
         self.best_score = -1.0
-        self._pool: Optional[ProcessPoolExecutor] = None
+        self._pending_eval: Optional[dict] = None  # a trained generation whose evaluation was interrupted
+        self._paused_after: Optional[str] = None
+        self._pool = None
 
     # -- paths and records
 
@@ -275,6 +335,10 @@ class TrainingRun:
 
     def games_file(self, generation: int) -> Path:
         return self.dir / "games" / f"gen_{generation:04d}.jsonl.gz"
+
+    def partial_prefix(self, generation: int) -> Path:
+        """Finished games of a generation still being played: <prefix>.<pid>.jsonl.gz, one file per process."""
+        return self.dir / "games" / f"gen_{generation:04d}.partial"
 
     def record(self, event: str, **data) -> None:
         with open(self.dir / "metrics.jsonl", "a") as f:
@@ -286,6 +350,20 @@ class TrainingRun:
         tmp.write_text(json.dumps(self.status))
         tmp.replace(self.dir / "status.json")
 
+    # -- pausing
+
+    def _pause_due(self, checkpoint: str) -> Optional[str]:
+        """The pending request if it takes effect at this kind of checkpoint ("now": anywhere;
+        "phase": between phases; "generation": between generations)."""
+        when = pending_pause(self.dir)
+        return when if when in _HONOURED[checkpoint] else None
+
+    def _check_pause(self, checkpoint: str, after: Optional[str] = None) -> None:
+        """Raise Paused if a request takes effect here. `after` names the phase just completed."""
+        if self._pause_due(checkpoint):
+            self._paused_after = after
+            raise Paused()
+
     # -- setup and resume
 
     def _completed_generations(self) -> int:
@@ -294,7 +372,7 @@ class TrainingRun:
 
     def _load_or_create(self) -> int:
         """Load the newest network (or create generation 0) and refill the buffer. Returns the
-        newest completed generation."""
+        newest trained generation."""
         last = self._completed_generations()
         if last < 0:
             self.net = new_network(self.config.net_config, seed=self.config.seed)
@@ -311,10 +389,12 @@ class TrainingRun:
             if state.get("generation") == last:
                 self.optimizer.load_state_dict(state["optimizer"])
                 self.step = state["step"]
+                if not state.get("evaluated", True):
+                    self._pending_eval = {"steps": state.get("steps"), "losses": state.get("losses", {})}
             self.best, self.best_score = state.get("best", 0), state.get("best_score", -1.0)
 
         # Refill the buffer from the newest games backwards, then add them oldest first.
-        files = sorted((self.dir / "games").glob("gen_*.jsonl.gz"), reverse=True)
+        files = sorted((self.dir / "games").glob("gen_????.jsonl.gz"), reverse=True)
         files += sorted((self.dir / "games" / "contrib").glob("*.jsonl.gz"), key=os.path.getmtime, reverse=True)
         chosen, positions = [], 0
         for path in files:
@@ -330,47 +410,95 @@ class TrainingRun:
                 self.buffer.add(r)
         return last
 
-    # -- the phases of a generation
+    # -- the worker processes
 
-    def _pool_or_none(self) -> Optional[ProcessPoolExecutor]:
+    def _pool_or_none(self):
         if self.workers <= 0:
             return None
         if self._pool is None:
-            import multiprocessing as mp
-
-            self._pool = ProcessPoolExecutor(self.workers, mp_context=mp.get_context("spawn"), initializer=_init_worker)
+            # multiprocessing's Pool (unlike concurrent.futures) can stop its workers at once,
+            # which "pause now" needs: games in progress are abandoned, not waited for.
+            self._pool = mp.get_context("spawn").Pool(self.workers, initializer=_init_worker)
         return self._pool
+
+    def _gather(self, pending: list, on_result: Callable) -> None:
+        """Wait for pool tasks, handing each result over as it arrives and pausing if asked to."""
+        while pending:
+            self._check_pause("now")
+            still = []
+            for task in pending:
+                if task.ready():
+                    on_result(task.get())
+                else:
+                    still.append(task)
+            pending = still
+            if pending:
+                time.sleep(0.2)
+
+    def _stop_pool(self, abandon: bool) -> None:
+        if self._pool is None:
+            return
+        if abandon:
+            self._pool.terminate()
+        else:
+            self._pool.close()
+        self._pool.join()
+        self._pool = None
+
+    # -- the phases of a generation
 
     def _selfplay(self, generation: int) -> list[GameRecord]:
         path = self.games_file(generation)
-        if path.exists():  # already played before an interruption
+        if path.exists():  # played before an interruption
             return list(read_games(str(path)))
         n = self.config.games_per_generation
-        seed = self.config.seed * 1_000_003 + generation * 10_000
-        net_path = str(self.checkpoint(generation - 1))
-        records: list[GameRecord] = []
-        self.set_status(state="selfplay", generation=generation, games_done=0, games_total=n)
+        base = self.config.seed * 1_000_003 + generation * 10_000
+        prefix = self.partial_prefix(generation)
+        partials = sorted(prefix.parent.glob(prefix.name + ".*.jsonl.gz"))
+        # Games finished before a pause or crash are kept; only the missing seeds are played.
+        found: dict[int, GameRecord] = {}
+        for f in partials:
+            for r in read_games_salvaging(str(f)):
+                if r.generation == generation - 1 and r.seed is not None:
+                    found[r.seed] = r
+        records = list(found.values())
+        missing = [base + i for i in range(n) if base + i not in found]
+        if records:
+            self.log(f"  carrying on with self-play: {len(records)} of {n} games were already played")
+        self.set_status(state="selfplay", generation=generation, games_done=len(records), games_total=n)
+
+        def keep(new: list[GameRecord]) -> None:
+            records.extend(new)
+            self.set_status(games_done=len(records))
+
         pool = self._pool_or_none()
-        if pool is None:
+        if missing and pool is None:
             evaluator = NetworkEvaluator(self.net, self.selfplay_device)
+            own = f"{prefix}.{os.getpid()}.jsonl.gz"
 
-            def on_game(r):
-                records.append(r)
-                self.set_status(games_done=len(records))
+            def on_game(r: GameRecord) -> None:
+                append_games(own, [r])
+                keep([r])
 
-            play_games(evaluator, n, self.config.selfplay_config, seed, generation - 1, "", DEFAULT_RULES, on_game)
-            self.net.to(self.device)
-        else:
-            chunk = max(1, min(self.config.concurrent, math.ceil(n / (2 * self.workers))))
-            futures = [pool.submit(selfplay_task, net_path, min(chunk, n - start), self.config.selfplay_config,
-                                   seed + start, generation - 1, "") for start in range(0, n, chunk)]
-            for fut in as_completed(futures):
-                records.extend(GameRecord.from_json(d) for d in fut.result())
-                self.set_status(games_done=len(records))
-            records.sort(key=lambda r: r.seed)
+            try:
+                play_games(evaluator, len(missing), self.config.selfplay_config, generation=generation - 1,
+                           on_game=on_game, seeds=missing, should_stop=lambda: bool(self._pause_due("now")))
+            finally:
+                self.net.to(self.device)
+            self._check_pause("now")
+        elif missing:
+            size = max(1, min(self.config.concurrent, math.ceil(len(missing) / (2 * self.workers))))
+            net_path = str(self.checkpoint(generation - 1))
+            tasks = [pool.apply_async(selfplay_task, (net_path, seeds, self.config.selfplay_config, generation - 1, "",
+                                                      str(prefix)))
+                     for seeds in chunks(missing, size)]
+            self._gather(tasks, lambda result: keep([GameRecord.from_json(d) for d in result]))
+        records.sort(key=lambda r: r.seed)
         tmp = path.with_suffix(".tmp")
         write_games(str(tmp), records)
         tmp.replace(path)
+        for f in prefix.parent.glob(prefix.name + ".*.jsonl.gz"):
+            f.unlink()
         return records
 
     def _take_incoming(self) -> dict:
@@ -382,7 +510,7 @@ class TrainingRun:
         for path in sorted((self.dir / "incoming").glob("*.jsonl*")):
             try:
                 records = list(read_games(str(path)))
-            except (OSError, ValueError, TypeError) as exc:
+            except (OSError, EOFError, ValueError, TypeError) as exc:
                 self.log(f"  skipping {path.name}: {exc}")
                 rejected += 1
                 path.replace(self.dir / "games" / "rejected" / path.name)
@@ -423,7 +551,10 @@ class TrainingRun:
             self.record("train", generation=generation, step=self.step + step, **{k: round(v, 5) for k, v in losses.items()})
             self.set_status(step=step)
 
-        means = train_steps(self.net, self.optimizer, self.buffer, steps, self.config.batch_size, self.device, rng, on_progress)
+        # A pause mid-training abandons it: the network of the generation before is still on
+        # disk, and the training is redone from there on resume.
+        means = train_steps(self.net, self.optimizer, self.buffer, steps, self.config.batch_size, self.device, rng,
+                            on_progress, before_step=lambda: self._check_pause("now"))
         self.step += steps
         return {**means, "steps": steps}
 
@@ -444,15 +575,18 @@ class TrainingRun:
             seed = self.config.seed * 1_000_003 + generation * 10_000 + 5_000
             pool = self._pool_or_none()
             games: list[dict] = []
+
+            def keep(result: list[dict]) -> None:
+                games.extend(result)
+                self.set_status(games_done=len(games))
+
             if pool is None:
                 for i in range(n):
-                    games.extend(match_task(me, opponent, [i], self.config.simulations, seed))
-                    self.set_status(games_done=len(games))
+                    self._check_pause("now")
+                    keep(match_task(me, opponent, [i], self.config.simulations, seed))
             else:
-                futures = [pool.submit(match_task, me, opponent, [i], self.config.simulations, seed) for i in range(n)]
-                for fut in as_completed(futures):
-                    games.extend(fut.result())
-                    self.set_status(games_done=len(games))
+                self._gather([pool.apply_async(match_task, (me, opponent, [i], self.config.simulations, seed))
+                              for i in range(n)], keep)
             wins = sum(g["score"] == 1 for g in games)
             draws = sum(g["score"] == 0.5 for g in games)
             score = sum(g["score"] for g in games) / len(games)
@@ -477,16 +611,28 @@ class TrainingRun:
             shutil.copyfile(best_path, tmp)
             tmp.replace(self.publish)
 
-    def _save_train_state(self, generation: int) -> None:
+    def _save_train_state(self, generation: int, evaluated: bool, steps: int = 0, losses: Optional[dict] = None) -> None:
         tmp = self.dir / "checkpoints" / "train_state.pt.tmp"
         torch.save({"generation": generation, "optimizer": self.optimizer.state_dict(), "step": self.step,
-                    "best": self.best, "best_score": self.best_score}, tmp)
+                    "best": self.best, "best_score": self.best_score, "evaluated": evaluated,
+                    "steps": steps, "losses": losses or {}}, tmp)
         tmp.replace(self.dir / "checkpoints" / "train_state.pt")
+
+    def _finish_generation(self, generation: int, steps: int, losses: dict, seconds: float) -> None:
+        """Evaluate a trained generation, choose the best network and close the generation."""
+        evaluation = self._evaluate(generation)
+        self._update_best(generation, evaluation)
+        self._save_train_state(generation, evaluated=True)
+        self.record("generation", generation=generation, best=self.best, steps=steps, seconds=round(seconds, 1),
+                    **{k: round(v, 5) for k, v in losses.items()})
+        self.set_status(state="generation_done", generation=generation, best_generation=self.best,
+                        games_done=None, games_total=None, opponent=None)
 
     # -- the loop
 
     def run(self) -> None:
         cfg = self.config
+        request_pause(self.dir, None)  # a request left over from an earlier run no longer applies
         try:
             last = self._load_or_create()
             self.log(f"Run {self.name}: generation {last} of {cfg.generations}, {self.buffer.games} games "
@@ -494,7 +640,12 @@ class TrainingRun:
                      f"self-play on {self.workers or 1} {'processes' if self.workers else 'process'}")
             if last == 0 and not (self.dir / "checkpoints" / "best.pt").exists():
                 self._update_best(0, {})
-            self.set_status(generation=last, best_generation=self.best)
+            self.set_status(generation=last, best_generation=self.best, paused_in=None, paused_after=None)
+            if self._pending_eval is not None:
+                self.log(f"Generation {last}: evaluating (interrupted before)")
+                self._finish_generation(last, self._pending_eval.get("steps") or 0, self._pending_eval["losses"], 0.0)
+                self._pending_eval = None
+                self._check_pause("generation", after="generation")
             for generation in range(last + 1, cfg.generations + 1):
                 t0 = time.perf_counter()
                 records = self._selfplay(generation)
@@ -512,30 +663,38 @@ class TrainingRun:
                 self.log(f"Generation {generation}: {summary['games']} games in {t1 - t0:.0f} s "
                          f"(W {summary['white_wins']} / D {summary['draws']} / B {summary['black_wins']}, "
                          f"{summary['mean_plies']:.0f} plies on average)")
+                self._check_pause("phase", after="selfplay")
 
                 losses = self._train(generation, summary["positions"] + contributed["positions"])
                 steps = losses.pop("steps")
                 save_checkpoint(str(self.checkpoint(generation)), self.net, generation=generation, run=self.name)
-                self._save_train_state(generation)
+                self._save_train_state(generation, evaluated=False, steps=steps, losses=losses)
                 t2 = time.perf_counter()
                 self.log(f"  trained {steps} steps in {t2 - t1:.0f} s: loss {losses['loss']:.3f} "
                          f"(value {losses['value_loss']:.3f}, policy {losses['policy_loss']:.3f})")
+                self._check_pause("phase", after="training")
 
-                evaluation = self._evaluate(generation)
-                self._update_best(generation, evaluation)
-                self._save_train_state(generation)
-                self.record("generation", generation=generation, best=self.best, steps=steps,
-                            seconds=round(time.perf_counter() - t0, 1),
-                            **{k: round(v, 5) for k, v in losses.items()})
-                self.set_status(state="generation_done", generation=generation, best_generation=self.best)
+                self._finish_generation(generation, steps, losses, time.perf_counter() - t0)
+                if generation < cfg.generations:
+                    self._check_pause("generation", after="generation")
+            self._stop_pool(abandon=False)
             self.set_status(state="finished")
             self.log(f"Done: {cfg.generations} generations; best network is generation {self.best}.")
-        except KeyboardInterrupt:
-            self.set_status(state="stopped")
-            self.log("Stopped. Run the same command again to resume.")
+        except (Paused, KeyboardInterrupt):
+            self._stop_pool(abandon=True)
+            phase = self.status.get("state")
+            after = self._paused_after
+            during = None if after else (phase if phase in ("selfplay", "training", "evaluating") else None)
+            self.set_status(state="paused", paused_in=during, paused_after=after)
+            g = self.status.get("generation")
+            names = {"selfplay": "self-play", "training": "training", "evaluating": "testing"}
+            where = (f"after generation {g}" if after == "generation" else
+                     f"after generation {g}'s {names[after]}" if after else
+                     f"during generation {g}'s {names[during]}" if during else f"in generation {g}")
+            self.log(f"Paused {where}. Run the same command again to carry on from here.")
         except BaseException:
+            self._stop_pool(abandon=True)
             self.set_status(state="failed")
             raise
         finally:
-            if self._pool is not None:
-                self._pool.shutdown(cancel_futures=True)
+            request_pause(self.dir, None)
