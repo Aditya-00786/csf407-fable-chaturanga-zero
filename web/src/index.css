@@ -22,6 +22,9 @@
   --success: oklch(0.76 0.12 150);
   --success-soft: oklch(0.76 0.12 150 / 0.14);
   --stage-glow: oklch(0.3 0.05 45 / 0.55);
+  /* Chart series (validated for colour-blind separation against --surface). */
+  --chart-1: oklch(0.66 0.13 75);
+  --chart-2: oklch(0.64 0.12 240);
 }
 
 [data-theme='light'] {
@@ -43,6 +46,8 @@
   --success: oklch(0.5 0.12 150);
   --success-soft: oklch(0.5 0.12 150 / 0.1);
   --stage-glow: oklch(0.9 0.03 60 / 0.8);
+  --chart-1: oklch(0.55 0.12 68);
+  --chart-2: oklch(0.52 0.12 245);
 }
 
 @theme inline {

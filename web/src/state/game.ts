@@ -5,7 +5,7 @@
  */
 
 import { create } from 'zustand'
-import { api, ApiError, type Color, type GameView } from '../lib/api'
+import { api, ApiError, type Color, type GameView, type TrainedInfo } from '../lib/api'
 import { moveText } from '../lib/board'
 import { playMoveSound } from '../lib/sound'
 
@@ -16,6 +16,9 @@ export function runLabel(running: boolean, moves: number) {
   return running ? 'Pause' : moves === 0 ? 'Start' : 'Resume'
 }
 export type Pace = 'slow' | 'normal' | 'fast'
+/** The trained agent's strength (its search budget); see chaturanga/agents.py LEVELS. */
+export type Level = 'easy' | 'medium' | 'hard' | 'impossible'
+export type AgentSlot = 'opponent' | 'white' | 'black'
 
 const PACE_MS: Record<Pace, number> = { slow: 1400, normal: 700, fast: 220 }
 const HUMAN_OPPONENT_DELAY = 420
@@ -28,6 +31,9 @@ interface GameStore {
   opponent: string
   whiteAgent: string
   blackAgent: string
+  levels: Record<AgentSlot, Level>
+  /** The trained network the server plays with, null if none is published (undefined: not asked yet). */
+  trained: TrainedInfo | null | undefined
   pace: Pace
   running: boolean // computer vs computer: playing, or waiting for Start / paused
   orientation: Color // side shown at the bottom of the board
@@ -51,6 +57,11 @@ interface GameStore {
   setHumanColor: (c: Color) => void
   setOpponent: (id: string) => void
   setAgent: (color: Color, id: string) => void
+  setLevel: (slot: AgentSlot, level: Level) => void
+  /** Ask the server which trained network it has (it picks up newly published ones). */
+  refreshTrained: () => void
+  /** Load a finished game (a self-play game from training) and replay it from the start. */
+  watchGame: (moves: string[]) => void
   setPace: (p: Pace) => void
   setRunning: (on: boolean) => void
   /** Show the position after `ply` moves (0 to all of them); null returns to the live game. */
@@ -66,6 +77,7 @@ interface GameStore {
 }
 
 let generation = 0
+let loading = false // a load is in flight (init must not replace it with an empty game)
 let timer: ReturnType<typeof setTimeout> | null = null
 let replayTimer: ReturnType<typeof setTimeout> | null = null
 // Positions already fetched for review, by move sequence: stepping back and forth is instant.
@@ -102,8 +114,10 @@ export const useGame = create<GameStore>((set, get) => {
   const computerToMove = (s: GameStore) => {
     const g = s.game
     if (!g || g.outcome || s.reviewPly !== null) return null
-    if (s.mode === 'hvc' && g.side !== s.humanColor) return s.opponent
-    if (s.mode === 'cvc' && s.running) return g.side === 1 ? s.whiteAgent : s.blackAgent
+    if (s.mode === 'hvc' && g.side !== s.humanColor) return { agent: s.opponent, level: s.levels.opponent }
+    if (s.mode === 'cvc' && s.running) {
+      return g.side === 1 ? { agent: s.whiteAgent, level: s.levels.white } : { agent: s.blackAgent, level: s.levels.black }
+    }
     return null
   }
 
@@ -111,8 +125,8 @@ export const useGame = create<GameStore>((set, get) => {
     if (timer) clearTimeout(timer)
     timer = null
     const s = get()
-    const agent = computerToMove(s)
-    if (!agent) {
+    const next = computerToMove(s)
+    if (!next) {
       if (s.status === 'thinking') set({ status: 'ready' })
       return
     }
@@ -121,9 +135,10 @@ export const useGame = create<GameStore>((set, get) => {
     const delay = s.mode === 'cvc' ? PACE_MS[s.pace] : HUMAN_OPPONENT_DELAY
     timer = setTimeout(async () => {
       try {
-        const res = await api.agentMove(get().moves, agent)
+        const res = await api.agentMove(get().moves, next.agent, null, next.agent === 'zero' ? next.level : undefined)
         if (gen !== generation) return
-        set({ moves: [...get().moves, res.move], game: res.game, status: 'ready', error: null })
+        set({ moves: [...get().moves, res.move], game: res.game, status: 'ready', error: null,
+          ...(res.network ? { trained: res.network } : {}) })
         soundFor(res.game)
         schedule()
       } catch (err) {
@@ -132,18 +147,24 @@ export const useGame = create<GameStore>((set, get) => {
     }, delay)
   }
 
-  const load = async (moves: string[]) => {
+  const load = async (moves: string[], then?: () => void) => {
     const gen = ++generation
     if (timer) clearTimeout(timer)
+    loading = true
     try {
       const game = await api.game(moves)
       if (gen !== generation) return
+      loading = false
       if (replayTimer) clearTimeout(replayTimer)
       pendingPly = null
       set({ moves, game, status: 'ready', error: null, reviewPly: null, reviewGame: null, replaying: false })
-      schedule()
+      if (then) then()
+      else schedule()
     } catch (err) {
-      if (gen === generation) fail(err)
+      if (gen === generation) {
+        loading = false
+        fail(err)
+      }
     }
   }
 
@@ -209,6 +230,8 @@ export const useGame = create<GameStore>((set, get) => {
     opponent: 'greedy',
     whiteAgent: 'greedy',
     blackAgent: 'random',
+    levels: { opponent: 'medium', white: 'medium', black: 'medium' },
+    trained: undefined,
     pace: 'normal',
     running: true,
     orientation: 1,
@@ -223,7 +246,7 @@ export const useGame = create<GameStore>((set, get) => {
     replaySpeed: 'normal',
 
     init: () => {
-      if (!get().game) void load([])
+      if (!get().game && !loading) void load([])
     },
 
     newGame: () => {
@@ -278,6 +301,18 @@ export const useGame = create<GameStore>((set, get) => {
     },
     setOpponent: (opponent) => set({ opponent }),
     setAgent: (color, id) => set(color === 1 ? { whiteAgent: id } : { blackAgent: id }),
+    setLevel: (slot, level) => set({ levels: { ...get().levels, [slot]: level } }),
+    refreshTrained: () => {
+      void api.meta().then((m) => set({ trained: m.trained }), () => {})
+    },
+    watchGame: (moves) => {
+      // Two players: nobody moves on their own, so the replay has the board to itself.
+      set({ mode: 'hvh', running: true, status: get().game ? 'ready' : 'connecting' })
+      void load(moves, () => {
+        set({ replaying: true })
+        reviewAt(0)
+      })
+    },
     setPace: (pace) => set({ pace }),
     setRunning: (running) => {
       set({ running })

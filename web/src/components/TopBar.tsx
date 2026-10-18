@@ -6,6 +6,7 @@ const NAV: { page: Page; label: string }[] = [
   { page: 'play', label: 'Play' },
   { page: 'learn', label: 'Learn' },
   { page: 'rules', label: 'Rules' },
+  { page: 'training', label: 'Training' },
 ]
 
 function Mark() {
@@ -44,14 +45,6 @@ export function TopBar({ page }: { page: Page }) {
             </a>
           )
         })}
-        <span
-          className="ml-1 hidden cursor-not-allowed items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-ink-faint lg:inline-flex"
-          title="Arrives with Milestone 3, once the agent trains by self-play"
-          aria-disabled="true"
-        >
-          Watch training
-          <span className="rounded border border-line px-1.5 py-px text-[11px] font-medium">Soon</span>
-        </span>
       </nav>
       <div className="ml-auto flex items-center gap-2">
         <span className="hidden text-[12.5px] text-ink-faint xl:inline">CS F407 · Team Fable</span>

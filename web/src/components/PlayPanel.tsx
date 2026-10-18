@@ -2,7 +2,7 @@ import { FlipVertical2, Pause, Play } from 'lucide-react'
 import { useEffect, useMemo, useRef } from 'react'
 import type { Color, GameView } from '../lib/api'
 import { colorName, describeMove, explainOutcome, squareName } from '../lib/board'
-import { runLabel, useGame, type Mode, type Pace } from '../state/game'
+import { runLabel, useGame, type AgentSlot, type Level, type Mode, type Pace } from '../state/game'
 import { useDetail, useSettings, type DetailPart } from '../state/settings'
 import { PieceGlyph } from './PieceGlyph'
 import { DrawerHeader } from './stage'
@@ -16,7 +16,45 @@ const AGENTS = [
     label: 'MCTS',
     title: 'Monte Carlo Tree Search: 50 simulations per move, guided by a network that is not trained yet',
   },
+  {
+    value: 'zero',
+    label: 'Trained',
+    title: 'ChaturangZero: the same search, guided by the network trained by self-play',
+  },
 ]
+
+const LEVELS: { value: Level; label: string; title: string }[] = [
+  { value: 'easy', label: 'Easy', title: '10 simulations per move, and it often strays from its favourite move' },
+  { value: 'medium', label: 'Medium', title: '50 simulations per move, as in training; mostly its favourite move' },
+  { value: 'hard', label: 'Hard', title: '200 simulations per move, always its best move' },
+  { value: 'impossible', label: 'Impossible', title: '800 simulations per move; thinks for about a second' },
+]
+
+/** A computer player's picker; the trained agent adds its level and which network it is. */
+function AgentPicker({ label, slot, value, onChange }: {
+  label: string; slot: AgentSlot; value: string; onChange: (id: string) => void
+}) {
+  const { levels, setLevel, trained, refreshTrained } = useGame()
+  useEffect(() => {
+    if (value === 'zero') refreshTrained()
+  }, [value, refreshTrained])
+  return (
+    <div className="space-y-2">
+      <Segmented label={label} value={value} onChange={onChange} size="sm" options={AGENTS} />
+      <Collapse open={value === 'zero'}>
+        <div className="space-y-1.5 pt-0.5">
+          <Segmented<Level> label="Level" hideLabel value={levels[slot]} onChange={(l) => setLevel(slot, l)} size="sm"
+            options={LEVELS} />
+          <p className="text-[12.5px] leading-snug text-ink-faint">
+            {trained === undefined ? 'Checking for a trained network…'
+              : trained === null ? 'No trained network yet. Train one with python scripts/train.py.'
+                : `Network from generation ${trained.generation ?? '?'} of the run “${trained.run ?? 'unknown'}”.`}
+          </p>
+        </div>
+      </Collapse>
+    </div>
+  )
+}
 
 const DETAIL_PARTS: { part: DetailPart; label: string }[] = [
   { part: 'hints', label: 'Move hints' },
@@ -212,13 +250,13 @@ export function PlayPanel({ view, onClose, onRotate }: { view: GameView | null; 
             <div className="space-y-3">
               <Segmented<Color> label="You play" value={g.humanColor} onChange={g.setHumanColor} size="sm"
                 options={[{ value: 1, label: 'White' }, { value: -1, label: 'Black' }]} />
-              <Segmented label="Opponent" value={g.opponent} onChange={g.setOpponent} size="sm" options={AGENTS} />
+              <AgentPicker label="Opponent" slot="opponent" value={g.opponent} onChange={g.setOpponent} />
             </div>
           )}
           {g.mode === 'cvc' && (
             <div className="space-y-3">
-              <Segmented label="White" value={g.whiteAgent} onChange={(v) => g.setAgent(1, v)} size="sm" options={AGENTS} />
-              <Segmented label="Black" value={g.blackAgent} onChange={(v) => g.setAgent(-1, v)} size="sm" options={AGENTS} />
+              <AgentPicker label="White" slot="white" value={g.whiteAgent} onChange={(v) => g.setAgent(1, v)} />
+              <AgentPicker label="Black" slot="black" value={g.blackAgent} onChange={(v) => g.setAgent(-1, v)} />
               <div className="flex items-end gap-3">
                 <div className="flex-1">
                   <Segmented<Pace> label="Pace" value={g.pace} onChange={g.setPace} size="sm"

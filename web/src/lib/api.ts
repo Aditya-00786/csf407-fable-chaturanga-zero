@@ -41,6 +41,18 @@ export interface AgentInfo {
   description: string
 }
 
+export interface TrainedInfo {
+  run: string | null
+  generation: number | null
+}
+
+export interface LevelInfo {
+  id: string
+  name: string
+  simulations: number
+  description: string
+}
+
 export interface Meta {
   rules: {
     setup: string
@@ -51,6 +63,8 @@ export interface Meta {
     max_plies: number
   }
   agents: AgentInfo[]
+  levels: LevelInfo[]
+  trained: TrainedInfo | null
 }
 
 export class ApiError extends Error {
@@ -89,8 +103,92 @@ export const api = {
   meta: () => request<Meta>('/api/meta'),
   game: (moves: string[], startFen?: string | null) =>
     request<GameView>('/api/game', { moves, start_fen: startFen ?? null }),
-  agentMove: (moves: string[], agent: string, startFen?: string | null) =>
-    request<{ move: string; game: GameView }>('/api/agent-move', {
-      moves, agent, start_fen: startFen ?? null,
+  agentMove: (moves: string[], agent: string, startFen?: string | null, level?: string) =>
+    request<{ move: string; game: GameView; network?: TrainedInfo }>('/api/agent-move', {
+      moves, agent, start_fen: startFen ?? null, level: level ?? null,
     }),
+  trainingRuns: () => request<{ runs: RunStatus[] }>('/api/training/runs'),
+  trainingRun: (name: string) => request<RunDetail>(`/api/training/runs/${encodeURIComponent(name)}`),
+  selfPlayGames: (name: string, generation: number) =>
+    request<{ games: SelfPlayGameInfo[] }>(`/api/training/runs/${encodeURIComponent(name)}/games/${generation}`),
+  selfPlayGame: (name: string, generation: number, index: number) =>
+    request<SelfPlayGame>(`/api/training/runs/${encodeURIComponent(name)}/games/${generation}/${index}`),
+}
+
+// ------------------------------------------------------------------ training (Watch training)
+
+export type RunState = 'starting' | 'selfplay' | 'training' | 'evaluating' | 'generation_done' | 'finished' | 'stopped' | 'failed'
+
+export interface RunStatus {
+  name: string
+  state: RunState
+  live: boolean
+  generation: number
+  generations: number
+  games_done?: number
+  games_total?: number
+  step?: number
+  steps_total?: number
+  opponent?: string
+  best_generation?: number
+  updated?: string
+  seconds_since_update: number | null
+}
+
+export interface LossPoint {
+  step: number
+  generation: number
+  loss: number
+  value_loss: number
+  policy_loss: number
+  policy_entropy: number
+}
+
+export interface EvalResult {
+  wins: number
+  draws: number
+  losses: number
+  score: number
+  reasons: Record<string, number>
+}
+
+export interface GenerationRow {
+  generation: number
+  games?: number
+  white_wins?: number
+  black_wins?: number
+  draws?: number
+  reasons?: Record<string, number>
+  mean_plies?: number
+  positions?: number
+  seconds?: number
+  contributed?: Record<string, number>
+  buffer_positions?: number
+  held_out?: { loss: number; value_loss: number; policy_loss: number; value_baseline?: number; step?: number }
+  steps?: number
+  eval: Record<string, EvalResult>
+  best?: number
+  train_loss?: { loss: number; value_loss: number; policy_loss: number }
+  finished?: string
+}
+
+export interface RunDetail {
+  status: RunStatus
+  config: { generations: number; games_per_generation: number; simulations: number; steps_per_generation: number;
+    blocks: number; channels: number; [key: string]: unknown }
+  train: LossPoint[]
+  generations: GenerationRow[]
+}
+
+export interface SelfPlayGameInfo {
+  index: number
+  winner: Color | null
+  reason: OutcomeReason
+  plies: number
+}
+
+export interface SelfPlayGame extends SelfPlayGameInfo {
+  generation: number
+  network: number
+  moves: string[]
 }

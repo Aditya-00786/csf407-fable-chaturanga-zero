@@ -1,0 +1,343 @@
+/**
+ * Watch training: a training run's progress, read from the API server (runs/<name>/ on disk).
+ * Polls every few seconds while a run is live. A secondary screen for the team: the play and
+ * learn screens stay the primary experience.
+ */
+
+import { Play, RefreshCw } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Legend, LineChart, type Series } from '../components/LineChart'
+import { Button, Segmented } from '../components/ui'
+import { api, ApiError, type GenerationRow, type RunDetail, type RunStatus } from '../lib/api'
+import { href } from '../lib/route'
+import { useGame } from '../state/game'
+
+const LIVE_POLL_MS = 4000
+const IDLE_POLL_MS = 30000
+
+const PHASE: Record<string, string> = {
+  starting: 'Starting',
+  selfplay: 'Playing self-play games',
+  training: 'Training the network',
+  evaluating: 'Testing the new network',
+  generation_done: 'Generation finished',
+  finished: 'Finished',
+  stopped: 'Stopped',
+  failed: 'Stopped with an error',
+}
+
+const pct = (v: number) => `${Math.round(v * 100)}%`
+
+function ago(seconds: number | null) {
+  if (seconds === null) return 'never'
+  if (seconds < 90) return 'just now'
+  if (seconds < 5400) return `${Math.round(seconds / 60)} minutes ago`
+  if (seconds < 129600) return `${Math.round(seconds / 3600)} hours ago`
+  return `${Math.round(seconds / 86400)} days ago`
+}
+
+function Progress({ value, label }: { value: number; label: string }) {
+  return (
+    <div role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(value * 100)}
+      className="h-1.5 overflow-hidden rounded-full bg-surface-2">
+      <div className="h-full rounded-full bg-accent transition-[width] duration-500 ease-out-quart" style={{ width: `${Math.min(100, value * 100)}%` }} />
+    </div>
+  )
+}
+
+function StatusPanel({ status, detail }: { status: RunStatus; detail: RunDetail }) {
+  const live = status.live
+  const state = !live && status.state !== 'finished' && status.state !== 'failed' ? 'stopped' : status.state
+  const total = detail.config.generations
+  const done = detail.generations.filter((g) => g.best !== undefined).length
+  let phase = ''
+  let phaseValue = 0
+  if (live && status.state === 'selfplay' && status.games_total) {
+    phase = `${status.games_done ?? 0} of ${status.games_total} games`
+    phaseValue = (status.games_done ?? 0) / status.games_total
+  } else if (live && status.state === 'training' && status.steps_total) {
+    phase = `step ${status.step ?? 0} of ${status.steps_total}`
+    phaseValue = (status.step ?? 0) / status.steps_total
+  } else if (live && status.state === 'evaluating' && status.games_total) {
+    phase = `against ${status.opponent === 'previous' ? 'the previous generation' : status.opponent === 'greedy' ? 'Greedy' : status.opponent}, ${status.games_done ?? 0} of ${status.games_total} games`
+    phaseValue = (status.games_done ?? 0) / status.games_total
+  }
+  const games = detail.generations.reduce((n, g) => n + (g.games ?? 0), 0)
+  const positions = detail.generations.reduce((n, g) => n + (g.positions ?? 0), 0)
+  const last = [...detail.generations].reverse().find((g) => g.eval.greedy)
+  return (
+    <section aria-label="Run status" className="rounded-2xl border border-line bg-surface p-5 sm:p-6">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+        <p className="flex items-center gap-2.5 font-serif text-[22px] font-semibold text-ink">
+          <span aria-hidden className={`relative inline-flex h-2.5 w-2.5 rounded-full ${live ? 'bg-success' : 'bg-ink-faint'}`}>
+            {live && <span className="absolute inset-0 animate-ping rounded-full bg-success opacity-60 motion-reduce:hidden" />}
+          </span>
+          {PHASE[state] ?? state}
+          {live && status.generation > 0 && status.state !== 'generation_done' && (
+            <span className="font-sans text-[15px] font-normal text-ink-muted">for generation {status.generation}</span>
+          )}
+        </p>
+        <p className="text-[13px] text-ink-faint">{live ? 'Live' : 'Not running'} · last update {ago(status.seconds_since_update)}</p>
+      </div>
+      {phase && (
+        <div className="mt-3 space-y-1.5">
+          <p className="text-[13px] text-ink-muted tabular-nums">{phase}</p>
+          <Progress value={phaseValue} label="This phase" />
+        </div>
+      )}
+      <div className="mt-5 space-y-1.5">
+        <p className="text-[13px] text-ink-muted tabular-nums">{done} of {total} generations</p>
+        <Progress value={done / total} label="Generations" />
+      </div>
+      <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-3 text-[13px] sm:grid-cols-4">
+        {[
+          ['Self-play games', games.toLocaleString()],
+          ['Positions', positions.toLocaleString()],
+          ['Best network', status.best_generation !== undefined ? `Generation ${status.best_generation}` : '–'],
+          ['Latest vs Greedy', last ? `${pct(last.eval.greedy.score)} (gen ${last.generation})` : '–'],
+        ].map(([k, v]) => (
+          <div key={k}>
+            <dt className="text-ink-faint">{k}</dt>
+            <dd className="mt-0.5 text-[15px] font-semibold text-ink tabular-nums">{v}</dd>
+          </div>
+        ))}
+      </dl>
+      {!live && state === 'stopped' && (
+        <p className="mt-4 text-[13px] leading-snug text-ink-muted">
+          Resume it with <code className="rounded bg-surface-2 px-1.5 py-0.5 text-[12.5px]">python scripts/train.py --run {status.name}</code>.
+        </p>
+      )}
+    </section>
+  )
+}
+
+function ChartCard({ title, note, children }: { title: string; note: string; children: React.ReactNode }) {
+  return (
+    <section className="min-w-0 rounded-2xl border border-line bg-surface p-5">
+      <h3 className="font-serif text-[18px] font-semibold text-ink">{title}</h3>
+      <p className="mt-1 mb-3 text-[12.5px] leading-snug text-ink-muted">{note}</p>
+      {children}
+    </section>
+  )
+}
+
+function Charts({ detail }: { detail: RunDetail }) {
+  const steps = detail.config.steps_per_generation
+  const gens = detail.generations
+  // A generation's new games are measured before training on them, i.e. at the end of the one before.
+  const held = gens.filter((g) => g.held_out)
+  const heldX = (g: GenerationRow) => g.held_out?.step ?? (g.generation - 1) * steps
+  const lossSeries = (key: 'policy_loss' | 'value_loss'): Series[] => [
+    { id: 'train', label: 'training batches', color: 'var(--chart-1)', kind: 'line',
+      points: detail.train.map((p) => ({ x: p.step, y: p[key] })) },
+    { id: 'new', label: 'new games', color: 'var(--chart-2)', kind: 'dots',
+      points: held.map((g) => ({ x: heldX(g), y: g.held_out![key] })) },
+  ]
+  const lossLegend = [
+    { label: 'Training batches', color: 'var(--chart-1)', kind: 'line' as const },
+    { label: 'New games, before training on them', color: 'var(--chart-2)', kind: 'dots' as const },
+  ]
+  const evalSeries: Series[] = [
+    { id: 'greedy', label: 'vs Greedy', color: 'var(--chart-1)', kind: 'line',
+      points: gens.filter((g) => g.eval.greedy).map((g) => ({ x: g.generation, y: g.eval.greedy.score * 100 })) },
+    { id: 'previous', label: 'vs previous generation', color: 'var(--chart-2)', kind: 'line',
+      points: gens.filter((g) => g.eval.previous).map((g) => ({ x: g.generation, y: g.eval.previous.score * 100 })) },
+  ]
+  const decisive: Series[] = [{
+    id: 'decisive', label: 'decisive', color: 'var(--chart-1)', kind: 'line',
+    points: gens.filter((g) => g.games).map((g) => ({ x: g.generation, y: (1 - (g.draws ?? 0) / g.games!) * 100 })),
+  }]
+  const fmtLoss = (v: number) => (v === 0 ? '0' : v >= 1 ? v.toFixed(1) : v.toFixed(2))
+  const fmtPct = (v: number) => `${Math.round(v)}%`
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      <ChartCard title="Policy loss" note="How far the network's move choices are from the search's. The dashed line is the lowest it can go.">
+        <LineChart label="Policy loss by training step" series={lossSeries('policy_loss')} xLabel="training step" yFormat={fmtLoss}
+          reference={{ label: 'lowest possible', points: detail.train.map((p) => ({ x: p.step, y: p.policy_entropy })) }} />
+        <div className="mt-2"><Legend items={lossLegend} /></div>
+      </ChartCard>
+      <ChartCard title="Value loss" note="How far its prediction of the result is from how games ended. On new games it must beat the dashed line, the score of always predicting a draw.">
+        <LineChart label="Value loss by training step" series={lossSeries('value_loss')} xLabel="training step" yFormat={fmtLoss}
+          reference={{ label: 'predicting a draw', points: held.filter((g) => g.held_out!.value_baseline !== undefined)
+            .map((g) => ({ x: heldX(g), y: g.held_out!.value_baseline! })) }} />
+        <div className="mt-2"><Legend items={lossLegend} /></div>
+      </ChartCard>
+      <ChartCard title="Evaluation score" note="Wins plus half the draws, after each generation. Above 50% against the previous generation means it improved.">
+        <LineChart label="Evaluation score by generation" series={evalSeries} xLabel="generation" integerX yMin={0} yMax={100} yFormat={fmtPct} />
+        <div className="mt-2"><Legend items={[
+          { label: 'vs Greedy', color: 'var(--chart-1)', kind: 'line' },
+          { label: 'vs previous generation', color: 'var(--chart-2)', kind: 'line' },
+        ]} /></div>
+      </ChartCard>
+      <ChartCard title="Decisive self-play games" note="Games won by checkmate, bare king or stalemate rather than drawn. Decisive games teach the value head the most.">
+        <LineChart label="Share of decisive self-play games by generation" series={decisive} xLabel="generation" integerX yMin={0} yMax={100} yFormat={fmtPct} />
+      </ChartCard>
+    </div>
+  )
+}
+
+function WatchButton({ run, row }: { run: string; row: GenerationRow }) {
+  const watchGame = useGame((s) => s.watchGame)
+  const [busy, setBusy] = useState(false)
+  const open = async () => {
+    setBusy(true)
+    try {
+      // The shortest decisive game has the most happening per move; fall back to the first game.
+      const { games } = await api.selfPlayGames(run, row.generation)
+      const decisive = games.filter((g) => g.winner !== null).sort((a, b) => a.plies - b.plies)
+      const pick = decisive[0] ?? games[0]
+      if (!pick) return
+      const game = await api.selfPlayGame(run, row.generation, pick.index)
+      watchGame(game.moves)
+      location.hash = href('play')
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Button size="sm" variant="secondary" onClick={open} disabled={busy || !row.games} icon={<Play size={14} />}
+      title="Replay this generation's shortest decisive self-play game on the board"
+      aria-label={`Watch a self-play game from generation ${row.generation}`}>
+      Watch
+    </Button>
+  )
+}
+
+function GenerationTable({ run, detail }: { run: string; detail: RunDetail }) {
+  const rows = [...detail.generations].reverse()
+  const best = detail.status.best_generation
+  if (!rows.length) return null
+  const score = (g: GenerationRow, k: string) => (g.eval[k] ? pct(g.eval[k].score) : '–')
+  return (
+    <section aria-labelledby="gens-title" className="rounded-2xl border border-line bg-surface p-5">
+      <h3 id="gens-title" className="font-serif text-[18px] font-semibold text-ink">Generations</h3>
+      <div className="mt-3 overflow-x-auto">
+        <table className="w-full min-w-[760px] border-collapse text-left text-[13px] tabular-nums">
+          <thead>
+            <tr className="border-b border-line-strong text-[12px] text-ink-faint">
+              {['Gen', 'Self-play W / D / B', 'Mean length', 'Loss', 'Loss on new games', 'vs previous', 'vs Greedy', ''].map((h) => (
+                <th key={h} scope="col" className="py-2 pr-4 font-medium">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((g) => (
+              <tr key={g.generation} className="border-b border-line">
+                <th scope="row" className="py-2 pr-4 font-semibold text-ink">
+                  {g.generation}
+                  {best === g.generation && <span className="ml-2 rounded bg-accent-soft px-1.5 py-px text-[11px] font-medium text-accent">best</span>}
+                </th>
+                <td className="py-2 pr-4 text-ink-muted">{g.games ? `${g.white_wins} / ${g.draws} / ${g.black_wins}` : '–'}</td>
+                <td className="py-2 pr-4 text-ink-muted">{g.mean_plies ? `${Math.round(g.mean_plies)} plies` : '–'}</td>
+                <td className="py-2 pr-4 text-ink-muted">{g.train_loss?.loss?.toFixed(2) ?? '–'}</td>
+                <td className="py-2 pr-4 text-ink-muted">{g.held_out ? g.held_out.loss.toFixed(2) : '–'}</td>
+                <td className="py-2 pr-4 text-ink-muted">{score(g, 'previous')}</td>
+                <td className="py-2 pr-4 text-ink-muted">{score(g, 'greedy')}</td>
+                <td className="py-1.5 text-right"><WatchButton run={run} row={g} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
+}
+
+function Empty({ error, onRetry }: { error: string | null; onRetry: () => void }) {
+  return (
+    <section className="rounded-2xl border border-line bg-surface p-6 sm:p-8">
+      {error ? (
+        <>
+          <p className="font-serif text-[20px] font-semibold text-ink">Cannot load training runs</p>
+          <p className="mt-2 text-[14px] text-ink-muted">{error}</p>
+          <div className="mt-4"><Button size="sm" onClick={onRetry} icon={<RefreshCw size={14} />}>Try again</Button></div>
+        </>
+      ) : (
+        <>
+          <p className="font-serif text-[20px] font-semibold text-ink">No training runs yet</p>
+          <p className="mt-2 max-w-[60ch] text-[14px] leading-relaxed text-ink-muted">
+            Start one from the project folder. It plays 50 self-play games per generation, trains on them, and tests
+            each new network; this page follows along live.
+          </p>
+          <pre className="mt-4 overflow-x-auto rounded-lg bg-bg px-4 py-3 text-[13px] text-ink">python scripts/train.py</pre>
+        </>
+      )}
+    </section>
+  )
+}
+
+export function TrainingView() {
+  const [runs, setRuns] = useState<RunStatus[] | null>(null)
+  const [selected, setSelected] = useState<string | null>(null)
+  const [detail, setDetail] = useState<RunDetail | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [tick, setTick] = useState(0)
+
+  const refresh = useCallback(async () => {
+    try {
+      const { runs } = await api.trainingRuns()
+      setRuns(runs)
+      const name = selected && runs.some((r) => r.name === selected) ? selected : runs[0]?.name ?? null
+      if (name !== selected) setSelected(name)
+      setDetail(name ? await api.trainingRun(name) : null)
+      setError(null)
+    } catch (err) {
+      setError(err instanceof ApiError && err.status === 0
+        ? 'The API server is not running. Start it with: python -m chaturanga_server'
+        : err instanceof Error ? err.message : 'Something went wrong.')
+    }
+  }, [selected])
+
+  useEffect(() => {
+    void refresh()
+  }, [refresh, tick])
+
+  const live = detail?.status.live ?? false
+  useEffect(() => {
+    const id = setTimeout(() => setTick((t) => t + 1), live ? LIVE_POLL_MS : IDLE_POLL_MS)
+    return () => clearTimeout(id)
+  }, [live, tick, detail])
+
+  const options = useMemo(() => (runs ?? []).map((r) => ({ value: r.name, label: r.name })), [runs])
+
+  return (
+    <div className="flex-1 overflow-y-auto">
+      <div className="mx-auto max-w-6xl px-5 py-10 sm:px-8 sm:py-12">
+        <header className="flex flex-wrap items-end justify-between gap-4">
+          <div className="max-w-[62ch]">
+            <h1 className="font-serif text-[36px] leading-[1.1] font-semibold tracking-[-0.015em] text-ink sm:text-[42px]">
+              Watch training
+            </h1>
+            <p className="mt-3 text-[15px] leading-relaxed text-ink-muted">
+              The agent learns by playing itself. Each generation the newest network plays a batch of self-play games
+              with MCTS, trains on the search's choices and the results, and is then tested against the generation
+              before it and the Greedy baseline.
+            </p>
+          </div>
+          {options.length > 1 && selected && (
+            <div className="w-full max-w-sm">
+              <Segmented label="Run" value={selected} onChange={(v) => { setSelected(v); setDetail(null) }} size="sm" options={options} />
+            </div>
+          )}
+        </header>
+
+        <div className="mt-8 space-y-4">
+          {runs === null && !error && <div className="h-40 animate-pulse rounded-2xl bg-surface" aria-busy="true" />}
+          {(error || (runs && runs.length === 0)) && <Empty error={error} onRetry={() => setTick((t) => t + 1)} />}
+          {detail && selected && (
+            <>
+              <StatusPanel status={detail.status} detail={detail} />
+              <Charts detail={detail} />
+              <GenerationTable run={selected} detail={detail} />
+              <p className="text-[12.5px] text-ink-faint">
+                Network: {detail.config.blocks} residual blocks × {detail.config.channels} filters ·{' '}
+                {detail.config.simulations} simulations per move · {detail.config.games_per_generation} games and{' '}
+                up to {detail.config.steps_per_generation} training steps per generation.
+              </p>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
