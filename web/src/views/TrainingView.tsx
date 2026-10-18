@@ -7,7 +7,7 @@
 import { ChevronDown, LoaderCircle, Pause, Play, Plus, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Legend, LineChart, type Series } from '../components/LineChart'
-import { Button, Collapse, Segmented, Switch } from '../components/ui'
+import { Button, Collapse, Switch } from '../components/ui'
 import { api, ApiError, type GenerationRow, type PauseWhen, type RunDetail, type RunStatus } from '../lib/api'
 import { href } from '../lib/route'
 import { useGame } from '../state/game'
@@ -633,19 +633,19 @@ function measuredSecondsPerGame(detail: RunDetail | null): number {
   return perGame * (50 / (detail.config.simulations || 50))
 }
 
-/** The run selector: buttons for a few runs, a menu for more. */
+/** The run on show: a menu, since runs are many and their names long. */
 function RunPicker({ runs, value, onChange }: { runs: RunStatus[]; value: string; onChange: (v: string) => void }) {
   const id = useId()
-  if (runs.length <= 3) {
-    return <Segmented label="Run" hideLabel value={value} onChange={onChange} size="sm" options={runs.map((r) => ({ value: r.name, label: r.name }))} />
-  }
   return (
-    <div>
-      <label htmlFor={id} className="sr-only">Run</label>
-      <select id={id} value={value} onChange={(e) => onChange(e.target.value)}
-        className="h-8 w-full rounded-lg border border-line bg-bg px-2.5 text-[13px] text-ink">
-        {runs.map((r) => <option key={r.name} value={r.name}>{r.name}{r.live ? ' (training)' : ''}</option>)}
-      </select>
+    <div className="flex items-center gap-3">
+      <label htmlFor={id} className="shrink-0 text-[13px] font-medium text-ink-muted">Run</label>
+      <div className="relative min-w-0 flex-1">
+        <select id={id} value={value} onChange={(e) => onChange(e.target.value)}
+          className="h-[34px] w-full appearance-none truncate rounded-lg border border-line bg-bg pr-9 pl-3 text-[13.5px] font-medium text-ink transition-colors duration-150 hover:border-line-strong focus-visible:border-accent">
+          {runs.map((r) => <option key={r.name} value={r.name}>{r.name}{r.live ? ' · training' : ''}</option>)}
+        </select>
+        <ChevronDown size={15} aria-hidden className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-ink-muted" />
+      </div>
     </div>
   )
 }
@@ -699,34 +699,36 @@ export function TrainingView() {
     <div ref={scroller} className="flex-1 overflow-y-auto">
       <div className="mx-auto max-w-6xl px-5 py-10 sm:px-8 sm:py-12">
         <header>
-          <div className="flex items-center justify-between gap-4">
-            <h1 className="font-serif text-[34px] leading-[1.1] font-semibold tracking-[-0.015em] text-ink sm:text-[42px]">
-              Watch training
-            </h1>
-            {runs && runs.length > 0 && (
-              <Button size="sm" onClick={() => setCreating((c) => !c)} aria-expanded={creating} aria-label="New run"
-                className="shrink-0"
-                icon={<Plus size={15} className={`transition-transform duration-200 ease-out-quart ${creating ? 'rotate-45' : ''}`} />}>
-                <span className="hidden sm:inline">New run</span>
-              </Button>
-            )}
-          </div>
+          <h1 className="font-serif text-[34px] leading-[1.1] font-semibold tracking-[-0.015em] text-ink sm:text-[42px]">
+            Watch training
+          </h1>
           <p className="mt-3 max-w-[62ch] text-[15px] leading-relaxed text-ink-muted">
             The agent learns by playing itself. Each generation of the newest network plays a batch of self-play
             games with MCTS, trains on the search's choices and the results and is then tested against the
             generation before it and the Greedy baseline.
           </p>
-          {runs && runs.length > 1 && selected && (
-            <div className="mt-6 flex items-center gap-3">
-              <span aria-hidden className="text-[13px] font-medium text-ink-muted">Run</span>
-              <div className="w-80 max-w-full min-w-0">
-                <RunPicker runs={runs} value={selected} onChange={(v) => { setSelected(v); setDetail(null) }} />
-              </div>
-            </div>
-          )}
         </header>
 
-        <div className="mt-8 space-y-4">
+        {/* Which run is on show, and starting another: one bar above the run itself. */}
+        {runs && runs.length > 0 && (
+          <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
+            {runs.length > 1 && selected ? (
+              <div className="w-full min-w-0 max-w-xs flex-1 sm:flex-none">
+                <RunPicker runs={runs} value={selected} onChange={(v) => { setSelected(v); setDetail(null) }} />
+              </div>
+            ) : (
+              <p className="text-[13px] font-medium text-ink-muted">
+                Run <span className="ml-2 text-[14px] text-ink">{selected}</span>
+              </p>
+            )}
+            <Button size="sm" onClick={() => setCreating((c) => !c)} aria-expanded={creating} className="shrink-0"
+              icon={<Plus size={15} className={`transition-transform duration-200 ease-out-quart ${creating ? 'rotate-45' : ''}`} />}>
+              New run
+            </Button>
+          </div>
+        )}
+
+        <div className={`${runs && runs.length > 0 ? 'mt-4' : 'mt-8'} space-y-4`}>
           {runs === null && !error && <div className="h-40 animate-pulse rounded-2xl bg-surface" aria-busy="true" />}
           {error && <Problem error={error} onRetry={() => setTick((t) => t + 1)} />}
           {noRuns && <NewRun runs={[]} first secondsPerGame={secondsPerGame} onStarted={started} />}
