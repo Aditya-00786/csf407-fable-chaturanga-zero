@@ -19,7 +19,7 @@ def test_health_and_meta():
     assert client.get("/api/health").json() == {"status": "ok"}
     meta = client.get("/api/meta").json()
     assert meta["rules"]["setup"] == "crosswise"
-    assert {a["id"] for a in meta["agents"]} == {"random", "greedy", "mcts"}
+    assert {a["id"] for a in meta["agents"]} == {"random", "greedy", "mcts", "zero"}
 
 
 def test_initial_game():
