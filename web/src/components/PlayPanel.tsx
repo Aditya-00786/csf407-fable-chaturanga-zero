@@ -1,5 +1,5 @@
 import { FlipVertical2, Pause, Play } from 'lucide-react'
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useId, useMemo, useRef } from 'react'
 import type { Color, GameView } from '../lib/api'
 import { colorName, describeMove, explainOutcome, squareName } from '../lib/board'
 import { runLabel, useGame, type AgentSlot, type Level, type Mode, type Pace } from '../state/game'
@@ -23,34 +23,79 @@ const AGENTS = [
   },
 ]
 
-const LEVELS: { value: Level; label: string; title: string }[] = [
-  { value: 'easy', label: 'Easy', title: '10 simulations per move, and it often strays from its favourite move' },
-  { value: 'medium', label: 'Medium', title: '50 simulations per move, as in training; mostly its favourite move' },
-  { value: 'hard', label: 'Hard', title: '200 simulations per move, always its best move' },
-  { value: 'impossible', label: 'Impossible', title: '800 simulations per move; thinks for about a second' },
+const LEVELS: { value: Level; label: string; note: string }[] = [
+  { value: 'easy', label: 'Easy', note: 'A 10-simulation search, and it often plays a move other than its favourite.' },
+  { value: 'medium', label: 'Medium', note: 'The 50-simulation search it trained with; it usually plays its favourite move.' },
+  { value: 'hard', label: 'Hard', note: '200 simulations per move, always its best move.' },
+  { value: 'impossible', label: 'Impossible', note: '800 simulations per move, always its best move; about a second to think.' },
 ]
 
-/** A computer player's picker; the trained agent adds its level and which network it is. */
+/** One to four rising bars: how strong a level plays. */
+function Strength({ level, on }: { level: number; on: boolean }) {
+  return (
+    <span aria-hidden className="flex h-3.5 items-end gap-[2px]">
+      {[0, 1, 2, 3].map((i) => (
+        <span key={i} style={{ height: `${(i + 1) * 25}%` }}
+          className={`w-[3px] rounded-[1px] transition-colors duration-200 ${
+            i <= level ? (on ? 'bg-accent' : 'bg-ink-muted') : 'bg-line-strong'
+          }`} />
+      ))}
+    </span>
+  )
+}
+
+/** The trained agent's difficulty, in a panel that hangs from the Trained option above it. */
+function LevelPicker({ slot }: { slot: AgentSlot }) {
+  const { levels, setLevel, trained } = useGame()
+  const name = useId()
+  const current = levels[slot]
+  const note = LEVELS.find((l) => l.value === current)?.note
+  return (
+    <div className="relative mt-2.5 rounded-lg border border-line bg-bg px-3 pt-2.5 pb-3">
+      {/* The notch points at Trained, the last of the four agents. */}
+      <span aria-hidden className="absolute -top-[6px] left-[calc(87.5%-6px)] h-[11px] w-[11px] rotate-45 border-t border-l border-line bg-bg" />
+      <fieldset>
+        <legend className="mb-2 text-[12.5px] font-medium text-ink-muted">Difficulty</legend>
+        <div className="grid grid-cols-4 gap-1">
+          {LEVELS.map((l, i) => {
+            const on = l.value === current
+            return (
+              <label key={l.value}
+                className={`relative flex cursor-pointer flex-col items-center gap-1.5 rounded-md px-1 py-2 text-[12px] font-medium transition-colors duration-200 ${
+                  on ? 'bg-surface-2 text-ink shadow-[inset_0_0_0_1px_var(--line-strong)]' : 'text-ink-muted hover:bg-surface-2/60 hover:text-ink'
+                }`}>
+                <input type="radio" name={name} className="peer sr-only" checked={on} onChange={() => setLevel(slot, l.value)} />
+                <span className="pointer-events-none absolute inset-0 rounded-md peer-focus-visible:outline-2 peer-focus-visible:outline-accent" />
+                <Strength level={i} on={on} />
+                {l.label}
+              </label>
+            )
+          })}
+        </div>
+      </fieldset>
+      <p key={current} className="cz-swap mt-2 text-[12.5px] leading-snug text-ink-muted">{note}</p>
+      <p className="mt-1.5 text-[12px] leading-snug text-ink-faint">
+        {trained === undefined ? 'Checking for a trained network'
+          : trained === null ? 'No trained network yet: train one first, as the README explains.'
+            : `Plays with generation ${trained.generation ?? '?'} of the run “${trained.run ?? 'unknown'}”.`}
+      </p>
+    </div>
+  )
+}
+
+/** A computer player's picker; the trained agent adds its difficulty. */
 function AgentPicker({ label, slot, value, onChange }: {
   label: string; slot: AgentSlot; value: string; onChange: (id: string) => void
 }) {
-  const { levels, setLevel, trained, refreshTrained } = useGame()
+  const refreshTrained = useGame((s) => s.refreshTrained)
   useEffect(() => {
     if (value === 'zero') refreshTrained()
   }, [value, refreshTrained])
   return (
-    <div className="space-y-2">
+    <div>
       <Segmented label={label} value={value} onChange={onChange} size="sm" options={AGENTS} />
       <Collapse open={value === 'zero'}>
-        <div className="space-y-1.5 pt-0.5">
-          <Segmented<Level> label="Level" hideLabel value={levels[slot]} onChange={(l) => setLevel(slot, l)} size="sm"
-            options={LEVELS} />
-          <p className="text-[12.5px] leading-snug text-ink-faint">
-            {trained === undefined ? 'Checking for a trained network…'
-              : trained === null ? 'No trained network yet. Train one with python scripts/train.py.'
-                : `Network from generation ${trained.generation ?? '?'} of the run “${trained.run ?? 'unknown'}”.`}
-          </p>
-        </div>
+        <LevelPicker slot={slot} />
       </Collapse>
     </div>
   )

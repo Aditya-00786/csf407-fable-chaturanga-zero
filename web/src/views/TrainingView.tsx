@@ -532,9 +532,9 @@ export function TrainingView() {
               Watch training
             </h1>
             <p className="mt-3 text-[15px] leading-relaxed text-ink-muted">
-              The agent learns by playing itself. Each generation the newest network plays a batch of self-play games
-              with MCTS, trains on the search's choices and the results, and is then tested against the generation
-              before it and the Greedy baseline.
+              The agent learns by playing itself. Each generation of the newest network plays a batch of self-play
+              games with MCTS, trains on the search's choices and the results and is then tested against the
+              generation before it and the Greedy baseline.
             </p>
           </div>
           {options.length > 1 && selected && (
