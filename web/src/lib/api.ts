@@ -75,11 +75,11 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, body?: unknown): Promise<T> {
+async function request<T>(path: string, body?: unknown, method?: 'DELETE'): Promise<T> {
   let res: Response
   try {
     res = await fetch(path, {
-      method: body === undefined ? 'GET' : 'POST',
+      method: method ?? (body === undefined ? 'GET' : 'POST'),
       headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
     })
@@ -116,6 +116,9 @@ export const api = {
   /** Ask a running run to pause; null withdraws the request. */
   pauseRun: (name: string, when: PauseWhen | null) =>
     request<RunStatus>(`/api/training/runs/${encodeURIComponent(name)}/pause`, { when }),
+  /** Delete a run that is not training, with everything it saved. */
+  deleteRun: (name: string) =>
+    request<{ deleted: string }>(`/api/training/runs/${encodeURIComponent(name)}`, undefined, 'DELETE'),
   /** Start a new run (one run trains at a time). */
   startRun: (settings: NewRunSettings) => request<RunStatus>('/api/training/runs', settings),
   /** Start a run that is not running, carrying on where it stopped (optionally to more generations). */

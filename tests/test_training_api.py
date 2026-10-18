@@ -282,3 +282,32 @@ def test_resume_keeps_a_run_unpublished_if_it_started_that_way(tmp_path, monkeyp
     (d / "launch.json").write_text('{"publish": false}')
     assert client.post("/api/training/runs/test/resume", json={}).status_code == 202
     assert started["cmd"][started["cmd"].index("--publish") + 1] == ""
+
+
+def test_delete_a_run(tmp_path, monkeypatch):
+    monkeypatch.setenv("CHATURANGA_RUNS", str(tmp_path))
+    d = _fake_run(tmp_path, "old", state="paused", pid=2**22 + 12345)
+    (d / "games").mkdir()
+    (d / "games" / "gen_0001.jsonl.gz").write_bytes(b"x")
+    keep = _fake_run(tmp_path, "keep", state="finished")
+    assert client.delete("/api/training/runs/old").json() == {"deleted": "old"}
+    assert not d.exists() and keep.exists()
+    assert client.delete("/api/training/runs/old").status_code == 404
+
+
+def test_a_training_run_cannot_be_deleted(tmp_path, monkeypatch):
+    monkeypatch.setenv("CHATURANGA_RUNS", str(tmp_path))
+    d = _fake_run(tmp_path, "main", state="selfplay", pid=os.getpid())
+    r = client.delete("/api/training/runs/main")
+    assert r.status_code == 409 and "Pause it" in r.json()["detail"] and d.exists()
+
+
+def test_delete_stays_inside_the_runs_folder(tmp_path, monkeypatch):
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    outside = _fake_run(tmp_path, "precious", state="finished")
+    (runs / "link").symlink_to(outside, target_is_directory=True)
+    monkeypatch.setenv("CHATURANGA_RUNS", str(runs))
+    assert client.delete("/api/training/runs/link").status_code == 400
+    assert client.delete("/api/training/runs/..").status_code in (404, 405)
+    assert outside.exists() and (outside / "config.json").exists()

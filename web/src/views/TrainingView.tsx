@@ -4,7 +4,7 @@
  * learn screens stay the primary experience.
  */
 
-import { ChevronDown, LoaderCircle, Pause, Play, Plus, RefreshCw } from 'lucide-react'
+import { ChevronDown, LoaderCircle, Pause, Play, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Legend, LineChart, type Series } from '../components/LineChart'
 import { Button, Collapse, Switch } from '../components/ui'
@@ -633,20 +633,79 @@ function measuredSecondsPerGame(detail: RunDetail | null): number {
   return perGame * (50 / (detail.config.simulations || 50))
 }
 
-/** The run on show: a menu, since runs are many and their names long. */
+/** A run's state in a word, with a symbol for the run menu (options can hold text only). */
+function runState(r: RunStatus): { symbol: string; word: string } {
+  if (r.live) return r.state === 'starting' ? { symbol: '○', word: 'starting' } : { symbol: '●', word: 'training' }
+  if (r.state === 'paused') return { symbol: '\u23F8\uFE0E', word: 'paused' }
+  if (r.state === 'finished') return { symbol: '✓', word: 'finished' }
+  if (r.state === 'failed') return { symbol: '✕', word: 'failed' }
+  return { symbol: '■', word: 'stopped' }
+}
+
+/** The run on show: the browser's own menu, each run marked with its state. */
 function RunPicker({ runs, value, onChange }: { runs: RunStatus[]; value: string; onChange: (v: string) => void }) {
   const id = useId()
   return (
     <div className="flex items-center gap-3">
       <label htmlFor={id} className="shrink-0 text-[13px] font-medium text-ink-muted">Run</label>
-      <div className="relative min-w-0 flex-1">
-        <select id={id} value={value} onChange={(e) => onChange(e.target.value)}
-          className="h-[34px] w-full appearance-none truncate rounded-lg border border-line bg-bg pr-9 pl-3 text-[13.5px] font-medium text-ink transition-colors duration-150 hover:border-line-strong focus-visible:border-accent">
-          {runs.map((r) => <option key={r.name} value={r.name}>{r.name}{r.live ? ' · training' : ''}</option>)}
-        </select>
-        <ChevronDown size={15} aria-hidden className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-ink-muted" />
-      </div>
+      {/* The browser's own menu and arrow; the border only restores what the CSS reset removed. */}
+      <select id={id} value={value} onChange={(e) => onChange(e.target.value)}
+        className="h-[34px] min-w-0 flex-1 rounded-lg border border-line-strong bg-bg px-2 text-[13.5px] text-ink">
+        {runs.map((r) => {
+          const { symbol, word } = runState(r)
+          return <option key={r.name} value={r.name}>{symbol}  {r.name} · {word}</option>
+        })}
+      </select>
     </div>
+  )
+}
+
+/** Delete the run on show, after an inline confirmation: everything it saved goes for good. */
+function DeleteRun({ run, trainedRun, open, onOpen, onDeleted }: {
+  run: RunStatus; trainedRun: string | null | undefined; open: boolean; onOpen: (open: boolean) => void
+  onDeleted: () => void
+}) {
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const remove = async () => {
+    if (sending) return
+    setSending(true)
+    setError(null)
+    try {
+      await api.deleteRun(run.name)
+      onOpen(false)
+      onDeleted()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong.')
+    } finally {
+      setSending(false)
+    }
+  }
+  return (
+    <Collapse open={open}>
+      <div className="mt-3 rounded-xl border border-danger/40 bg-danger-soft px-4 py-3.5">
+        {run.live ? (
+          <p className="text-[13.5px] leading-snug text-ink">
+            “{run.name}” is training. Pause it before deleting it.
+          </p>
+        ) : (
+          <>
+            <p className="text-[13.5px] leading-snug text-ink">
+              Delete the run “{run.name}”? Its self-play games, networks and charts are removed for good.
+              {trainedRun === run.name && ' The Trained opponent keeps the network it already has from this run.'}
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="danger" aria-busy={sending} onClick={remove}
+                icon={sending ? <Spinner /> : <Trash2 size={14} />}>
+                {sending ? 'Deleting' : 'Delete run'}
+              </Button>
+              <Button size="sm" onClick={() => onOpen(false)}>Keep it</Button>
+            </div>
+          </>
+        )}
+        {error && <p className="mt-2 text-[12.5px] text-danger">{error}</p>}
+      </div>
+    </Collapse>
   )
 }
 
@@ -657,6 +716,10 @@ export function TrainingView() {
   const [error, setError] = useState<string | null>(null)
   const [tick, setTick] = useState(0)
   const [creating, setCreating] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const trained = useGame((s) => s.trained)
+  const refreshTrained = useGame((s) => s.refreshTrained)
+  useEffect(() => refreshTrained(), [refreshTrained])
   const scroller = useRef<HTMLDivElement>(null)
 
   const refresh = useCallback(async () => {
@@ -694,6 +757,7 @@ export function TrainingView() {
     setTick((t) => t + 1)
   }
   const noRuns = runs !== null && runs.length === 0 && !error
+  const selectedRun = runs?.find((r) => r.name === selected) ?? null
 
   return (
     <div ref={scroller} className="flex-1 overflow-y-auto">
@@ -709,22 +773,38 @@ export function TrainingView() {
           </p>
         </header>
 
-        {/* Which run is on show, and starting another: one bar above the run itself. */}
+        {/* Which run is on show, starting another and deleting this one: one bar above the run. */}
         {runs && runs.length > 0 && (
-          <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
-            {runs.length > 1 && selected ? (
+          <div className="mt-8">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="w-full min-w-0 max-w-xs flex-1 sm:flex-none">
-                <RunPicker runs={runs} value={selected} onChange={(v) => { setSelected(v); setDetail(null) }} />
+                {selected && <RunPicker runs={runs} value={selected} onChange={(v) => {
+                  setSelected(v)
+                  setDetail(null)
+                  setDeleting(false)
+                }} />}
               </div>
-            ) : (
-              <p className="text-[13px] font-medium text-ink-muted">
-                Run <span className="ml-2 text-[14px] text-ink">{selected}</span>
-              </p>
+              <div className="flex shrink-0 items-center gap-2">
+                {selectedRun && (
+                  <Button size="sm" onClick={() => { setDeleting((d) => !d); setCreating(false) }} aria-expanded={deleting}
+                    icon={<Trash2 size={14} />} className="hover:text-danger">
+                    Delete
+                  </Button>
+                )}
+                <Button size="sm" onClick={() => { setCreating((c) => !c); setDeleting(false) }} aria-expanded={creating}
+                  icon={<Plus size={15} className={`transition-transform duration-200 ease-out-quart ${creating ? 'rotate-45' : ''}`} />}>
+                  New run
+                </Button>
+              </div>
+            </div>
+            {selectedRun && (
+              <DeleteRun run={selectedRun} trainedRun={trained?.run} open={deleting} onOpen={setDeleting}
+                onDeleted={() => {
+                  setSelected(null)
+                  setDetail(null)
+                  setTick((t) => t + 1)
+                }} />
             )}
-            <Button size="sm" onClick={() => setCreating((c) => !c)} aria-expanded={creating} className="shrink-0"
-              icon={<Plus size={15} className={`transition-transform duration-200 ease-out-quart ${creating ? 'rotate-45' : ''}`} />}>
-              New run
-            </Button>
           </div>
         )}
 

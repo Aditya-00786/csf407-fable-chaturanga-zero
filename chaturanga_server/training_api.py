@@ -305,3 +305,17 @@ def resume_run(name: str, req: ResumeRequest):
     if status.get("state") == "finished" and target <= done:
         raise HTTPException(400, f"run {name!r} has finished its {done} generations; ask for more to train further")
     return _spawn(path, req.generations, _launch_settings(path).get("publish", True), status)
+
+
+@router.delete("/runs/{name}")
+def delete_run(name: str):
+    """Delete a run that is not training: its games, networks, metrics and logs. The network it may
+    have published for the app (checkpoints/best.pt) is a copy, and stays."""
+    path = _run_dir(name)
+    root = runs_dir().resolve()
+    if path.resolve().parent != root or path.is_symlink():
+        raise HTTPException(400, f"run {name!r} is not a folder inside {root}")
+    if _status(path)["live"]:
+        raise HTTPException(409, f"The run {name!r} is training. Pause it before deleting it.")
+    shutil.rmtree(path)
+    return {"deleted": name}
