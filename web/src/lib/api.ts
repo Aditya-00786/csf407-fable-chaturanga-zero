@@ -116,6 +116,8 @@ export const api = {
   /** Ask a running run to pause; null withdraws the request. */
   pauseRun: (name: string, when: PauseWhen | null) =>
     request<RunStatus>(`/api/training/runs/${encodeURIComponent(name)}/pause`, { when }),
+  /** Start a new run (one run trains at a time). */
+  startRun: (settings: NewRunSettings) => request<RunStatus>('/api/training/runs', settings),
   /** Start a run that is not running, carrying on where it stopped (optionally to more generations). */
   resumeRun: (name: string, generations?: number) =>
     request<RunStatus>(`/api/training/runs/${encodeURIComponent(name)}/resume`, generations ? { generations } : {}),
@@ -147,6 +149,16 @@ export interface RunStatus {
   /** Where a paused run stopped: in the middle of a phase, or just after one. */
   paused_in?: Phase | null
   paused_after?: Phase | 'generation' | null
+}
+
+export interface NewRunSettings {
+  name: string
+  generations: number
+  games_per_generation: number
+  simulations: number
+  eval_games: number
+  /** Make the run's best network the Trained opponent in Play. */
+  publish: boolean
 }
 
 export interface LossPoint {

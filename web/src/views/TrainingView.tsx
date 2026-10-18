@@ -4,10 +4,10 @@
  * learn screens stay the primary experience.
  */
 
-import { LoaderCircle, Pause, Play, RefreshCw } from 'lucide-react'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { ChevronDown, LoaderCircle, Pause, Play, Plus, RefreshCw } from 'lucide-react'
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Legend, LineChart, type Series } from '../components/LineChart'
-import { Button, Collapse, Segmented } from '../components/ui'
+import { Button, Collapse, Segmented, Switch } from '../components/ui'
 import { api, ApiError, type GenerationRow, type PauseWhen, type RunDetail, type RunStatus } from '../lib/api'
 import { href } from '../lib/route'
 import { useGame } from '../state/game'
@@ -465,26 +465,186 @@ function GenerationTable({ run, detail }: { run: string; detail: RunDetail }) {
   )
 }
 
-function Empty({ error, onRetry }: { error: string | null; onRetry: () => void }) {
+function Problem({ error, onRetry }: { error: string; onRetry: () => void }) {
   return (
     <section className="rounded-2xl border border-line bg-surface p-6 sm:p-8">
-      {error ? (
-        <>
-          <p className="font-serif text-[20px] font-semibold text-ink">Cannot load training runs</p>
-          <p className="mt-2 text-[14px] text-ink-muted">{error}</p>
-          <div className="mt-4"><Button size="sm" onClick={onRetry} icon={<RefreshCw size={14} />}>Try again</Button></div>
-        </>
-      ) : (
-        <>
-          <p className="font-serif text-[20px] font-semibold text-ink">No training runs yet</p>
-          <p className="mt-2 max-w-[60ch] text-[14px] leading-relaxed text-ink-muted">
-            Start one from the project folder. It plays 50 self-play games per generation, trains on them, and tests
-            each new network; this page follows along live.
-          </p>
-          <pre className="mt-4 overflow-x-auto rounded-lg bg-bg px-4 py-3 text-[13px] text-ink">python scripts/train.py</pre>
-        </>
-      )}
+      <p className="font-serif text-[20px] font-semibold text-ink">Cannot load training runs</p>
+      <p className="mt-2 text-[14px] text-ink-muted">{error}</p>
+      <div className="mt-4"><Button size="sm" onClick={onRetry} icon={<RefreshCw size={14} />}>Try again</Button></div>
     </section>
+  )
+}
+
+/** Seconds per self-play game at 50 simulations, a generation's testing and training included:
+ * measured on an M1 with six self-play processes. Used until this machine has a run of its own. */
+const FALLBACK_SECONDS_PER_GAME = 5.6
+
+function duration(seconds: number) {
+  const minutes = Math.max(1, Math.round(seconds / 60))
+  if (minutes < 60) return `${minutes} min`
+  const h = Math.floor(minutes / 60)
+  const m = Math.round((minutes % 60) / 5) * 5
+  return m ? `${h} h ${m} min` : `${h} h`
+}
+
+function NumberField({ label, value, onChange, min, max, hint }: {
+  label: string; value: number; onChange: (v: number) => void; min: number; max: number; hint?: string
+}) {
+  const id = useId()
+  return (
+    <div className="min-w-0">
+      <label htmlFor={id} className="mb-1.5 block text-[13px] font-medium text-ink-muted">{label}</label>
+      <input id={id} type="number" inputMode="numeric" min={min} max={max} value={Number.isFinite(value) ? value : ''}
+        onChange={(e) => onChange(e.target.value === '' ? NaN : Number(e.target.value))}
+        className="h-9 w-full rounded-lg border border-line bg-bg px-3 text-[14px] text-ink tabular-nums transition-colors duration-150 hover:border-line-strong focus-visible:border-accent" />
+      {hint && <p className="mt-1 text-[12px] text-ink-faint">{hint}</p>}
+    </div>
+  )
+}
+
+/** The form for a new training run. */
+function NewRun({ runs, first, secondsPerGame, onStarted, onCancel }: {
+  runs: RunStatus[]; first: boolean; secondsPerGame: number
+  onStarted: (name: string) => void; onCancel?: () => void
+}) {
+  const names = new Set(runs.map((r) => r.name))
+  const suggest = () => {
+    if (!names.has('main')) return 'main'
+    let n = runs.length + 1
+    while (names.has(`run-${n}`)) n++
+    return `run-${n}`
+  }
+  const [name, setName] = useState(suggest)
+  const [generations, setGenerations] = useState(20)
+  const [games, setGames] = useState(50)
+  const [sims, setSims] = useState(50)
+  const [evalGames, setEvalGames] = useState(20)
+  const [more, setMore] = useState(false)
+  const trained = useGame((s) => s.trained)
+  const refreshTrained = useGame((s) => s.refreshTrained)
+  useEffect(() => refreshTrained(), [refreshTrained])
+  // A new run takes over the Trained opponent only if no other run has given it a network yet.
+  const [publish, setPublish] = useState<boolean | null>(null)
+  const publishing = publish ?? trained === null
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const live = runs.find((r) => r.live)
+
+  const problem =
+    !/^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/.test(name) ? 'Name it with letters, digits, - and _, starting with a letter or digit.'
+      : names.has(name) ? `There is already a run named “${name}”.`
+        : !(generations >= 1 && generations <= 1000) ? 'Generations: 1 to 1,000.'
+          : !(games >= 2 && games <= 1000) ? 'Games per generation: 2 to 1,000.'
+            : !(sims >= 2 && sims <= 2000) ? 'Simulations per move: 2 to 2,000.'
+              : !(evalGames >= 0 && evalGames <= 200) ? 'Test games: 0 to 200.'
+                : null
+  const [tried, setTried] = useState(false)
+  const shown = tried ? problem ?? error : error
+
+  const start = async () => {
+    setTried(true)
+    if (problem || sending) return
+    setSending(true)
+    setError(null)
+    try {
+      await api.startRun({ name, generations, games_per_generation: games, simulations: sims, eval_games: evalGames,
+        publish: publishing })
+      onStarted(name)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong.')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const total = generations * games
+  const estimate = Number.isFinite(total) && Number.isFinite(sims) && total > 0
+    ? duration(total * secondsPerGame * (sims / 50) * (0.85 + 0.15 * (evalGames / 20)))
+    : null
+
+  return (
+    <section aria-label="New training run" className="rounded-2xl border border-line bg-surface p-5 sm:p-6">
+      <h2 className="font-serif text-[22px] font-semibold text-ink">{first ? 'Start the first run' : 'New run'}</h2>
+      <p className="mt-1 max-w-[62ch] text-[13.5px] leading-snug text-ink-muted">
+        Starts from an untrained network. You can pause it at any time and resume it later.
+      </p>
+      <div className="mt-5 grid gap-4 sm:grid-cols-3">
+        <div className="min-w-0">
+          <label htmlFor="new-run-name" className="mb-1.5 block text-[13px] font-medium text-ink-muted">Name</label>
+          <input id="new-run-name" value={name} onChange={(e) => setName(e.target.value.trim())} spellCheck={false} maxLength={40}
+            className="h-9 w-full rounded-lg border border-line bg-bg px-3 text-[14px] text-ink transition-colors duration-150 hover:border-line-strong focus-visible:border-accent" />
+        </div>
+        <NumberField label="Generations" value={generations} onChange={setGenerations} min={1} max={1000} />
+        <NumberField label="Games per generation" value={games} onChange={setGames} min={2} max={1000} />
+      </div>
+      <button type="button" onClick={() => setMore((m) => !m)} aria-expanded={more}
+        className="mt-4 inline-flex items-center gap-1 rounded-md text-[13px] font-medium text-ink-muted transition-colors duration-150 hover:text-ink">
+        <ChevronDown size={15} className={`transition-transform duration-200 ease-out-quart ${more ? 'rotate-180' : ''}`} aria-hidden />
+        More settings
+      </button>
+      <Collapse open={more}>
+        <div className="grid gap-4 pt-3 sm:grid-cols-3">
+          <NumberField label="Simulations per move" value={sims} onChange={setSims} min={2} max={2000}
+            hint="More is stronger and slower." />
+          <NumberField label="Test games per opponent" value={evalGames} onChange={setEvalGames} min={0} max={200}
+            hint="Against the generation before and Greedy." />
+        </div>
+      </Collapse>
+      <div className="mt-5 max-w-md">
+        <Switch label="Use its best network as the Trained opponent in Play" checked={publishing} onChange={setPublish} />
+        {trained && (
+          <p className="mt-1 text-[12.5px] leading-snug text-ink-faint">
+            {publishing ? `Replaces the network from the run “${trained.run ?? 'unknown'}” as it improves.`
+              : `The Trained opponent keeps the network from the run “${trained.run ?? 'unknown'}”.`}
+          </p>
+        )}
+      </div>
+      {live && (
+        <p className="mt-5 text-[13.5px] leading-snug text-ink">
+          “{live.name}” is training now. Pause it first: one run at a time keeps each one fast.
+        </p>
+      )}
+      <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-line pt-4">
+        <Button variant="primary" size="sm" aria-busy={sending} onClick={start} icon={sending ? <Spinner /> : <Play size={14} />}>
+          {sending ? 'Starting' : 'Start training'}
+        </Button>
+        {onCancel && <Button size="sm" onClick={onCancel}>Cancel</Button>}
+        {estimate && (
+          <p className="text-[12.5px] text-ink-faint">
+            {total.toLocaleString()} self-play games, roughly {estimate} on this machine.
+          </p>
+        )}
+      </div>
+      {shown && <p key={shown} className="cz-swap mt-3 text-[13px] text-danger" role="alert">{shown}</p>}
+    </section>
+  )
+}
+
+/** Seconds per self-play game (at 50 simulations, generation included) from a run's own timings.
+ * Only a run of real size counts: in a tiny test run the fixed costs swamp the per-game time. */
+function measuredSecondsPerGame(detail: RunDetail | null): number {
+  const rows = (detail?.generations ?? []).filter((g) => g.seconds && g.games)
+  if (!detail || rows.length === 0 || detail.config.games_per_generation < 20 || detail.config.simulations < 20) {
+    return FALLBACK_SECONDS_PER_GAME
+  }
+  const perGame = rows.reduce((t, g) => t + g.seconds! / g.games!, 0) / rows.length
+  return perGame * (50 / (detail.config.simulations || 50))
+}
+
+/** The run selector: buttons for a few runs, a menu for more. */
+function RunPicker({ runs, value, onChange }: { runs: RunStatus[]; value: string; onChange: (v: string) => void }) {
+  const id = useId()
+  if (runs.length <= 3) {
+    return <Segmented label="Run" value={value} onChange={onChange} size="sm" options={runs.map((r) => ({ value: r.name, label: r.name }))} />
+  }
+  return (
+    <div>
+      <label htmlFor={id} className="mb-1.5 block text-[13px] font-medium text-ink-muted">Run</label>
+      <select id={id} value={value} onChange={(e) => onChange(e.target.value)}
+        className="h-8 w-full rounded-lg border border-line bg-bg px-2.5 text-[13px] text-ink">
+        {runs.map((r) => <option key={r.name} value={r.name}>{r.name}{r.live ? ' (training)' : ''}</option>)}
+      </select>
+    </div>
   )
 }
 
@@ -494,6 +654,8 @@ export function TrainingView() {
   const [detail, setDetail] = useState<RunDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [tick, setTick] = useState(0)
+  const [creating, setCreating] = useState(false)
+  const scroller = useRef<HTMLDivElement>(null)
 
   const refresh = useCallback(async () => {
     try {
@@ -505,7 +667,7 @@ export function TrainingView() {
       setError(null)
     } catch (err) {
       setError(err instanceof ApiError && err.status === 0
-        ? 'The API server is not running. Start it with: python -m chaturanga_server'
+        ? 'The API server is not running. The README explains how to start it.'
         : err instanceof Error ? err.message : 'Something went wrong.')
     }
   }, [selected])
@@ -521,10 +683,18 @@ export function TrainingView() {
     return () => clearTimeout(id)
   }, [live, tick, detail])
 
-  const options = useMemo(() => (runs ?? []).map((r) => ({ value: r.name, label: r.name })), [runs])
+  const secondsPerGame = useMemo(() => measuredSecondsPerGame(detail), [detail])
+  const started = (name: string) => {
+    scroller.current?.scrollTo({ top: 0, behavior: 'smooth' }) // the new run shows at the top
+    setCreating(false)
+    setSelected(name)
+    setDetail(null)
+    setTick((t) => t + 1)
+  }
+  const noRuns = runs !== null && runs.length === 0 && !error
 
   return (
-    <div className="flex-1 overflow-y-auto">
+    <div ref={scroller} className="flex-1 overflow-y-auto">
       <div className="mx-auto max-w-6xl px-5 py-10 sm:px-8 sm:py-12">
         <header className="flex flex-wrap items-end justify-between gap-4">
           <div className="max-w-[62ch]">
@@ -537,16 +707,33 @@ export function TrainingView() {
               generation before it and the Greedy baseline.
             </p>
           </div>
-          {options.length > 1 && selected && (
-            <div className="w-full max-w-sm">
-              <Segmented label="Run" value={selected} onChange={(v) => { setSelected(v); setDetail(null) }} size="sm" options={options} />
+          {runs && runs.length > 0 && (
+            <div className="ml-auto flex w-full items-end justify-end gap-2 sm:w-auto">
+              {runs.length > 1 && selected && (
+                <div className="min-w-0 flex-1 sm:w-80 sm:flex-none">
+                  <RunPicker runs={runs} value={selected} onChange={(v) => { setSelected(v); setDetail(null) }} />
+                </div>
+              )}
+              <Button size="sm" onClick={() => setCreating((c) => !c)} aria-expanded={creating}
+                icon={<Plus size={15} className={`transition-transform duration-200 ease-out-quart ${creating ? 'rotate-45' : ''}`} />}
+                className="shrink-0">
+                New run
+              </Button>
             </div>
           )}
         </header>
 
         <div className="mt-8 space-y-4">
           {runs === null && !error && <div className="h-40 animate-pulse rounded-2xl bg-surface" aria-busy="true" />}
-          {(error || (runs && runs.length === 0)) && <Empty error={error} onRetry={() => setTick((t) => t + 1)} />}
+          {error && <Problem error={error} onRetry={() => setTick((t) => t + 1)} />}
+          {noRuns && <NewRun runs={[]} first secondsPerGame={secondsPerGame} onStarted={started} />}
+          {runs && runs.length > 0 && (
+            <Collapse open={creating}>
+              {/* Stays mounted so it can fold away; a fresh form after each new run. */}
+              <NewRun key={runs.length} runs={runs} first={false} secondsPerGame={secondsPerGame} onStarted={started}
+                onCancel={() => setCreating(false)} />
+            </Collapse>
+          )}
           {detail && selected && (
             <>
               <StatusPanel status={detail.status} detail={detail} onChange={(st) => {

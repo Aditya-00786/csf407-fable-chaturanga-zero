@@ -224,3 +224,61 @@ def test_a_finished_run_resumes_only_to_train_further(tmp_path, monkeypatch):
     assert client.post("/api/training/runs/r/resume", json={}).status_code == 400
     r = client.post("/api/training/runs/r/resume", json={"generations": 5})
     assert r.status_code == 202 and r.json()["generations"] == 5
+
+
+def _capture_popen(monkeypatch):
+    from chaturanga_server import training_api
+
+    started = {}
+
+    def fake_popen(cmd, **kwargs):
+        started["cmd"] = cmd
+        return type("P", (), {"pid": os.getpid(), "wait": lambda self: None})()
+
+    monkeypatch.setattr(training_api.subprocess, "Popen", fake_popen)
+    return started
+
+
+def test_start_a_new_run_from_the_app(tmp_path, monkeypatch):
+    import json
+
+    monkeypatch.setenv("CHATURANGA_RUNS", str(tmp_path))
+    started = _capture_popen(monkeypatch)
+    r = client.post("/api/training/runs", json={"name": "quick", "generations": 3, "games_per_generation": 8,
+                                                 "simulations": 20, "eval_games": 4, "publish": False})
+    assert r.status_code == 202 and r.json()["state"] == "starting" and r.json()["live"] is True
+    config = json.loads((tmp_path / "quick" / "config.json").read_text())
+    assert (config["generations"], config["games_per_generation"], config["simulations"], config["eval_games"]) == (3, 8, 20, 4)
+    cmd = started["cmd"]
+    assert cmd[cmd.index("--run") + 1] == "quick" and cmd[cmd.index("--publish") + 1] == ""  # not published
+    assert [r["name"] for r in client.get("/api/training/runs").json()["runs"]] == ["quick"]
+
+
+def test_a_new_run_needs_a_fresh_valid_name(tmp_path, monkeypatch):
+    monkeypatch.setenv("CHATURANGA_RUNS", str(tmp_path))
+    _capture_popen(monkeypatch)
+    _fake_run(tmp_path, "main", state="paused", pid=2**22 + 12345)
+    assert client.post("/api/training/runs", json={"name": "main"}).status_code == 409
+    assert client.post("/api/training/runs", json={"name": "../evil"}).status_code == 400
+    assert client.post("/api/training/runs", json={"name": "-x"}).status_code == 400
+    assert client.post("/api/training/runs", json={"name": "ok", "games_per_generation": 1}).status_code == 422
+
+
+def test_one_run_trains_at_a_time(tmp_path, monkeypatch):
+    monkeypatch.setenv("CHATURANGA_RUNS", str(tmp_path))
+    _capture_popen(monkeypatch)
+    _fake_run(tmp_path, "main", state="selfplay", pid=os.getpid())  # training now
+    _fake_run(tmp_path, "old", state="paused", pid=2**22 + 12345)
+    r = client.post("/api/training/runs", json={"name": "second"})
+    assert r.status_code == 409 and "'main' is training" in r.json()["detail"]
+    assert not (tmp_path / "second").exists()
+    assert client.post("/api/training/runs/old/resume", json={}).status_code == 409
+
+
+def test_resume_keeps_a_run_unpublished_if_it_started_that_way(tmp_path, monkeypatch):
+    monkeypatch.setenv("CHATURANGA_RUNS", str(tmp_path))
+    started = _capture_popen(monkeypatch)
+    d = _fake_run(tmp_path, "test", state="paused", pid=2**22 + 12345)
+    (d / "launch.json").write_text('{"publish": false}')
+    assert client.post("/api/training/runs/test/resume", json={}).status_code == 202
+    assert started["cmd"][started["cmd"].index("--publish") + 1] == ""

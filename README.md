@@ -63,7 +63,7 @@ the same commit that completes the work.
 - **Researched ruleset.** Every rule is backed by historical sources, and contested rules are
   settled by counting references. See [docs/RULES.md](docs/RULES.md).
 - **Verified rules engine.** A cross-check against an independent reference move generator and a
-  10,000-game random-play stress test; 182 tests in all.
+  10,000-game random-play stress test; 186 tests in all.
 - **AlphaZero search.** PUCT Monte Carlo Tree Search guided by a residual policy-value network
   (6 blocks × 64 filters, about 1M parameters), with exact values for finished games, root noise,
   temperature and tree reuse for self-play. Planted bugs in the search are all caught by the tests.
@@ -248,7 +248,7 @@ The server keeps no game state, so undo and review are just shorter move lists.
 | **Play** | The board fills the screen. A floating card shows whose turn it is. The toolbar has **Game**, which opens a drawer (Esc closes it) with the mode, move list (click to review), captured pieces, display options (including Reduced graphics) and Rotate. Beside it, a ‹ button slides out quick actions: Undo (Start / Pause against computers), Full screen and New game. Opening the drawer tucks them away again. **Details** in the drawer switches between *Essential*, which shows headlines only and is the default, and *Full*. Under Full, four toggles turn individual extras on or off: move hints, move and quiet-ply counters, why the game ended, and rule sources. While reviewing, a bar at the foot of the board steps through the moves (⏮ ◀ ▶ ⏭, or ← → Home End) and replays the game at Slow, Normal or Fast; stepping back plays the move in reverse, captured pieces returning from their tray. Modes: two players (the board turns to face the player to move after each move; Rotate overrides it only until the turn next changes hands, and a switch turns it off), vs computer (Random, Greedy, MCTS or Trained; the trained agent has four levels, Easy, Medium, Hard and Impossible, set by its search budget), or computer vs computer with a pace control; it waits for **Start** (in the drawer, or in the quick actions, where it takes Undo's place) and can be paused and resumed. |
 | **Learn** | 11 lessons: the board, each piece, check and checkmate, bare king, stalemate and draws. Most end with a one-move task that the engine checks. Like Play, the board fills the screen: a floating card shows the lesson, its task, feedback and a hint; **Lessons** opens the lesson list from the left and **Lesson** opens the lesson text from the right (both closed by default, Esc closes them); a ‹ button slides out Reset board, previous and next lesson, and Full screen. `tests/test_lessons.py` checks that every lesson position is legal and every task can be solved. |
 | **Rules** | A compact reference: setup, the pieces and how a game ends. The sources behind each rule are in `docs/RULES.md`, not in the app. |
-| **Training** | Follows a training run from `runs/`: what it is doing now (self-play, training or evaluation, with progress), with **Pause** (now, after this phase or after this generation), **Resume** for a paused or stopped run, and **Train further** for a finished one, the policy and value losses (including the loss on each generation's new games before training on them, against the score of always predicting a draw), the evaluation scores, the share of decisive self-play games, and a table of every generation. **Watch** on a row replays that generation's shortest decisive self-play game on the Play board. It refreshes every few seconds while the run is live. |
+| **Training** | Follows a training run from `runs/`: what it is doing now (self-play, training or evaluation, with progress), with **New run** to start training, **Pause** (now, after this phase or after this generation), **Resume** for a paused or stopped run, and **Train further** for a finished one, the policy and value losses (including the loss on each generation's new games before training on them, against the score of always predicting a draw), the evaluation scores, the share of decisive self-play games, and a table of every generation. **Watch** on a row replays that generation's shortest decisive self-play game on the Play board. It refreshes every few seconds while the run is live. |
 
 **Camera:** drag to orbit the board. Zoom with the mouse wheel, a two-finger scroll, a trackpad pinch, or a two-finger pinch on a touch screen.
 
@@ -334,9 +334,16 @@ Milestone 3 closes AlphaZero's loop: the network plays itself with MCTS, learns 
 and the improved network plays the next batch.
 
 ```bash
-python scripts/train.py                  # run "main": 20 generations of 50 games, about an hour on an M1
+python scripts/train.py                  # run "main": 20 generations of 50 games, about 1.5 hours on an M1
 python scripts/plot_training.py          # runs/main/training.png
 ```
+
+Or start a run from the app: **New run** on the Training page asks for a name, the number of
+generations and games per generation (and, under More settings, simulations per move and test
+games), shows a rough time for this machine, and starts `scripts/train.py` in the background. A
+switch decides whether the run's best network becomes the Trained opponent in Play; it starts
+off when another run already provides that network, so a test run cannot replace it by
+accident. One run trains at a time: starting or resuming a second one asks you to pause the first.
 
 **One generation**
 1. **Self-play.** The newest network plays 50 games against itself, one process per CPU core
@@ -371,6 +378,7 @@ has scored highest against Greedy (later generations win ties). It is copied to
 | `checkpoints/gen_NNNN.pt` | The network after each generation, plus `best.pt` and `train_state.pt` (the optimiser) |
 | `incoming/` | Drop teammates' game files here |
 | `control.json` | A pause request the run has not reached yet |
+| `launch.json` | For a run started from the app: whether it publishes its best network |
 | `games/gen_NNNN.partial.*.jsonl.gz` | Finished games of a generation still being played (merged into `gen_NNNN.jsonl.gz` when it completes) |
 
 **Pausing and resuming.** A run can be paused three ways, from the Training page, from another

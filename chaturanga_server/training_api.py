@@ -2,10 +2,10 @@
 
 It reads what `chaturanga.training` writes to runs/<name>/ (status.json, metrics.jsonl and the
 self-play game files), so it works the same while a run is going, after it stopped, or on a run
-copied from Colab. Two actions change things: a pause request (written to the run's control.json,
-which the run reads) and resuming a run that is not running (which starts scripts/train.py for
-it, detached from the server). The server listens on 127.0.0.1 by default, so only this machine
-can use them.
+copied from Colab. Three actions change things: a pause request (written to the run's control.json,
+which the run reads), resuming a run that is not running, and starting a new run (both start
+scripts/train.py, detached from the server; one run trains at a time). The server listens on
+127.0.0.1 by default, so only this machine can use them.
 """
 
 import json
@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 
 from chaturanga.agents import trained_checkpoint
 from chaturanga.selfplay import read_games
-from chaturanga.training import pending_pause, request_pause
+from chaturanga.training import TrainConfig, pending_pause, request_pause
 
 router = APIRouter(prefix="/api/training")
 
@@ -204,10 +204,31 @@ def pause_run(name: str, req: PauseRequest):
     return _status(path)
 
 
-def _train_command(name: str, generations: Optional[int]) -> list[str]:
+class StartRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=40, description="Run name: letters, digits, - and _")
+    generations: int = Field(20, ge=1, le=1000)
+    games_per_generation: int = Field(50, ge=2, le=1000)
+    simulations: int = Field(50, ge=2, le=2000)
+    eval_games: int = Field(20, ge=0, le=200, description="Test games against each opponent; 0 skips testing")
+    publish: bool = Field(True, description="Make this run's best network the app's Trained opponent")
+
+
+_NEW_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$")
+
+
+def _launch_settings(path: Path) -> dict:
+    """How the app started this run (only whether it publishes, for now). Runs started from a
+    terminal have none, and publish as train.py does by default."""
+    try:
+        return json.loads((path / "launch.json").read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def _train_command(name: str, generations: Optional[int], publish: bool) -> list[str]:
     script = Path(__file__).resolve().parent.parent / "scripts" / "train.py"
     cmd = [sys.executable, "-u", str(script), "--run", name, "--runs-dir", str(runs_dir()),
-           "--publish", str(trained_checkpoint())]
+           "--publish", str(trained_checkpoint()) if publish else ""]
     if generations:
         cmd += ["--generations", str(generations)]
     if shutil.which("caffeinate"):  # macOS: keep the machine awake while it trains
@@ -215,20 +236,22 @@ def _train_command(name: str, generations: Optional[int]) -> list[str]:
     return cmd
 
 
-@router.post("/runs/{name}/resume", status_code=202)
-def resume_run(name: str, req: ResumeRequest):
-    path = _run_dir(name)
-    status = _status(path)
-    if status["live"]:
-        raise HTTPException(409, f"run {name!r} is already running")
-    config = json.loads((path / "config.json").read_text())
-    target = req.generations or config.get("generations", 0)
-    done = max((int(p.stem[4:]) for p in (path / "checkpoints").glob("gen_*.pt")), default=0)
-    if status.get("state") == "finished" and target <= done:
-        raise HTTPException(400, f"run {name!r} has finished its {done} generations; ask for more to train further")
+def _live_run() -> Optional[str]:
+    root = runs_dir()
+    if not root.is_dir():
+        return None
+    for p in root.iterdir():
+        if (p / "config.json").is_file() and _status(p)["live"]:
+            return p.name
+    return None
+
+
+def _spawn(path: Path, generations: Optional[int], publish: bool, status: dict) -> dict:
+    """Start scripts/train.py for the run at `path`, detached, and report it as starting."""
+    name = path.name
     log = open(path / "train.log", "a")
     try:
-        proc = subprocess.Popen(_train_command(name, req.generations), stdout=log, stderr=subprocess.STDOUT,
+        proc = subprocess.Popen(_train_command(name, generations, publish), stdout=log, stderr=subprocess.STDOUT,
                                 stdin=subprocess.DEVNULL, cwd=str(Path(__file__).resolve().parent.parent),
                                 start_new_session=True)  # survives the API server restarting
     finally:
@@ -240,9 +263,45 @@ def resume_run(name: str, req: ResumeRequest):
     fresh = {k: v for k, v in status.items() if k not in ("name", "seconds_since_update", "live", "pause_requested")}
     fresh.update(state="starting", pid=proc.pid, host=socket.gethostname(), paused_in=None, paused_after=None,
                  updated=datetime.now(timezone.utc).isoformat(timespec="seconds"))
-    if req.generations:
-        fresh["generations"] = req.generations
+    if generations:
+        fresh["generations"] = generations
     tmp = path / "status.json.tmp"
     tmp.write_text(json.dumps(fresh))
     tmp.replace(path / "status.json")
     return _status(path)
+
+
+@router.post("/runs", status_code=202)
+def start_run(req: StartRequest):
+    """Start a new run. One run trains at a time: two would each get half the machine."""
+    if not _NEW_NAME.match(req.name):
+        raise HTTPException(400, "A run name uses letters, digits, - and _, and starts with a letter or digit.")
+    path = runs_dir() / req.name
+    if path.exists():
+        raise HTTPException(409, f"There is already a run named {req.name!r}.")
+    busy = _live_run()
+    if busy:
+        raise HTTPException(409, f"The run {busy!r} is training. Pause it first: one run at a time keeps each fast.")
+    config = TrainConfig(generations=req.generations, games_per_generation=req.games_per_generation,
+                         simulations=req.simulations, eval_games=req.eval_games)
+    path.mkdir(parents=True)
+    (path / "config.json").write_text(json.dumps(config.to_json(), indent=2))
+    (path / "launch.json").write_text(json.dumps({"publish": req.publish}))
+    return _spawn(path, None, req.publish, {"run": req.name, "generation": 0, "generations": req.generations})
+
+
+@router.post("/runs/{name}/resume", status_code=202)
+def resume_run(name: str, req: ResumeRequest):
+    path = _run_dir(name)
+    status = _status(path)
+    if status["live"]:
+        raise HTTPException(409, f"run {name!r} is already running")
+    busy = _live_run()
+    if busy:
+        raise HTTPException(409, f"The run {busy!r} is training. Pause it first: one run at a time keeps each fast.")
+    config = json.loads((path / "config.json").read_text())
+    target = req.generations or config.get("generations", 0)
+    done = max((int(p.stem[4:]) for p in (path / "checkpoints").glob("gen_*.pt")), default=0)
+    if status.get("state") == "finished" and target <= done:
+        raise HTTPException(400, f"run {name!r} has finished its {done} generations; ask for more to train further")
+    return _spawn(path, req.generations, _launch_settings(path).get("publish", True), status)
