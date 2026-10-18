@@ -4,7 +4,7 @@
  * learn screens stay the primary experience.
  */
 
-import { ChevronDown, LoaderCircle, Pause, Play, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { Check, ChevronDown, LoaderCircle, Pause, Play, Plus, RefreshCw, Trash2, X } from 'lucide-react'
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Legend, LineChart, type Series } from '../components/LineChart'
 import { Button, Collapse, Switch } from '../components/ui'
@@ -633,29 +633,155 @@ function measuredSecondsPerGame(detail: RunDetail | null): number {
   return perGame * (50 / (detail.config.simulations || 50))
 }
 
-/** A run's state in a word, with a symbol for the run menu (options can hold text only). */
-function runState(r: RunStatus): { symbol: string; word: string } {
-  if (r.live) return r.state === 'starting' ? { symbol: '○', word: 'starting' } : { symbol: '●', word: 'training' }
-  if (r.state === 'paused') return { symbol: '\u23F8\uFE0E', word: 'paused' }
-  if (r.state === 'finished') return { symbol: '✓', word: 'finished' }
-  if (r.state === 'failed') return { symbol: '✕', word: 'failed' }
-  return { symbol: '■', word: 'stopped' }
+type RunKind = 'training' | 'starting' | 'paused' | 'finished' | 'stopped' | 'failed'
+
+function runKind(r: RunStatus): RunKind {
+  if (r.live) return r.state === 'starting' ? 'starting' : 'training'
+  if (r.state === 'paused' || r.state === 'finished' || r.state === 'failed') return r.state
+  return 'stopped' // the process ended without pausing
 }
 
-/** The run on show: the browser's own menu, each run marked with its state. */
-function RunPicker({ runs, value, onChange }: { runs: RunStatus[]; value: string; onChange: (v: string) => void }) {
+/** A run's state as a small coloured mark, the same in the menu and on its button. */
+function RunMark({ kind }: { kind: RunKind }) {
+  switch (kind) {
+    case 'training':
+      return (
+        <span aria-hidden className="relative inline-flex h-2 w-2 shrink-0 rounded-full bg-success">
+          <span className="absolute inset-0 animate-ping rounded-full bg-success opacity-60 motion-reduce:hidden" />
+        </span>
+      )
+    case 'starting':
+      return <LoaderCircle size={13} aria-hidden className="shrink-0 animate-spin text-success" />
+    case 'paused':
+      return <Pause size={13} aria-hidden className="shrink-0 fill-current text-accent" />
+    case 'finished':
+      return <Check size={14} aria-hidden className="shrink-0 text-ink-muted" strokeWidth={2.5} />
+    case 'failed':
+      return <X size={14} aria-hidden className="shrink-0 text-danger" strokeWidth={2.5} />
+    default:
+      return <span aria-hidden className="h-2 w-2 shrink-0 rounded-[2px] bg-ink-faint" />
+  }
+}
+
+/**
+ * The run on show: our own menu (a listbox), each run with its state. Opens below its button;
+ * arrow keys, Home and End move, Enter or Space picks, Escape or a click elsewhere closes, and
+ * typing a letter jumps to the next run whose name starts with it.
+ */
+function RunMenu({ runs, value, onChange }: { runs: RunStatus[]; value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const [active, setActive] = useState(0)
+  const root = useRef<HTMLDivElement>(null)
+  const button = useRef<HTMLButtonElement>(null)
+  const list = useRef<HTMLUListElement>(null)
   const id = useId()
+  const current = runs.find((r) => r.name === value) ?? runs[0]
+  const index = Math.max(0, runs.findIndex((r) => r.name === value))
+
+  const show = () => {
+    setActive(index)
+    setOpen(true)
+  }
+  const close = (refocus = true) => {
+    setOpen(false)
+    if (refocus) button.current?.focus({ preventScroll: true })
+  }
+  const pick = (i: number) => {
+    const run = runs[i]
+    if (run && run.name !== value) onChange(run.name)
+    close()
+  }
+
+  useEffect(() => {
+    if (!open) return
+    list.current?.focus({ preventScroll: true })
+    const outside = (e: PointerEvent) => {
+      if (!root.current?.contains(e.target as Node)) close(false)
+    }
+    document.addEventListener('pointerdown', outside)
+    return () => document.removeEventListener('pointerdown', outside)
+  }, [open])
+
+  useEffect(() => {
+    if (open) list.current?.querySelector(`[data-index="${active}"]`)?.scrollIntoView({ block: 'nearest' })
+  }, [open, active])
+
+  const onListKey = (e: React.KeyboardEvent) => {
+    const last = runs.length - 1
+    const keys: Record<string, () => void> = {
+      ArrowDown: () => setActive((a) => Math.min(last, a + 1)),
+      ArrowUp: () => setActive((a) => Math.max(0, a - 1)),
+      Home: () => setActive(0),
+      End: () => setActive(last),
+      Enter: () => pick(active),
+      ' ': () => pick(active),
+      Escape: () => close(),
+      Tab: () => close(false),
+    }
+    if (keys[e.key]) {
+      if (e.key !== 'Tab') e.preventDefault()
+      keys[e.key]()
+    } else if (e.key.length === 1 && /\S/.test(e.key)) {
+      const k = e.key.toLowerCase()
+      for (let step = 1; step <= runs.length; step++) {
+        const i = (active + step) % runs.length
+        if (runs[i].name.toLowerCase().startsWith(k)) {
+          setActive(i)
+          break
+        }
+      }
+    }
+  }
+
+  const label = (r: RunStatus) => runKind(r)
   return (
     <div className="flex items-center gap-3">
-      <label htmlFor={id} className="shrink-0 text-[13px] font-medium text-ink-muted">Run</label>
-      {/* The browser's own menu and arrow; the border only restores what the CSS reset removed. */}
-      <select id={id} value={value} onChange={(e) => onChange(e.target.value)}
-        className="h-[34px] min-w-0 flex-1 rounded-lg border border-line-strong bg-bg px-2 text-[13.5px] text-ink">
-        {runs.map((r) => {
-          const { symbol, word } = runState(r)
-          return <option key={r.name} value={r.name}>{symbol}  {r.name} · {word}</option>
-        })}
-      </select>
+      <span id={`${id}-label`} className="shrink-0 text-[13px] font-medium text-ink-muted">Run</span>
+      <div ref={root} className="relative flex min-w-0 flex-1">
+        <button ref={button} type="button" aria-haspopup="listbox" aria-expanded={open} aria-controls={`${id}-list`}
+          aria-labelledby={`${id}-label ${id}-value`}
+          onClick={() => (open ? close() : show())}
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+              e.preventDefault()
+              show()
+            }
+          }}
+          className={`flex h-[34px] min-w-0 flex-1 items-center gap-2.5 rounded-lg border bg-bg pr-2.5 pl-3 text-left text-[13.5px] transition-colors duration-150 ${
+            open ? 'border-accent' : 'border-line-strong hover:border-ink-faint'
+          }`}>
+          <RunMark kind={runKind(current)} />
+          <span id={`${id}-value`} className="min-w-0 flex-1 truncate">
+            <span className="font-medium text-ink">{current.name}</span>
+            <span className="text-ink-faint"> · {label(current)}</span>
+          </span>
+          <ChevronDown size={15} aria-hidden
+            className={`shrink-0 text-ink-muted transition-transform duration-200 ease-out-quart ${open ? 'rotate-180' : ''}`} />
+        </button>
+        {open && (
+          <ul ref={list} id={`${id}-list`} role="listbox" tabIndex={-1} aria-labelledby={`${id}-label`}
+            aria-activedescendant={`${id}-opt-${active}`} onKeyDown={onListKey}
+            className="cz-menu absolute top-full left-0 z-[var(--z-popover)] mt-1.5 w-max min-w-full max-w-[min(26rem,calc(100vw-2.5rem))] max-h-72 overflow-y-auto rounded-xl border border-line-strong bg-surface p-1 shadow-[0_18px_44px_-18px_rgb(0_0_0/0.6)] outline-none">
+            {runs.map((r, i) => {
+              const selected = r.name === value
+              return (
+                <li key={r.name} id={`${id}-opt-${i}`} data-index={i} role="option" aria-selected={selected}
+                  onPointerMove={() => setActive(i)} onClick={() => pick(i)}
+                  className={`flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13.5px] ${
+                    i === active ? 'bg-surface-2' : ''
+                  }`}>
+                  <span className="grid w-3.5 shrink-0 place-items-center"><RunMark kind={runKind(r)} /></span>
+                  <span className={`min-w-0 flex-1 truncate ${selected ? 'font-medium text-ink' : 'text-ink'}`}>{r.name}</span>
+                  <span className="shrink-0 text-[12.5px] text-ink-faint">{label(r)}</span>
+                  <span className="grid w-4 shrink-0 place-items-center">
+                    {selected && <Check size={14} aria-hidden className="text-accent" strokeWidth={2.5} />}
+                  </span>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </div>
     </div>
   )
 }
@@ -778,7 +904,7 @@ export function TrainingView() {
           <div className="mt-8">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="w-full min-w-0 max-w-xs flex-1 sm:flex-none">
-                {selected && <RunPicker runs={runs} value={selected} onChange={(v) => {
+                {selected && <RunMenu runs={runs} value={selected} onChange={(v) => {
                   setSelected(v)
                   setDetail(null)
                   setDeleting(false)

@@ -161,6 +161,18 @@ p {
   animation: cz-swap 280ms var(--ease-out-quart) both;
 }
 
+/* A menu dropping open below its button. */
+@keyframes cz-menu {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+.cz-menu {
+  animation: cz-menu 160ms var(--ease-out-quart) both;
+  transform-origin: top;
+}
+
 /* Quick actions slide out from the toolbar toggle. */
 @keyframes cz-slide-in {
   from {
