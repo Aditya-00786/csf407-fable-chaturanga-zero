@@ -15,6 +15,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal, Optional
@@ -232,6 +233,9 @@ def resume_run(name: str, req: ResumeRequest):
                                 start_new_session=True)  # survives the API server restarting
     finally:
         log.close()
+    # Collect the process when it exits; otherwise it lingers as a zombie, which still counts as
+    # alive and would keep a crashed run looking live.
+    threading.Thread(target=proc.wait, name=f"wait-{name}", daemon=True).start()
     # Show "starting" at once; the run overwrites this as soon as it has loaded.
     fresh = {k: v for k, v in status.items() if k not in ("name", "seconds_since_update", "live", "pause_requested")}
     fresh.update(state="starting", pid=proc.pid, host=socket.gethostname(), paused_in=None, paused_after=None,

@@ -187,6 +187,9 @@ def test_resume_starts_the_run_detached(tmp_path, monkeypatch):
     class FakeProcess:
         pid = os.getpid()  # "alive", so the run now reads as starting and live
 
+        def wait(self):
+            started["waited"] = True
+
     def fake_popen(cmd, **kwargs):
         started.update(cmd=cmd, **kwargs)
         return FakeProcess()
@@ -198,6 +201,13 @@ def test_resume_starts_the_run_detached(tmp_path, monkeypatch):
     assert r.status_code == 202 and r.json()["state"] == "starting" and r.json()["live"] is True
     cmd = started["cmd"]
     assert cmd[cmd.index("--run") + 1] == "r" and "--generations" not in cmd and started["start_new_session"]
+    import time
+
+    for _ in range(100):  # the server collects the process when it ends (no zombie), from a thread
+        if started.get("waited"):
+            break
+        time.sleep(0.01)
+    assert started.get("waited")
     # Now it is running, so a second resume is refused.
     assert client.post("/api/training/runs/r/resume", json={}).status_code == 409
 
@@ -206,7 +216,8 @@ def test_a_finished_run_resumes_only_to_train_further(tmp_path, monkeypatch):
     from chaturanga_server import training_api
 
     monkeypatch.setenv("CHATURANGA_RUNS", str(tmp_path))
-    monkeypatch.setattr(training_api.subprocess, "Popen", lambda cmd, **kw: type("P", (), {"pid": os.getpid()})())
+    monkeypatch.setattr(training_api.subprocess, "Popen",
+                        lambda cmd, **kw: type("P", (), {"pid": os.getpid(), "wait": lambda self: None})())
     d = _fake_run(tmp_path, state="finished", pid=2**22 + 12345)
     for g in range(4):
         (d / "checkpoints" / f"gen_{g:04d}.pt").write_bytes(b"")

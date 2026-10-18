@@ -148,6 +148,19 @@ p {
   animation: cz-rise 260ms var(--ease-out-quart) both;
 }
 
+/* A panel's content changing state (Training controls, status headline): the new content
+   settles in while the old one is gone. */
+@keyframes cz-swap {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+    filter: blur(2px);
+  }
+}
+.cz-swap {
+  animation: cz-swap 280ms var(--ease-out-quart) both;
+}
+
 /* Quick actions slide out from the toolbar toggle. */
 @keyframes cz-slide-in {
   from {
