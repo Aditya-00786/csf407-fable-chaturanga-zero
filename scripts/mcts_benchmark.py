@@ -1,8 +1,9 @@
-"""Milestone 2 benchmark: search speed, and the untrained MCTS agent against the baselines.
+"""Benchmark: search speed, and the MCTS agent (untrained, or a trained checkpoint) against the baselines.
 
     python scripts/mcts_benchmark.py                       # speed + 10 games each vs Random and Greedy
     python scripts/mcts_benchmark.py --sims 50 --games 20 --opponents random
     python scripts/mcts_benchmark.py --speed-only --device mps
+    python scripts/mcts_benchmark.py --checkpoint checkpoints/best.pt   # a trained network instead
 
 The MCTS agent's network is untrained, so its priors and values are noise; whatever it wins, it
 wins through the search and the exact results of finished games. Colours alternate game by game.
@@ -23,7 +24,7 @@ from chaturanga import GameState  # noqa: E402
 from chaturanga.agents import MCTSAgent, make_agent  # noqa: E402
 from chaturanga.constants import WHITE, color_name  # noqa: E402
 from chaturanga.mcts import MCTS, MCTSConfig, UniformEvaluator  # noqa: E402
-from chaturanga.net import NetConfig, NetworkEvaluator, new_network, parameter_count  # noqa: E402
+from chaturanga.net import NetConfig, NetworkEvaluator, load_checkpoint, new_network, parameter_count  # noqa: E402
 
 
 def search_speed(evaluator, simulations: int, repeats: int = 3) -> float:
@@ -62,16 +63,22 @@ def main():
     ap.add_argument("--threads", type=int, default=0, help="torch CPU threads (default: torch's choice)")
     ap.add_argument("--speed-only", action="store_true")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--checkpoint", help="play with this trained network (default: the untrained one)")
     args = ap.parse_args()
 
     if args.threads:
         torch.set_num_threads(args.threads)
     device = torch.device(args.device)
-    net = new_network(NetConfig(blocks=args.blocks, channels=args.channels), seed=args.seed)
+    if args.checkpoint:
+        net, meta = load_checkpoint(args.checkpoint)
+        label = f"trained, generation {meta.get('generation', '?')} of run {meta.get('run', '?')}"
+    else:
+        net = new_network(NetConfig(blocks=args.blocks, channels=args.channels), seed=args.seed)
+        label = "untrained"
     evaluator = NetworkEvaluator(net, device)
 
-    print(f"Network: {args.blocks} blocks x {args.channels} filters, {parameter_count(net):,} parameters, "
-          f"device {device}, {torch.get_num_threads()} CPU threads")
+    print(f"Network ({label}): {net.config.blocks} blocks x {net.config.channels} filters, "
+          f"{parameter_count(net):,} parameters, device {device}, {torch.get_num_threads()} CPU threads")
     uniform = search_speed(UniformEvaluator(), 2000)
     network = search_speed(evaluator, 200)
     print(f"Search speed: {uniform:,.0f} sims/s with uniform priors (engine only), "
@@ -99,7 +106,7 @@ def main():
                   f"({out.reason}, {final.ply} plies)", flush=True)
         n = args.games
         score = (tally["win"] + 0.5 * tally["draw"]) / n
-        print(f"MCTS ({args.sims} sims, untrained) vs {opponent_id}: "
+        print(f"MCTS ({args.sims} sims, {label}) vs {opponent_id}: "
               f"{tally['win']} W / {tally['draw']} D / {tally['loss']} L, score {score:.0%}")
         print(f"  endings: {dict(reasons)}; mean length {statistics.mean(lengths):.0f} plies; "
               f"{statistics.mean(think) * 1000:.0f} ms per MCTS move; {time.perf_counter() - t0:.0f} s total")
