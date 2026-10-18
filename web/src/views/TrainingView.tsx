@@ -376,13 +376,15 @@ function Charts({ detail }: { detail: RunDetail }) {
       <ChartCard title="Policy loss" note="How far the network's move choices are from the search's. The dashed line is the lowest it can go.">
         <LineChart label="Policy loss by training step" series={lossSeries('policy_loss')} xLabel="training step" yFormat={fmtLoss}
           reference={{ label: 'lowest possible', points: detail.train.map((p) => ({ x: p.step, y: p.policy_entropy })) }} />
-        <div className="mt-2"><Legend items={lossLegend} /></div>
+        <div className="mt-2"><Legend items={[...lossLegend,
+          { label: 'Lowest possible (the targets’ own entropy)', color: 'var(--ink-faint)', kind: 'ref' }]} /></div>
       </ChartCard>
       <ChartCard title="Value loss" note="How far its prediction of the result is from how games ended. On new games it must beat the dashed line, the score of always predicting a draw.">
         <LineChart label="Value loss by training step" series={lossSeries('value_loss')} xLabel="training step" yFormat={fmtLoss}
           reference={{ label: 'predicting a draw', points: held.filter((g) => g.held_out!.value_baseline !== undefined)
             .map((g) => ({ x: heldX(g), y: g.held_out!.value_baseline! })) }} />
-        <div className="mt-2"><Legend items={lossLegend} /></div>
+        <div className="mt-2"><Legend items={[...lossLegend,
+          { label: 'Predicting a draw, on the new games', color: 'var(--ink-faint)', kind: 'ref' }]} /></div>
       </ChartCard>
       <ChartCard title="Evaluation score" note="Wins plus half the draws, after each generation. Above 50% against the previous generation means it improved.">
         <LineChart label="Evaluation score by generation" series={evalSeries} xLabel="generation" integerX yMin={0} yMax={100} yFormat={fmtPct} />
@@ -635,11 +637,11 @@ function measuredSecondsPerGame(detail: RunDetail | null): number {
 function RunPicker({ runs, value, onChange }: { runs: RunStatus[]; value: string; onChange: (v: string) => void }) {
   const id = useId()
   if (runs.length <= 3) {
-    return <Segmented label="Run" value={value} onChange={onChange} size="sm" options={runs.map((r) => ({ value: r.name, label: r.name }))} />
+    return <Segmented label="Run" hideLabel value={value} onChange={onChange} size="sm" options={runs.map((r) => ({ value: r.name, label: r.name }))} />
   }
   return (
     <div>
-      <label htmlFor={id} className="mb-1.5 block text-[13px] font-medium text-ink-muted">Run</label>
+      <label htmlFor={id} className="sr-only">Run</label>
       <select id={id} value={value} onChange={(e) => onChange(e.target.value)}
         className="h-8 w-full rounded-lg border border-line bg-bg px-2.5 text-[13px] text-ink">
         {runs.map((r) => <option key={r.name} value={r.name}>{r.name}{r.live ? ' (training)' : ''}</option>)}
@@ -696,29 +698,30 @@ export function TrainingView() {
   return (
     <div ref={scroller} className="flex-1 overflow-y-auto">
       <div className="mx-auto max-w-6xl px-5 py-10 sm:px-8 sm:py-12">
-        <header className="flex flex-wrap items-end justify-between gap-4">
-          <div className="max-w-[62ch]">
-            <h1 className="font-serif text-[36px] leading-[1.1] font-semibold tracking-[-0.015em] text-ink sm:text-[42px]">
+        <header>
+          <div className="flex items-center justify-between gap-4">
+            <h1 className="font-serif text-[34px] leading-[1.1] font-semibold tracking-[-0.015em] text-ink sm:text-[42px]">
               Watch training
             </h1>
-            <p className="mt-3 text-[15px] leading-relaxed text-ink-muted">
-              The agent learns by playing itself. Each generation of the newest network plays a batch of self-play
-              games with MCTS, trains on the search's choices and the results and is then tested against the
-              generation before it and the Greedy baseline.
-            </p>
-          </div>
-          {runs && runs.length > 0 && (
-            <div className="ml-auto flex w-full items-end justify-end gap-2 sm:w-auto">
-              {runs.length > 1 && selected && (
-                <div className="min-w-0 flex-1 sm:w-80 sm:flex-none">
-                  <RunPicker runs={runs} value={selected} onChange={(v) => { setSelected(v); setDetail(null) }} />
-                </div>
-              )}
-              <Button size="sm" onClick={() => setCreating((c) => !c)} aria-expanded={creating}
-                icon={<Plus size={15} className={`transition-transform duration-200 ease-out-quart ${creating ? 'rotate-45' : ''}`} />}
-                className="shrink-0">
-                New run
+            {runs && runs.length > 0 && (
+              <Button size="sm" onClick={() => setCreating((c) => !c)} aria-expanded={creating} aria-label="New run"
+                className="shrink-0"
+                icon={<Plus size={15} className={`transition-transform duration-200 ease-out-quart ${creating ? 'rotate-45' : ''}`} />}>
+                <span className="hidden sm:inline">New run</span>
               </Button>
+            )}
+          </div>
+          <p className="mt-3 max-w-[62ch] text-[15px] leading-relaxed text-ink-muted">
+            The agent learns by playing itself. Each generation of the newest network plays a batch of self-play
+            games with MCTS, trains on the search's choices and the results and is then tested against the
+            generation before it and the Greedy baseline.
+          </p>
+          {runs && runs.length > 1 && selected && (
+            <div className="mt-6 flex items-center gap-3">
+              <span aria-hidden className="text-[13px] font-medium text-ink-muted">Run</span>
+              <div className="w-80 max-w-full min-w-0">
+                <RunPicker runs={runs} value={selected} onChange={(v) => { setSelected(v); setDetail(null) }} />
+              </div>
             </div>
           )}
         </header>

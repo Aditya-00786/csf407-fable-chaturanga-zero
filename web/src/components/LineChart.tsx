@@ -104,6 +104,10 @@ export function LineChart({
     const close = p && (s.kind === 'line' || p.x === hx) && Math.abs(sx(p.x) - sx(hx)) < 12
     return { s, p: close ? p : null }
   })
+  // The reference line's value there too, if it has a point close by.
+  const refPoint = hx === null || !reference ? null : reference.points.reduce<{ x: number; y: number } | null>(
+    (best, q) => (!best || Math.abs(q.x - hx) < Math.abs(best.x - hx) ? q : best), null)
+  const refShown = refPoint && Math.abs(sx(refPoint.x) - sx(hx!)) < 12 ? refPoint : null
   const tipLeft = hx === null ? 0 : sx(hx)
   const flip = tipLeft > width * 0.6
 
@@ -143,9 +147,8 @@ export function LineChart({
 
         {reference && reference.points.length > 1 && (
           <g>
+            {/* Named in the legend, not on the plot, where a label would collide with the data. */}
             <path d={path(reference.points)} fill="none" stroke="var(--ink-faint)" strokeWidth={1} strokeDasharray="4 4" />
-            <text x={sx(reference.points[reference.points.length - 1].x)} y={sy(reference.points[reference.points.length - 1].y) - 6}
-              textAnchor="end" className="fill-ink-faint text-[11px]">{reference.label}</text>
           </g>
         )}
 
@@ -178,6 +181,13 @@ export function LineChart({
               <span className="text-ink-muted">{s.label}</span>
             </p>
           ))}
+          {refShown && reference && (
+            <p className="flex items-center gap-2 whitespace-nowrap">
+              <span aria-hidden className="w-3 border-t border-dashed border-ink-faint" />
+              <span className="font-semibold text-ink tabular-nums">{yFormat(refShown.y)}</span>
+              <span className="text-ink-muted">{reference.label}</span>
+            </p>
+          )}
         </div>
       )}
     </div>
