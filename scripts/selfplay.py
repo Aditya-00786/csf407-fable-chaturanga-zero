@@ -17,13 +17,14 @@ import os
 import sys
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from dataclasses import replace
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import multiprocessing as mp  # noqa: E402
 
 from chaturanga.net import load_checkpoint  # noqa: E402
-from chaturanga.selfplay import GameRecord, SelfPlayConfig, summarise, write_games  # noqa: E402
+from chaturanga.selfplay import GameRecord, summarise, write_games  # noqa: E402
 from chaturanga.training import TrainConfig, _init_worker, selfplay_task  # noqa: E402
 
 
@@ -43,7 +44,7 @@ def main():
     generation = int(meta.get("generation", 0))
     seed = args.seed if args.seed is not None else int(time.time() * 1000) % 2**31
     out = args.out or f"selfplay-{args.name}-gen{generation:04d}-{time.strftime('%Y%m%d-%H%M%S')}.jsonl.gz"
-    config = SelfPlayConfig(args.sims, defaults.temperature_plies, defaults.concurrent)
+    config = replace(defaults.selfplay_config, simulations=args.sims)
     print(f"Playing {args.games} games with generation {generation} ({meta.get('run', 'unknown run')}) "
           f"on {args.workers} processes...")
 

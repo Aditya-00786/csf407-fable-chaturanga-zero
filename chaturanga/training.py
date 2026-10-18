@@ -52,7 +52,12 @@ class TrainConfig:
     generations: int = 20             # stop after this many; raise it and resume to train further
     games_per_generation: int = 50
     simulations: int = 50             # MCTS simulations per move in self-play and evaluation
+    # Self-play samples moves in proportion to visits for the first `temperature_plies` plies and at
+    # `late_temperature` after. AlphaZero played the most visited move after its opening (0), but at
+    # this scale both sides then shuffle into repetition draws (measured: 22 of 28 games with the
+    # generation 3 network, against 2 of 28 at 1), and draws teach the value head nothing.
     temperature_plies: int = 30
+    late_temperature: float = 1.0
     concurrent: int = 8               # self-play games per process, sharing batched evaluations
     buffer_positions: int = 60_000    # about the last six generations
     batch_size: int = 256
@@ -75,7 +80,8 @@ class TrainConfig:
 
     @property
     def selfplay_config(self) -> SelfPlayConfig:
-        return SelfPlayConfig(self.simulations, self.temperature_plies, self.concurrent)
+        return SelfPlayConfig(simulations=self.simulations, temperature_plies=self.temperature_plies,
+                              concurrent=self.concurrent, late_temperature=self.late_temperature)
 
     def to_json(self) -> dict:
         d = asdict(self)

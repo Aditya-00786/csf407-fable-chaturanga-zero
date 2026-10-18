@@ -52,6 +52,13 @@ def test_batched_self_play_matches_one_game_at_a_time():
     assert sorted(g.moves for g in together) == sorted(g.moves for g in alone)
 
 
+def test_late_temperature_zero_plays_the_most_visited_move():
+    (g,) = play_games(UniformEvaluator(), 1, replace(FAST, temperature_plies=4, late_temperature=0.0), seed=9, rules=SHORT)
+    for ply, (move, visits) in enumerate(zip(g.moves, g.visits)):
+        if ply >= 4:
+            assert visits[move] == max(visits.values())
+
+
 def test_examples_have_distribution_targets_and_signed_results(games):
     for g in games:
         planes, actions, shares, z = examples(g)

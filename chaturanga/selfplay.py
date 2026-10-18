@@ -26,9 +26,10 @@ from .mcts import MCTS, MCTSConfig, Evaluator
 @dataclass(frozen=True)
 class SelfPlayConfig:
     simulations: int = 50        # per move (the proposal's 30-50)
-    temperature_plies: int = 30  # sample moves in proportion to visits for this many plies, then play the best
+    temperature_plies: int = 30  # sample moves in proportion to visits for this many plies...
     concurrent: int = 8          # games played side by side, sharing batched evaluations
     noise: bool = True           # Dirichlet noise on the root priors, so self-play explores
+    late_temperature: float = 0.0  # ...and after them at this temperature (0: always the most visited move)
 
 
 @dataclass
@@ -98,7 +99,7 @@ def play_games(evaluator: Evaluator, n_games: int, config: SelfPlayConfig = Self
         for g in active:
             counts = MCTS.visit_counts(g.root)
             g.visits.append({move_to_str(m): c for m, c in counts.items() if c})
-            temperature = 1.0 if g.state.ply < config.temperature_plies else 0.0
+            temperature = 1.0 if g.state.ply < config.temperature_plies else config.late_temperature
             move = g.mcts.choose_move(g.root, temperature)
             g.moves.append(move_to_str(move))
             g.state = g.state.apply(move)

@@ -339,11 +339,10 @@ python scripts/plot_training.py          # runs/main/training.png
 **One generation**
 1. **Self-play.** The newest network plays 50 games against itself, one process per CPU core
    (cores − 2 by default), several games per process sharing batched network calls. Each move
-   uses 50 simulations with Dirichlet noise at the root; for the first 30 plies the move is
-   sampled in proportion to the visit counts so openings vary, and after that the most visited
-   move is played. Every position becomes a training example: the board, the search's visit
-   shares (the policy target) and, once the game ends, the result for the side to move (the value
-   target).
+   uses 50 simulations with Dirichlet noise at the root, and the move played is sampled in
+   proportion to the visit counts (see below for why not the most visited one). Every position
+   becomes a training example: the board, the search's visit shares (the policy target) and, once
+   the game ends, the result for the side to move (the value target).
 2. **Teammates' games.** Game files waiting in `runs/<run>/incoming/` are replayed move by move and
    added if every move and visit count is legal under our rules; anything else is set aside in
    `games/rejected/`.
@@ -374,6 +373,23 @@ has scored highest against Greedy (later generations win ties). It is copied to
 the last finished generation, refilling the replay buffer from the saved games (and reusing a
 generation's self-play games if only its training was interrupted). To train beyond the planned
 generations, raise `--generations`; nothing caps it.
+
+**Why every self-play move is sampled.** AlphaZero sampled only its opening moves and then
+played the most visited move. Our first run did the same (it is kept as `runs/v1-greedy-after-30`),
+and by generation 3 both sides had learned to shuffle pieces until a position repeated: 34 of 50
+self-play games ended in threefold repetition, the value head still could not tell a missing pair
+of Rathas from the starting position, and almost nothing decisive was left to learn from.
+Measured with the generation 3 network over 28 games each:
+
+| Moves after ply 30 | Decisive games | Repetition draws |
+|---|:-:|:-:|
+| Most visited (temperature 0) | 3 | 22 |
+| Temperature 0.5 | 6 | 10 |
+| In proportion to visits (temperature 1) | 10 | 2 |
+
+So self-play now samples every move in proportion to visits (`--late-temperature`, default 1).
+The policy target is the same visit distribution either way; only the games become more varied,
+and more of them are won.
 
 **Measuring honestly.** A network can lower its training loss by memorising games. So before each
 generation trains on its new self-play games, the loss on those unseen games is logged too, and

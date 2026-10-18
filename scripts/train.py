@@ -28,6 +28,7 @@ OPTIONS = {
     "generations": "generations", "games": "games_per_generation", "sims": "simulations",
     "steps": "steps_per_generation", "batch": "batch_size", "lr": "learning_rate",
     "buffer": "buffer_positions", "eval_games": "eval_games", "concurrent": "concurrent", "reuse": "sample_reuse",
+    "late_temperature": "late_temperature",
     "blocks": "blocks", "channels": "channels", "seed": "seed",
 }
 
