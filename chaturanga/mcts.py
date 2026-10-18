@@ -11,7 +11,8 @@ scored exactly by the engine instead. The value is then backed up the path, chan
 every level because the players alternate.
 
 The evaluator is any object with `evaluate(state) -> (priors, value)`, where priors maps each
-legal move to a probability and value is the expected result for the side to move, in [-1, 1].
+legal move to a probability and value is the expected result for the side to move, in [-1, 1],
+and `evaluate_many(states)`, the same for a batch.
 `net.NetworkEvaluator` is the real one; `UniformEvaluator` knows only the rules.
 """
 
@@ -29,6 +30,8 @@ from .game import GameState
 class Evaluator(Protocol):
     def evaluate(self, state: GameState) -> tuple[dict[int, float], float]: ...
 
+    def evaluate_many(self, states: list[GameState]) -> list[tuple[dict[int, float], float]]: ...
+
 
 class UniformEvaluator:
     """Equal priors for every legal move and a neutral value. With it, the search is guided by
@@ -37,6 +40,9 @@ class UniformEvaluator:
     def evaluate(self, state: GameState) -> tuple[dict[int, float], float]:
         moves = state.legal_moves()
         return {m: 1.0 / len(moves) for m in moves}, 0.0
+
+    def evaluate_many(self, states: list[GameState]) -> list[tuple[dict[int, float], float]]:
+        return [self.evaluate(s) for s in states]
 
 
 @dataclass(frozen=True)
@@ -91,6 +97,14 @@ class MCTS:
 
     def search(self, state: GameState, add_noise: bool = False, simulations: Optional[int] = None) -> Node:
         """Run the simulations from `state` and return the root, whose children hold the results."""
+        root = self.prepare(state, add_noise)
+        for _ in range(self.config.simulations if simulations is None else simulations):
+            self._simulate(root)
+        return root
+
+    def prepare(self, state: GameState, add_noise: bool = False) -> Node:
+        """The root for `state`, expanded and (if asked) with noise on its priors, ready for
+        simulations. `search` runs them one at a time; `selfplay` batches them across games."""
         if state.is_terminal():
             raise ValueError("cannot search a finished game")
         root = self._root_for(state)
@@ -100,11 +114,18 @@ class MCTS:
             root.value_sum -= value  # root is seen from the player who moved into it
         if add_noise and self.config.dirichlet_fraction > 0:
             self._add_noise(root)
-        for _ in range(self.config.simulations if simulations is None else simulations):
-            self._simulate(root)
         return root
 
     def _simulate(self, root: Node) -> None:
+        path = self.descend(root)
+        if path is not None:
+            priors, value = self.evaluator.evaluate(path[-1].state)
+            self.expand_and_backup(path, priors, value)
+
+    def descend(self, root: Node) -> Optional[list[Node]]:
+        """First half of a simulation: walk down to a leaf. A finished game is scored exactly and
+        backed up at once (returns None); otherwise returns the path, whose last node awaits
+        evaluation by `expand_and_backup`."""
         node, path = root, [root]
         while node.children:  # expanded and not finished
             move, child = self._select(node)
@@ -113,11 +134,19 @@ class MCTS:
             node = child
             path.append(node)
         outcome = node.state.outcome()
-        if outcome is not None:
-            node.children = {}
-            value = float(outcome.value_for(node.state.side))
-        else:
-            value = self._expand(node)
+        if outcome is None:
+            return path
+        node.children = {}
+        self._backup(path, float(outcome.value_for(node.state.side)))
+        return None
+
+    def expand_and_backup(self, path: list[Node], priors: dict[int, float], value: float) -> None:
+        """Second half: give the leaf its children and back up its value."""
+        path[-1].children = {m: Node(p) for m, p in priors.items()}
+        self._backup(path, value)
+
+    @staticmethod
+    def _backup(path: list[Node], value: float) -> None:
         # `value` is for the side to move at the leaf; each node stores it for the player who
         # moved into it, which alternates on the way up.
         for n in reversed(path):
