@@ -25,7 +25,7 @@ export function TopBar({ page }: { page: Page }) {
     <header className="flex h-14 shrink-0 items-center gap-4 border-b border-line bg-surface px-4 sm:gap-6 sm:px-5">
       <a href={href('play')} className="flex items-center gap-2.5 rounded-md" aria-label="ChaturangZero home">
         <Mark />
-        <span className="font-serif text-[19px] font-semibold tracking-[-0.01em] text-ink">ChaturangZero</span>
+        <span className="hidden font-serif text-[19px] font-semibold tracking-[-0.01em] text-ink min-[480px]:inline">ChaturangZero</span>
         <span className="hidden font-deva text-[15px] text-ink-faint md:inline" lang="sa">चतुरङ्ग</span>
       </a>
       <nav aria-label="Main" className="flex items-center gap-1">

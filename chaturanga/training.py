@@ -488,6 +488,7 @@ class TrainingRun:
                      f"self-play on {self.workers or 1} {'processes' if self.workers else 'process'}")
             if last == 0 and not (self.dir / "checkpoints" / "best.pt").exists():
                 self._update_best(0, {})
+            self.set_status(generation=last, best_generation=self.best)
             for generation in range(last + 1, cfg.generations + 1):
                 t0 = time.perf_counter()
                 records = self._selfplay(generation)

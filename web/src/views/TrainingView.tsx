@@ -68,13 +68,13 @@ function StatusPanel({ status, detail }: { status: RunStatus; detail: RunDetail 
   return (
     <section aria-label="Run status" className="rounded-2xl border border-line bg-surface p-5 sm:p-6">
       <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
-        <p className="flex items-center gap-2.5 font-serif text-[22px] font-semibold text-ink">
+        <p className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 font-serif text-[22px] font-semibold text-ink">
           <span aria-hidden className={`relative inline-flex h-2.5 w-2.5 rounded-full ${live ? 'bg-success' : 'bg-ink-faint'}`}>
             {live && <span className="absolute inset-0 animate-ping rounded-full bg-success opacity-60 motion-reduce:hidden" />}
           </span>
           {PHASE[state] ?? state}
           {live && status.generation > 0 && status.state !== 'generation_done' && (
-            <span className="font-sans text-[15px] font-normal text-ink-muted">for generation {status.generation}</span>
+            <span className="font-sans text-[15px] font-normal whitespace-nowrap text-ink-muted">for generation {status.generation}</span>
           )}
         </p>
         <p className="text-[13px] text-ink-faint">{live ? 'Live' : 'Not running'} · last update {ago(status.seconds_since_update)}</p>
