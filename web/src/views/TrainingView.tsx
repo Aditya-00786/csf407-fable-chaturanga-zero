@@ -48,27 +48,27 @@ function Progress({ value, label }: { value: number; label: string }) {
 
 const PHASE_NAME = { selfplay: 'self-play', training: 'training', evaluating: 'testing' } as const
 
-/** Where a paused or stopped run is, in words, and what carrying on will do. */
+/** Where a paused or stopped run is, in words. */
 function whereItStopped(status: RunStatus): string {
   const g = status.generation
   if (status.state === 'paused') {
     if (status.paused_in === 'selfplay') {
-      return `Paused during generation ${g}'s self-play. The ${status.games_done ?? 0} finished games of ${status.games_total ?? '?'} are kept; carrying on plays the rest.`
+      return `Paused during generation ${g}'s self-play. The ${status.games_done ?? 0} finished games of ${status.games_total ?? '?'} are kept.`
     }
-    if (status.paused_in === 'training') return `Paused while training generation ${g}. Carrying on redoes this training (a few seconds).`
-    if (status.paused_in === 'evaluating') return `Paused while testing generation ${g}. Carrying on runs the test again.`
+    if (status.paused_in === 'training') return `Paused while training generation ${g}.`
+    if (status.paused_in === 'evaluating') return `Paused while testing generation ${g}.`
     if (status.paused_after === 'selfplay') return `Paused after generation ${g}'s self-play. Training is next.`
     if (status.paused_after === 'training') return `Paused after training generation ${g}. Testing it is next.`
     return `Paused after generation ${g}.`
   }
-  if (status.state === 'failed') return 'Stopped with an error; the details are at the end of the run’s train.log. Carrying on tries again from the last saved point.'
-  return 'The training process ended without pausing (closed or interrupted). Carrying on continues from the last saved point; finished self-play games are kept.'
+  if (status.state === 'failed') return 'Stopped with an error; the details are at the end of the run’s train.log.'
+  return 'The training process ended without pausing (closed or interrupted). Finished self-play games are kept.'
 }
 
 const PAUSE_OPTIONS: { when: PauseWhen; label: string; note: (s: RunStatus) => string }[] = [
   {
     when: 'now', label: 'Pause now',
-    note: () => 'Stops within seconds. Finished games are kept; anything half done is redone when you carry on.',
+    note: () => 'Stops within seconds. Finished games are kept; anything half done is redone when you resume.',
   },
   {
     when: 'after_phase', label: 'After this phase',
@@ -123,7 +123,7 @@ function RunControls({ status, total, done, onChange }: {
       <div className="mt-5 border-t border-line pt-4">
         <Button size="sm" onClick={() => setChoosing((c) => !c)} aria-expanded={choosing}
           icon={<Pause size={14} />} disabled={status.state === 'starting'}>
-          Pause…
+          Pause
         </Button>
         <Collapse open={choosing}>
           <ul className="mt-3 grid gap-2 sm:grid-cols-3">
@@ -158,18 +158,15 @@ function RunControls({ status, total, done, onChange }: {
             </label>
             <Button size="sm" variant="primary" disabled={busy} icon={<Play size={14} />}
               onClick={() => act(() => api.resumeRun(name, Math.max(done + 1, total + more)))}>
-              {busy ? 'Starting…' : 'Train further'}
+              {busy ? 'Starting' : 'Train further'}
             </Button>
           </>
         ) : (
           <Button size="sm" variant="primary" disabled={busy} icon={<Play size={14} />}
             onClick={() => act(() => api.resumeRun(name))}>
-            {busy ? 'Starting…' : 'Carry on'}
+            {busy ? 'Starting' : 'Resume'}
           </Button>
         )}
-        <p className="text-[12.5px] text-ink-faint">
-          or in a terminal: <code className="rounded bg-surface-2 px-1.5 py-0.5">python scripts/train.py --run {name}</code>
-        </p>
       </div>
       {error && <p className="text-[12.5px] text-danger">{error}</p>}
     </div>

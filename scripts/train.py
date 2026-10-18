@@ -12,8 +12,8 @@ Pausing, from another terminal (or the app's Training page):
     python scripts/train.py --pause after-generation   # finish the whole generation first
     python scripts/train.py --cancel-pause             # changed your mind
 
-Run the same training command again to carry on from where it paused: finished self-play games are
-kept, so only games that were in progress are replayed. The best network is copied to
+Resume with `python scripts/train.py --run <name>` (or the Resume button on the app's Training page):
+finished self-play games are kept, so only games that were in progress are replayed. The best network is copied to
 checkpoints/best.pt, where the web app's Trained opponent finds it.
 Losses and results go to runs/<run>/metrics.jsonl; plot them with scripts/plot_training.py.
 """

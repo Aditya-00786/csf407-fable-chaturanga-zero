@@ -163,7 +163,8 @@ The commands below assume the virtual environment is active. If it isn't, prefix
 | MCTS speed only | `python scripts/mcts_benchmark.py --speed-only --threads 1` |
 | Untrained MCTS vs Random and Greedy | `python scripts/mcts_benchmark.py --sims 50 --games 10 --threads 1` |
 | Trained network vs Random and Greedy | `python scripts/mcts_benchmark.py --checkpoint checkpoints/best.pt --threads 1` |
-| Train (20 generations of 50 games) | `python scripts/train.py` (Ctrl+C pauses; the same command carries on) |
+| Train (20 generations of 50 games) | `python scripts/train.py` (Ctrl+C pauses) |
+| Resume a paused or stopped run | `python scripts/train.py --run main` |
 | Pause a run from another terminal | `python scripts/train.py --pause now` (or `after-phase`, `after-generation`; `--cancel-pause` withdraws it) |
 | Train further | `python scripts/train.py --generations 40` |
 | A quick test run | `python scripts/train.py --run quick --games 8 --generations 2 --eval-games 4` |
@@ -247,7 +248,7 @@ The server keeps no game state, so undo and review are just shorter move lists.
 | **Play** | The board fills the screen. A floating card shows whose turn it is. The toolbar has **Game**, which opens a drawer (Esc closes it) with the mode, move list (click to review), captured pieces, display options (including Reduced graphics) and Rotate. Beside it, a ‹ button slides out quick actions: Undo (Start / Pause against computers), Full screen and New game. Opening the drawer tucks them away again. **Details** in the drawer switches between *Essential*, which shows headlines only and is the default, and *Full*. Under Full, four toggles turn individual extras on or off: move hints, move and quiet-ply counters, why the game ended, and rule sources. While reviewing, a bar at the foot of the board steps through the moves (⏮ ◀ ▶ ⏭, or ← → Home End) and replays the game at Slow, Normal or Fast; stepping back plays the move in reverse, captured pieces returning from their tray. Modes: two players (the board turns to face the player to move after each move; Rotate overrides it only until the turn next changes hands, and a switch turns it off), vs computer (Random, Greedy, MCTS or Trained; the trained agent has four levels, Easy, Medium, Hard and Impossible, set by its search budget), or computer vs computer with a pace control; it waits for **Start** (in the drawer, or in the quick actions, where it takes Undo's place) and can be paused and resumed. |
 | **Learn** | 11 lessons: the board, each piece, check and checkmate, bare king, stalemate and draws. Most end with a one-move task that the engine checks. Like Play, the board fills the screen: a floating card shows the lesson, its task, feedback and a hint; **Lessons** opens the lesson list from the left and **Lesson** opens the lesson text from the right (both closed by default, Esc closes them); a ‹ button slides out Reset board, previous and next lesson, and Full screen. `tests/test_lessons.py` checks that every lesson position is legal and every task can be solved. |
 | **Rules** | A compact reference: setup, the pieces and how a game ends. The sources behind each rule are in `docs/RULES.md`, not in the app. |
-| **Training** | Follows a training run from `runs/`: what it is doing now (self-play, training or evaluation, with progress), with **Pause** (now, after this phase or after this generation), **Carry on** for a paused or stopped run, and **Train further** for a finished one, the policy and value losses (including the loss on each generation's new games before training on them, against the score of always predicting a draw), the evaluation scores, the share of decisive self-play games, and a table of every generation. **Watch** on a row replays that generation's shortest decisive self-play game on the Play board. It refreshes every few seconds while the run is live. |
+| **Training** | Follows a training run from `runs/`: what it is doing now (self-play, training or evaluation, with progress), with **Pause** (now, after this phase or after this generation), **Resume** for a paused or stopped run, and **Train further** for a finished one, the policy and value losses (including the loss on each generation's new games before training on them, against the score of always predicting a draw), the evaluation scores, the share of decisive self-play games, and a table of every generation. **Watch** on a row replays that generation's shortest decisive self-play game on the Play board. It refreshes every few seconds while the run is live. |
 
 **Camera:** drag to orbit the board. Zoom with the mouse wheel, a two-finger scroll, a trackpad pinch, or a two-finger pinch on a touch screen.
 
@@ -372,21 +373,26 @@ has scored highest against Greedy (later generations win ties). It is copied to
 | `control.json` | A pause request the run has not reached yet |
 | `games/gen_NNNN.partial.*.jsonl.gz` | Finished games of a generation still being played (merged into `gen_NNNN.jsonl.gz` when it completes) |
 
-**Pausing and carrying on.** A run can be paused three ways, from the Training page, from another
+**Pausing and resuming.** A run can be paused three ways, from the Training page, from another
 terminal (`python scripts/train.py --pause …`) or with Ctrl+C:
 
 | Pause | What happens |
 |---|---|
-| **Now** (Ctrl+C too) | Stops within seconds. Every self-play game that has finished is kept (each is saved the moment it ends); games in progress are dropped. A half-done training or test is dropped too, and redone on carrying on. |
+| **Now** (Ctrl+C too) | Stops within seconds. Every self-play game that has finished is kept (each is saved the moment it ends); games in progress are dropped. A half-done training or test is dropped too, and redone on resuming. |
 | **After this phase** | Finishes the current self-play, training or testing, then stops. |
 | **After this generation** | Finishes the whole generation, testing included, then stops. |
 
-To carry on, press **Carry on** on the Training page or run the same command again. The run picks
-up exactly where it stopped: it plays only the self-play games still missing (the same games it
-would have played without the pause), trains a generation whose self-play is done, or tests one
-that was trained. A run that ended without pausing (the terminal closed, the machine restarted)
-carries on the same way. To train beyond the planned generations, raise `--generations` (or use
-**Train further** on a finished run); nothing caps it.
+To resume, press **Resume** on the Training page, or in a terminal run:
+
+```bash
+python scripts/train.py --run main        # the run's name; add --runs-dir if it is not in runs/
+```
+
+The run picks up exactly where it stopped: it plays only the self-play games still missing (the
+same games it would have played without the pause), trains a generation whose self-play is done,
+or tests one that was trained. A run that ended without pausing (the terminal closed, the machine
+restarted) resumes the same way. To train beyond the planned generations, add `--generations`
+with the new total (or use **Train further** on a finished run); nothing caps it.
 
 **Why every self-play move is sampled.** AlphaZero sampled only its opening moves and then
 played the most visited move. Our first run did the same (it is kept as `runs/v1-greedy-after-30`),

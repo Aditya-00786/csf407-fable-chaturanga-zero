@@ -26,7 +26,7 @@ Everything a run produces lives in its directory, so a run stops and resumes at 
 Pausing. `request_pause(run_dir, when)` asks a running run to stop: "now" (as soon as possible:
 finished self-play games are kept, games in progress and a half-done training or evaluation are
 redone on resume), "after_phase" (once the current self-play, training or evaluation is done) or
-"after_generation". Ctrl+C is "now". Starting the run again carries on from where it paused.
+"after_generation". Ctrl+C is "now". Starting the run again resumes it from where it paused.
 """
 
 import json
@@ -464,7 +464,7 @@ class TrainingRun:
         records = list(found.values())
         missing = [base + i for i in range(n) if base + i not in found]
         if records:
-            self.log(f"  carrying on with self-play: {len(records)} of {n} games were already played")
+            self.log(f"  resuming self-play: {len(records)} of {n} games were already played")
         self.set_status(state="selfplay", generation=generation, games_done=len(records), games_total=n)
 
         def keep(new: list[GameRecord]) -> None:
@@ -691,7 +691,7 @@ class TrainingRun:
             where = (f"after generation {g}" if after == "generation" else
                      f"after generation {g}'s {names[after]}" if after else
                      f"during generation {g}'s {names[during]}" if during else f"in generation {g}")
-            self.log(f"Paused {where}. Run the same command again to carry on from here.")
+            self.log(f"Paused {where}. Run the same command again to resume.")
         except BaseException:
             self._stop_pool(abandon=True)
             self.set_status(state="failed")
