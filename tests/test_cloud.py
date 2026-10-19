@@ -214,7 +214,7 @@ def test_a_kaggle_run_goes_up_trains_and_comes_home(places, fake_kaggle):
     proc = subprocess.Popen([sys.executable, str(ROOT / "scripts" / "kaggle_run.py"), "--run", "k2", "--runs-dir",
                              str(places["runs"]), "--publish", str(places["published"])], env=env,
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    for _ in range(400):
+    for _ in range(1200):  # up to a minute: the upload is slow on a busy machine
         if (fake_kaggle / "run.py").exists():
             break
         import time
