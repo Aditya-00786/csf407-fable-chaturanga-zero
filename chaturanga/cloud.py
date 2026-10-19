@@ -186,25 +186,47 @@ import os, shutil, sys, tarfile, threading
 RUN = {run!r}
 HOURS = {hours!r}
 BASE = os.environ.get("KAGGLE_BASE", "/kaggle")  # set only by the tests
-bundle = next(os.path.join(d, f) for d, _, fs in os.walk(f"{{BASE}}/input") for f in fs if f == "bundle.tar.gz")
-with tarfile.open(bundle) as tar:
-    tar.extractall(f"{{BASE}}/tmp")
-sys.path.insert(0, f"{{BASE}}/tmp/code")
-run_dir = f"{{BASE}}/working/runs/{{RUN}}"
-if os.path.isdir(f"{{BASE}}/tmp/run"):  # the run's settings, and its progress when resuming
-    shutil.copytree(f"{{BASE}}/tmp/run", run_dir, dirs_exist_ok=True)
-from chaturanga.training import TrainingRun, request_pause
-# Kaggle ends a session at 12 hours: pause after the generation in progress before then.
-timer = threading.Timer(HOURS * 3600, lambda: request_pause(run_dir, "after_generation"))
-timer.daemon = True
-timer.start()
-workers = int(os.environ.get("KAGGLE_WORKERS", max(1, (os.cpu_count() or 2) - 1)))
-TrainingRun(run_dir, workers=workers).run()
+
+
+def unpacked():
+    """The folder holding code/ and run/. Kaggle unpacks an uploaded archive into its files, so
+    the dataset holds either those folders or, in case it did not, bundle.tar.gz to unpack here."""
+    seen = []
+    for d, _, fs in os.walk(f"{{BASE}}/input"):
+        if os.path.isfile(os.path.join(d, "code", "chaturanga", "__init__.py")):
+            return d
+        if "bundle.tar.gz" in fs:
+            with tarfile.open(os.path.join(d, "bundle.tar.gz")) as tar:
+                tar.extractall(f"{{BASE}}/tmp")
+            return f"{{BASE}}/tmp"
+        seen += [os.path.join(d, f) for f in fs][:20]
+    raise SystemExit(f"The run's code is not in the attached data. Found: {{seen or 'nothing'}}")
+
+
+def main():
+    root = unpacked()
+    sys.path.insert(0, os.path.join(root, "code"))
+    run_dir = f"{{BASE}}/working/runs/{{RUN}}"
+    if os.path.isdir(os.path.join(root, "run")):  # the run's settings, and its progress when resuming
+        shutil.copytree(os.path.join(root, "run"), run_dir, dirs_exist_ok=True)
+    from chaturanga.training import TrainingRun, request_pause
+    # Kaggle ends a session at 12 hours: pause after the generation in progress before then.
+    timer = threading.Timer(HOURS * 3600, lambda: request_pause(run_dir, "after_generation"))
+    timer.daemon = True
+    timer.start()
+    workers = int(os.environ.get("KAGGLE_WORKERS", max(1, (os.cpu_count() or 2) - 1)))
+    TrainingRun(run_dir, workers=workers).run()
+
+
+# Self-play's worker processes start by importing this file: only the main process trains.
+if __name__ == "__main__":
+    main()
 '''
 
 
 def bundle_run(run_dir: Path, out: Path) -> Path:
-    """The code and the run's saved state, as one archive for a Kaggle dataset."""
+    """The code and the run's saved state, as one archive for a Kaggle dataset (Kaggle unpacks it
+    into code/ and run/ on upload; the script takes either form)."""
     archive = out / "bundle.tar.gz"
     with tarfile.open(archive, "w:gz") as tar:
         tar.add(ROOT / "chaturanga", "code/chaturanga", filter=lambda t: None if "__pycache__" in t.name else t)

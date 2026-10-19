@@ -227,12 +227,15 @@ def test_a_kaggle_run_goes_up_trains_and_comes_home(places, fake_kaggle):
         names = tar.getnames()
     assert "code/chaturanga/training.py" in names and "run/config.json" in names
 
-    # 2. "Kaggle" runs the script on the bundle.
+    # 2. "Kaggle" runs the script on the data, unpacked as Kaggle unpacks an uploaded archive.
     base = places["tmp"] / "kaggle-machine"
-    (base / "input" / "chaturangzero-k2-data").mkdir(parents=True)
-    (base / "input" / "chaturangzero-k2-data" / "bundle.tar.gz").write_bytes((fake_kaggle / "bundle.tar.gz").read_bytes())
-    subprocess.run([sys.executable, str(fake_kaggle / "run.py")], check=True, cwd=str(base),
-                   env={**os.environ, "KAGGLE_BASE": str(base), "KAGGLE_WORKERS": "0"}, capture_output=True)
+    data = base / "input" / "datasets" / "me" / "chaturangzero-k2-data"
+    data.mkdir(parents=True)
+    with tarfile.open(fake_kaggle / "bundle.tar.gz") as tar:
+        tar.extractall(data)
+    done = subprocess.run([sys.executable, str(fake_kaggle / "run.py")], cwd=str(base), capture_output=True, text=True,
+                          env={**os.environ, "KAGGLE_BASE": str(base), "KAGGLE_WORKERS": "0"})
+    assert done.returncode == 0, done.stdout + done.stderr
     (fake_kaggle / "working").symlink_to(base / "working")
 
     # 3. Following again picks up the same session (no second upload) and brings the run home.
@@ -258,3 +261,33 @@ def test_deleting_a_waiting_colab_run_withdraws_its_request(places, monkeypatch)
     assert client.delete("/api/training/runs/gone").status_code == 200
     assert not (places["drive"] / "runs" / "gone").exists()
     assert cloud.take_request(places["drive"])["run"] == "kept"  # never the deleted one
+
+
+@pytest.mark.parametrize("layout,workers", [("archive", 0), ("unpacked", 0), ("missing", 0), ("unpacked", 2)])
+def test_the_kaggle_script_finds_its_code_however_kaggle_stores_it(tmp_path, layout, workers):
+    """Kaggle unpacks uploaded archives; the script also takes the archive itself, and says what it
+    found when the data is missing."""
+    run = tmp_path / "runs" / "r"
+    run.mkdir(parents=True)
+    (run / "config.json").write_text(json.dumps(TrainConfig(endgame_fraction=0, blocks=1, channels=16,
+                                                            eval_opponents=("previous",), **TINY).to_json()))
+    base, data = tmp_path / "kaggle", tmp_path / "kaggle" / "input" / "some-data"
+    data.mkdir(parents=True)
+    archive = cloud.bundle_run(run, tmp_path)
+    if layout == "archive":
+        (data / "bundle.tar.gz").write_bytes(archive.read_bytes())
+    elif layout == "unpacked":
+        with tarfile.open(archive) as tar:
+            tar.extractall(data)
+    else:
+        (data / "other.csv").write_text("x")
+    script = tmp_path / "run.py"
+    script.write_text(cloud.KAGGLE_SCRIPT.format(run="r", hours=11.0))
+    # With worker processes too, as on Kaggle's several cores (they import the script as they start).
+    done = subprocess.run([sys.executable, str(script)], capture_output=True, text=True, cwd=str(tmp_path),
+                          env={**os.environ, "KAGGLE_BASE": str(base), "KAGGLE_WORKERS": str(workers)}, timeout=300)
+    if layout == "missing":
+        assert done.returncode != 0 and "not in the attached data" in done.stderr and "other.csv" in done.stderr
+    else:
+        assert done.returncode == 0, done.stderr
+        assert json.loads((base / "working" / "runs" / "r" / "status.json").read_text())["state"] == "finished"
