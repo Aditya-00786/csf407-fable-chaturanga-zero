@@ -344,9 +344,9 @@ export function RunReport({ run, generations, finished, gens }: {
       {!data && !error && <div className="mt-5 h-24 animate-pulse rounded-xl bg-bg" aria-busy="true" />}
       {data && !report && (
         <div className="cz-swap mt-5 rounded-xl border border-dashed border-line-strong px-5 py-6">
-          <p className="max-w-[70ch] text-[13.5px] leading-relaxed text-ink-muted">
+          <p className="text-[13.5px] leading-relaxed text-ink-muted">
             The report sums up what the run learned: whether its policy and value heads learned, whether the value sees
-            material, how its test scores moved, and charts of its self-play. It takes a few seconds; a strength check
+            material, how its test scores moved and charts of its self-play. It takes a few seconds; a strength check
             can follow.
           </p>
           <div className="mt-4">
