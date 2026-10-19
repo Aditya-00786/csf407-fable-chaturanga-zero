@@ -927,7 +927,7 @@ export function TrainingView() {
           <h1 className="font-serif text-[34px] leading-[1.1] font-semibold tracking-[-0.015em] text-ink sm:text-[42px]">
             Watch training
           </h1>
-          <p className="mt-3 max-w-[62ch] text-[15px] leading-relaxed text-ink-muted">
+          <p className="mt-3 text-[15px] leading-relaxed text-ink-muted">
             The agent learns by playing itself. Each generation of the newest network plays a batch of self-play
             games with MCTS, trains on the search's choices and the results and is then tested against the
             generation before it and the Greedy baseline.
