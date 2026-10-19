@@ -116,6 +116,13 @@ export const api = {
   /** Ask a running run to pause; null withdraws the request. */
   pauseRun: (name: string, when: PauseWhen | null) =>
     request<RunStatus>(`/api/training/runs/${encodeURIComponent(name)}/pause`, { when }),
+  /** What a run learned: summary, material probe and (if played) the strength check. */
+  runReport: (name: string) => request<RunReport>(`/api/training/runs/${encodeURIComponent(name)}/report`),
+  /** Play the strength check in the background. */
+  startStrength: (name: string, games: number) =>
+    request<StrengthCheck>(`/api/training/runs/${encodeURIComponent(name)}/report/strength`, { games }),
+  /** The run's six-panel chart image, for download. */
+  chartsUrl: (name: string) => `/api/training/runs/${encodeURIComponent(name)}/charts.png`,
   /** Delete a run that is not training, with everything it saved. */
   deleteRun: (name: string) =>
     request<{ deleted: string }>(`/api/training/runs/${encodeURIComponent(name)}`, undefined, 'DELETE'),
@@ -224,4 +231,42 @@ export interface SelfPlayGame extends SelfPlayGameInfo {
   generation: number
   network: number
   moves: string[]
+}
+
+// ------------------------------------------------------------------ the run report
+
+export type Verdict = 'learned' | 'partly' | 'not_learned'
+
+export interface RunSummary {
+  generations: number
+  policy?: { first: number; last: number; floor: number | null; verdict: Verdict }
+  value?: { generations: number; beat_baseline: number; last: number; last_baseline: number; last_generation: number;
+    verdict: Verdict }
+  strength: Partial<Record<'greedy' | 'random' | 'previous', { first: number; last: number; best: number;
+    best_generation: number; first_generation: number; last_generation: number }>>
+  selfplay?: { games: number; decisive_first: number; decisive_last: number; plies_first: number; plies_last: number }
+}
+
+export interface ValueProbe {
+  positions: string[]
+  networks: { label: 'untrained' | 'best' | 'final'; generation: number; values: number[]; material_gap: number }[]
+}
+
+export interface StrengthResult { wins: number; draws: number; losses: number; score: number; reasons: Record<string, number> }
+
+export interface StrengthCheck {
+  state: 'running' | 'done' | 'failed' | 'stopped'
+  games: number
+  simulations?: number
+  networks: { label: 'untrained' | 'best' | 'final'; generation: number }[]
+  results: Partial<Record<string, Partial<Record<'random' | 'greedy', StrengthResult>>>>
+  done: number
+  total: number
+  error?: string
+}
+
+export interface RunReport {
+  summary: RunSummary
+  probe: ValueProbe | null
+  strength: StrengthCheck | null
 }

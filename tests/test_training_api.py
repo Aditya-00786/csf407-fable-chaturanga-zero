@@ -311,3 +311,55 @@ def test_delete_stays_inside_the_runs_folder(tmp_path, monkeypatch):
     assert client.delete("/api/training/runs/link").status_code == 400
     assert client.delete("/api/training/runs/..").status_code in (404, 405)
     assert outside.exists() and (outside / "config.json").exists()
+
+
+# ---------------------------------------------------------------------- the run report
+
+def test_report_summarises_the_run_and_probes_its_networks(run_root, monkeypatch):
+    monkeypatch.setenv("CHATURANGA_RUNS", str(run_root))
+    r = client.get("/api/training/runs/demo/report").json()
+    s = r["summary"]
+    assert s["generations"] == 1 and s["policy"]["verdict"] in ("learned", "not_learned")
+    assert s["value"]["generations"] == 1 and s["strength"]["previous"]["last_generation"] == 1
+    probe = r["probe"]
+    assert len(probe["positions"]) == 6 and [n["label"] for n in probe["networks"]] == ["untrained", "final"]
+    assert all(len(n["values"]) == 6 and -1 <= min(n["values"]) <= max(n["values"]) <= 1 for n in probe["networks"])
+    assert r["strength"] is None
+    # The probe is kept until a network changes.
+    assert (run_root / "demo" / "report" / "probe.json").exists()
+    assert client.get("/api/training/runs/demo/report").json()["probe"] == probe
+
+
+def test_strength_check_plays_every_network_against_both_baselines(run_root):
+    from chaturanga.analysis import measure_strength, read_strength
+
+    data = measure_strength(run_root / "demo", games=2, workers=1, simulations=4, log=lambda *_: None)
+    assert data["state"] == "done" and data["done"] == data["total"] == 2 * 2 * 2  # 2 networks x 2 opponents x 2
+    for label in ("untrained", "final"):
+        for opponent in ("random", "greedy"):
+            r = data["results"][label][opponent]
+            assert r["wins"] + r["draws"] + r["losses"] == 2 and 0 <= r["score"] <= 1
+    assert read_strength(run_root / "demo")["state"] == "done"
+
+
+def test_strength_check_starts_in_the_background_and_waits_for_training(tmp_path, monkeypatch, run_root):
+    import shutil
+
+    monkeypatch.setenv("CHATURANGA_RUNS", str(tmp_path))
+    shutil.copytree(run_root / "demo", tmp_path / "demo")
+    started = _capture_popen(monkeypatch)
+    _fake_run(tmp_path, "main", state="training", pid=os.getpid())
+    assert client.post("/api/training/runs/demo/report/strength", json={"games": 10}).status_code == 409
+    (tmp_path / "main" / "status.json").write_text('{"state": "paused"}')
+    r = client.post("/api/training/runs/demo/report/strength", json={"games": 10})
+    assert r.status_code == 202 and r.json()["state"] == "running"
+    cmd = started["cmd"]
+    assert "--strength-only" in cmd and cmd[cmd.index("--games") + 1] == "10"
+    assert client.post("/api/training/runs/demo/report/strength", json={}).status_code == 409  # already running
+
+
+def test_run_charts_are_drawn_as_an_image(run_root, monkeypatch):
+    pytest.importorskip("matplotlib")
+    monkeypatch.setenv("CHATURANGA_RUNS", str(run_root))
+    r = client.get("/api/training/runs/demo/charts.png")
+    assert r.status_code == 200 and r.headers["content-type"] == "image/png" and r.content[:4] == b"\x89PNG"

@@ -7,6 +7,8 @@
 import { Check, ChevronDown, LoaderCircle, Pause, Play, Plus, RefreshCw, Trash2, X } from 'lucide-react'
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Legend, LineChart, type Series } from '../components/LineChart'
+import { RunReport } from '../components/RunReport'
+import { StackedBars, type StackKey } from '../components/StackedBars'
 import { Button, Collapse, Switch } from '../components/ui'
 import { api, ApiError, type GenerationRow, type PauseWhen, type RunDetail, type RunStatus } from '../lib/api'
 import { href } from '../lib/route'
@@ -30,6 +32,16 @@ const PHASE: Record<string, string> = {
 }
 
 const pct = (v: number) => `${Math.round(v * 100)}%`
+
+// How self-play games end: decided endings in colour, draws in greys.
+const ENDINGS: StackKey[] = [
+  { id: 'bare_king', label: 'Bare king', color: 'var(--chart-1)' },
+  { id: 'checkmate', label: 'Checkmate', color: 'var(--chart-3)' },
+  { id: 'stalemate', label: 'Stalemate', color: 'var(--chart-2)' },
+  { id: 'repetition', label: 'Repetition', color: 'var(--ink-muted)' },
+  { id: 'no_progress', label: '70 quiet moves', color: 'var(--ink-faint)' },
+  { id: 'max_plies', label: '300 plies', color: 'var(--line-strong)' },
+]
 
 function ago(seconds: number | null) {
   if (seconds === null) return 'never'
@@ -399,6 +411,20 @@ function Charts({ detail }: { detail: RunDetail }) {
       </ChartCard>
       <ChartCard title="Decisive self-play games" note="Games from the opening won by checkmate, bare king or stalemate rather than drawn (endgame starts are counted in the table). Decisive games teach the value head the most.">
         <LineChart label="Share of decisive self-play games by generation" series={decisive} xLabel="generation" integerX yMin={0} yMax={100} yFormat={fmtPct} />
+      </ChartCard>
+      <ChartCard title="How self-play games end" note="Games from the opening, by how they ended. Coloured endings are decided; grey ones are draws.">
+        <StackedBars label="How self-play games from the opening ended, by generation" xLabel="generation" keys={ENDINGS}
+          bars={gens.filter((g) => g.games && g.reasons).map((g) => ({
+            x: g.generation,
+            values: Object.fromEntries(Object.entries(g.reasons!).map(([k, n]) => [k, (100 * n) / g.games!])),
+          }))} />
+        <div className="mt-2"><Legend items={ENDINGS.map((k) => ({ label: k.label, color: k.color, kind: 'box' as const }))} /></div>
+      </ChartCard>
+      <ChartCard title="Self-play game length" note="Average plies per game from the opening. Games are drawn at 300.">
+        <LineChart label="Average self-play game length by generation" xLabel="generation" integerX yMin={0} yMax={300}
+          yFormat={(v) => String(Math.round(v))}
+          series={[{ id: 'plies', label: 'plies', color: 'var(--chart-1)', kind: 'line',
+            points: gens.filter((g) => g.mean_plies).map((g) => ({ x: g.generation, y: g.mean_plies! })) }]} />
       </ChartCard>
     </div>
   )
@@ -960,6 +986,10 @@ export function TrainingView() {
                 if (st) setDetail({ ...detail, status: st })
                 setTick((t) => t + 1)
               }} />
+              {!detail.status.live && detail.generations.some((g) => g.best !== undefined) && (
+                <RunReport run={selected} finished={detail.status.state === 'finished'}
+                  generations={detail.generations.filter((g) => g.best !== undefined).length} />
+              )}
               <Charts detail={detail} />
               <GenerationTable run={selected} detail={detail} />
               <p className="text-[12.5px] text-ink-faint">

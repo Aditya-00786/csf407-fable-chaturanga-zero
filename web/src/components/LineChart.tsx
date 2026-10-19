@@ -194,12 +194,14 @@ export function LineChart({
   )
 }
 
-export function Legend({ items }: { items: { label: string; color: string; kind: 'line' | 'dots' | 'ref' }[] }) {
+export function Legend({ items }: { items: { label: string; color: string; kind: 'line' | 'dots' | 'ref' | 'box' }[] }) {
   return (
     <ul className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-ink-muted">
       {items.map((i) => (
         <li key={i.label} className="flex items-center gap-1.5">
-          {i.kind === 'dots'
+          {i.kind === 'box'
+            ? <span aria-hidden className="h-2.5 w-2.5 rounded-[2px]" style={{ background: i.color }} />
+            : i.kind === 'dots'
             ? <span aria-hidden className="h-2 w-2 rounded-full" style={{ background: i.color }} />
             : <span aria-hidden className={`w-3.5 ${i.kind === 'ref' ? 'border-t border-dashed' : 'h-0.5 rounded-full'}`}
               style={i.kind === 'ref' ? { borderColor: i.color } : { background: i.color }} />}

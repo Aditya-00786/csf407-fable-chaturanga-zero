@@ -320,3 +320,97 @@ def delete_run(name: str):
         raise HTTPException(409, f"The run {name!r} is training. Pause it before deleting it.")
     shutil.rmtree(path)
     return {"deleted": name}
+
+
+# ---------------------------------------------------------------------- the run report
+
+class StrengthRequest(BaseModel):
+    games: int = Field(20, ge=2, le=200, description="Games per network and opponent")
+
+
+def _strength_status(path: Path) -> Optional[dict]:
+    from chaturanga.analysis import read_strength
+
+    data = read_strength(path)
+    if data and data.get("state") == "running" and _process_alive(data) is False:
+        data["state"] = "stopped"  # the process ended without finishing (closed, crashed)
+    return data
+
+
+@router.get("/runs/{name}/report")
+def run_report(name: str):
+    """The run's summary (from its metrics), the material probe of its untrained, best and final
+    networks (cached until a network changes), and the strength check if one has been played."""
+    from chaturanga.analysis import run_summary, value_probe
+
+    path = _run_dir(name)
+    probe = None
+    ckpts = sorted((path / "checkpoints").glob("gen_*.pt"))
+    if ckpts:
+        key = [str(ckpts[-1].stat().st_mtime_ns), len(ckpts)]
+        cache = path / "report" / "probe.json"
+        try:
+            cached = json.loads(cache.read_text())
+            probe = cached["probe"] if cached.get("key") == key else None
+        except (OSError, ValueError, KeyError):
+            probe = None
+        if probe is None:
+            probe = value_probe(path)
+            cache.parent.mkdir(exist_ok=True)
+            cache.write_text(json.dumps({"key": key, "probe": probe}))
+    return {"summary": run_summary(path), "probe": probe, "strength": _strength_status(path)}
+
+
+@router.post("/runs/{name}/report/strength", status_code=202)
+def start_strength(name: str, req: StrengthRequest):
+    """Play the strength check in the background (scripts/report.py --strength-only)."""
+    path = _run_dir(name)
+    busy = _live_run()
+    if busy:
+        raise HTTPException(409, f"The run {busy!r} is training. Pause it first: the check needs the whole machine.")
+    current = _strength_status(path)
+    if current and current.get("state") == "running":
+        raise HTTPException(409, "A strength check is already running for this run.")
+    if not list((path / "checkpoints").glob("gen_*.pt")):
+        raise HTTPException(400, f"run {name!r} has no networks yet")
+    script = Path(__file__).resolve().parent.parent / "scripts" / "report.py"
+    cmd = [sys.executable, "-u", str(script), "--run", name, "--runs-dir", str(runs_dir()), "--strength-only",
+           "--games", str(req.games)]
+    if shutil.which("caffeinate"):
+        cmd = ["caffeinate", "-is", *cmd]
+    (path / "report").mkdir(exist_ok=True)
+    log = open(path / "report" / "strength.log", "a")
+    try:
+        proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                                cwd=str(Path(__file__).resolve().parent.parent), start_new_session=True)
+    finally:
+        log.close()
+    threading.Thread(target=proc.wait, name=f"wait-strength-{name}", daemon=True).start()
+    # Report it as running at once; the check overwrites this as soon as it starts.
+    from chaturanga.analysis import STRENGTH_FILE
+
+    started = {"state": "running", "games": req.games, "pid": proc.pid, "host": socket.gethostname(),
+               "networks": [], "results": {}, "done": 0, "total": 0,
+               "updated": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    (path / STRENGTH_FILE).write_text(json.dumps(started))
+    return _strength_status(path)
+
+
+@router.get("/runs/{name}/charts.png")
+def run_charts(name: str):
+    """The run's six-panel chart (scripts/plot_training.py), redrawn when its metrics change."""
+    from fastapi.responses import FileResponse
+
+    path = _run_dir(name)
+    png, metrics = path / "training.png", path / "metrics.jsonl"
+    if not metrics.exists():
+        raise HTTPException(404, f"run {name!r} has no metrics yet")
+    if not png.exists() or png.stat().st_mtime < metrics.stat().st_mtime:
+        script = Path(__file__).resolve().parent.parent / "scripts" / "plot_training.py"
+        done = subprocess.run([sys.executable, str(script), "--run", name, "--runs-dir", str(runs_dir())],
+                              capture_output=True, text=True, timeout=120)
+        if done.returncode != 0:
+            if "matplotlib" in done.stderr:
+                raise HTTPException(501, "Drawing the charts needs matplotlib: pip install -e '.[train]'")
+            raise HTTPException(500, "The charts could not be drawn.")
+    return FileResponse(png, media_type="image/png", filename=f"{name}-training.png")
