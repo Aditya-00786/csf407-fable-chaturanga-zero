@@ -90,7 +90,7 @@ def main():
         if held:
             ax.plot(held_x, [h[key] for _, h in held], color=colour, linestyle="none", marker="o", markersize=4.5,
                     markerfacecolor="white", label="new games, before training on them")
-        if key == "value_loss" and held and "value_baseline" in held[-1]:
+        if key == "value_loss" and any("value_baseline" in h for _, h in held):
             pts = [(x, h["value_baseline"]) for x, (_, h) in zip(held_x, held) if "value_baseline" in h]
             ax.plot([p[0] for p in pts], [p[1] for p in pts], color=MUTED, linewidth=1, linestyle="--",
                     label="predicting a draw everywhere (new games)")
