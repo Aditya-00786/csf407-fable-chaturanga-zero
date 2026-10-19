@@ -350,7 +350,8 @@ accident. One run trains at a time: starting or resuming a second one asks you t
 1. **Self-play.** The newest network plays 50 games against itself, one process per CPU core
    (cores − 2 by default), several games per process sharing batched network calls. Each move
    uses 50 simulations with Dirichlet noise at the root, and the move played is sampled in
-   proportion to the visit counts (see below for why not the most visited one). Every position
+   proportion to the visit counts for the first 30 plies, then at temperature 0.5 (see below for
+   why neither always nor never the most visited one). Every position
    becomes a training example: the board, the search's visit shares (the policy target) and, once
    the game ends, the value target: the result for the side to move, averaged with the search's
    own estimate of it at that position (see below). 30% of the games are
@@ -411,7 +412,7 @@ or tests one that was trained. A run that ended without pausing (the terminal cl
 restarted) resumes the same way. To train beyond the planned generations, add `--generations`
 with the new total (or use **Train further** on a finished run); nothing caps it.
 
-**Why every self-play move is sampled.** AlphaZero sampled only its opening moves and then
+**Why self-play samples its moves.** AlphaZero sampled only its opening moves and then
 played the most visited move. Our first attempt did the same,
 and by generation 3 both sides had learned to shuffle pieces until a position repeated: 34 of 50
 self-play games ended in threefold repetition, the value head still could not tell a missing pair
@@ -424,9 +425,23 @@ Measured with the generation 3 network over 28 games each:
 | Temperature 0.5 | 6 | 10 |
 | In proportion to visits (temperature 1) | 10 | 2 |
 
-So self-play now samples every move in proportion to visits (`--late-temperature`, default 1).
-The policy target is the same visit distribution either way; only the games become more varied,
-and more of them are won.
+So self-play went on sampling every move in proportion to visits. The policy target is the same
+visit distribution either way; only the games become more varied, and more of them are won.
+
+That had a cost, found after the third run (`main-v3`): an opponent that samples its moves often
+leaves a free piece where it stands. In generation 20's self-play, material on offer for nothing
+was taken only 30% of the time, so the value head learned that a loose piece is usually safe, and
+Greedy, which takes every one, beat it in every game. Measured with that network over 36 games each:
+
+| Moves after ply 30 | Decisive games | Repetition draws | Free material taken |
+|---|:-:|:-:|:-:|
+| Most visited (temperature 0) | 72% | 25% | 45% |
+| Temperature 0.25 | 75% | 22% | 44% |
+| Temperature 0.5 | 89% | 8% | 40% |
+| In proportion to visits (temperature 1) | 81% | 17% | 30% |
+
+So self-play now plays at temperature 0.5 after the opening (`--late-temperature`, default 0.5):
+blunders are punished a third more often, without the repetition draws of a lower temperature.
 
 **Measuring honestly.** A network can lower its training loss by memorising games. So before each
 generation trains on its new self-play games, the loss on those unseen games (from the opening) is
@@ -487,6 +502,23 @@ different targets, which are less noisy and harder to memorise. Losses on new ga
 measured against the result alone, so the honest test is unchanged. Scoring capped games by
 material is set aside, to keep the agent learning from self-play alone; stronger weight decay
 (1e-4 to 1e-3) is kept in reserve.
+
+**The third run.** Run `main-v3` (20 generations of 500 games, a 300,000-position buffer and the
+blended value target) took 1 hour 25 minutes on the server with 20 self-play processes. The value
+head learned: on new games it beat predicting a draw in 18 of 20 generations (0.59 against 0.87
+at the end), and each generation scored 50 to 59% against the one before.
+
+| | `main-v2`, final | `main-v3`, final |
+|---|:-:|:-:|
+| Value loss on new games, vs predicting a draw | 0.42 vs 0.34 | 0.59 vs 0.87 |
+| vs Random, strength check (20 games) | 3 W / 17 D / 0 L | 17 W / 3 D / 0 L |
+| vs Greedy | 0 W / 1 D / 19 L | 0 W / 0 D / 20 L |
+| Self-play games from the opening that were decided | 39% | 88% |
+
+Greedy still won every game, at 50, 200 and 800 simulations alike: the network loses material on
+about a dozen moves a game whatever the search size, so the limit is its judgement of loose
+pieces, not the search. Why, and the change that followed (a lower temperature after the opening),
+is under "Why self-play samples its moves" above. The run continues from generation 20.
 
 ### The run report
 

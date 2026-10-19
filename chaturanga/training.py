@@ -66,9 +66,12 @@ class TrainConfig:
     # Self-play samples moves in proportion to visits for the first `temperature_plies` plies and at
     # `late_temperature` after. AlphaZero played the most visited move after its opening (0), but at
     # this scale both sides then shuffle into repetition draws (measured: 22 of 28 games with the
-    # generation 3 network, against 2 of 28 at 1), and draws teach the value head nothing.
+    # generation 3 network, against 2 of 28 at 1), and draws teach the value head nothing. At 1,
+    # though, loose pieces mostly go unpunished (main-v3's generation 20 took free material 30% of
+    # the time), so the value never learns to fear them. 0.5 punished them a third more often (40%)
+    # with fewer repetition draws (8% against 17% at 1, 25% at 0; 36 games each).
     temperature_plies: int = 30
-    late_temperature: float = 1.0
+    late_temperature: float = 0.5
     # A share of self-play games start from a random position with the Rajas and a few pieces each
     # (see endgames.py): short, mostly decisive games whose uneven material shows what pieces are
     # worth. From the opening alone, the value head of the first run learned nothing in 1,000 games.
