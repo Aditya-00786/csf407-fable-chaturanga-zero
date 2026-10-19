@@ -11,6 +11,7 @@ import stat
 import subprocess
 import sys
 import tarfile
+import time
 from pathlib import Path
 
 import pytest
@@ -152,11 +153,12 @@ if cmd == "kernels push":
     (state / "checks").write_text("0"); print("pushed"); sys.exit(0)
 if cmd == "kernels status":
     n = int((state / "checks").read_text()); (state / "checks").write_text(str(n + 1))
-    word = ["QUEUED", "RUNNING", "RUNNING", "COMPLETE"][min(n, 3)]
+    word = ["QUEUED", "RUNNING", "RUNNING", os.environ.get("FAKE_KAGGLE_END", "COMPLETE")][min(n, 3)]
     print(f'{{args[2]}} has status "KernelWorkerStatus.{{word}}"'); sys.exit(0)
 if cmd == "kernels output":
     out = Path(args[args.index("-p") + 1])
-    shutil.copytree(state / "working" / "runs", out / "runs", dirs_exist_ok=True)
+    if (state / "working").exists():  # (a session stopped on Kaggle leaves nothing)
+        shutil.copytree(state / "working" / "runs", out / "runs", dirs_exist_ok=True)
     (out / "session.log").write_text("all good"); sys.exit(0)
 print("unknown", args); sys.exit(2)
 '''
@@ -251,6 +253,38 @@ def test_a_kaggle_run_goes_up_trains_and_comes_home(places, fake_kaggle):
     assert places["published"].exists()
     detail = client.get("/api/training/runs/k2").json()
     assert detail["status"]["where"] == "kaggle" and [g["generation"] for g in detail["generations"]] == [1]
+
+
+def test_a_session_stopped_on_kaggle_comes_home_and_is_not_started_again(places, fake_kaggle):
+    """Stopped from its page on Kaggle (CANCEL_ACKNOWLEDGED): the follower notices, brings home what
+    there is, and says so; one restarted before it did fetches that session instead of uploading anew."""
+    cloud.save_kaggle_credentials("me", "good-token")
+    run = places["runs"] / "k3"
+    run.mkdir()
+    (run / "config.json").write_text(json.dumps(TrainConfig(**TINY).to_json()))
+    (run / "launch.json").write_text(json.dumps({"publish": False, "where": "kaggle"}))
+    env = {**os.environ, "CHATURANGA_KAGGLE_CHECK": "0.05", "FAKE_KAGGLE_END": "CANCEL_ACKNOWLEDGED"}
+    follow = [sys.executable, str(ROOT / "scripts" / "kaggle_run.py"), "--run", "k3", "--runs-dir", str(places["runs"])]
+
+    # Pushed, then the follower stops (the Mac restarted) while the session runs...
+    proc = subprocess.Popen(follow, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    for _ in range(1200):
+        if (fake_kaggle / "run.py").exists():
+            break
+        time.sleep(0.05)
+    proc.kill()
+    proc.wait()
+    # ...and the session is stopped on Kaggle's page.
+    (fake_kaggle / "checks").write_text("3")
+    pushes = (fake_kaggle / "kernel-metadata.json").stat().st_mtime
+
+    done = subprocess.run(follow, env=env, capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "Uploading" not in done.stdout and (fake_kaggle / "kernel-metadata.json").stat().st_mtime == pushes
+    status = json.loads((run / "status.json").read_text())
+    assert status["state"] == "failed" and "stopped on Kaggle" in status["error"] and "lost" in status["error"]
+    saved = json.loads((run / "cloud.json").read_text())
+    assert saved["fetched"] is True and saved["outcome"] == "cancelacknowledged"
 
 
 def test_deleting_a_waiting_colab_run_withdraws_its_request(places, monkeypatch):

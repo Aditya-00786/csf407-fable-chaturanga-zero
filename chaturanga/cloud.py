@@ -269,19 +269,22 @@ def push_run(run_dir: Path, username: str, hours: float = 11.0) -> str:
 
 
 def kernel_state(kid: str) -> str:
-    """queued, running, complete, error or cancel..., as Kaggle reports it."""
+    """queued, running, complete, error, cancelrequested or cancelacknowledged, as Kaggle reports
+    it ("KernelWorkerStatus.CANCEL_ACKNOWLEDGED", "complete", ...), in one spelling."""
     out = kaggle("kernels", "status", kid, timeout=60)
     match = re.search(r'status "?([A-Za-z_.]+)', out)
     word = match.group(1) if match else out.split()[-1]
-    return word.rsplit(".", 1)[-1].strip('"').lower()  # "KernelWorkerStatus.COMPLETE" or "complete"
+    return word.rsplit(".", 1)[-1].strip('"').lower().replace("_", "")
 
 
-def fetch_output(kid: str, run_dir: Path) -> Optional[Path]:
-    """Download the script's output and put the run back in run_dir. Returns the session's log file."""
+def fetch_output(kid: str, run_dir: Path) -> tuple[Optional[Path], bool]:
+    """Download the script's output and put the run back in run_dir. Returns the session's log file,
+    and whether the run came back (Kaggle keeps no files from a session stopped on its page)."""
     with tempfile.TemporaryDirectory() as tmp:
         kaggle("kernels", "output", kid, "-p", tmp, "-o", timeout=1800)
         got = Path(tmp) / "runs" / run_dir.name
-        if got.is_dir():
+        came = got.is_dir()
+        if came:
             for item in got.iterdir():
                 target = run_dir / item.name
                 if item.is_dir():
@@ -292,5 +295,5 @@ def fetch_output(kid: str, run_dir: Path) -> Optional[Path]:
         if logs:
             keep = run_dir / "kaggle.log"
             shutil.copy2(logs[0], keep)
-            return keep
-    return None
+            return keep, came
+    return None, came

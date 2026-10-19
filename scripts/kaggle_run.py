@@ -6,7 +6,8 @@ It uploads the code and the run so far as a private Kaggle dataset, starts a pri
 Kaggle GPU, checks it every minute, and when the session ends downloads the run into runs/<run>.
 Its progress is kept in runs/<run>/status.json (where the Training page reads it) and the Kaggle
 script's id in runs/<run>/cloud.json. If this process stops (the Mac restarts), starting it again
-follows the same Kaggle session instead of starting another.
+follows the same Kaggle session instead of starting another, or brings it home if it has ended
+(finished, failed or stopped on Kaggle's page); a new session starts only once the last one is home.
 """
 
 import argparse
@@ -26,7 +27,8 @@ from chaturanga.cloud import (KaggleError, fetch_output, kaggle_credentials, ker
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 CHECK_EVERY = float(os.environ.get("CHATURANGA_KAGGLE_CHECK", 60))
-ENDED = ("complete", "error", "cancelacknowledged", "cancelrequested", "cancelled")
+ENDED = ("complete", "error", "cancelrequested", "cancelacknowledged", "cancelled")  # as kernel_state spells them
+STOPPED = ("cancelrequested", "cancelacknowledged", "cancelled")  # stopped on Kaggle's page
 
 
 def _now() -> str:
@@ -70,16 +72,18 @@ def main():
     kid = cloud.get("kernel")
 
     try:
-        # A session already under way (this process was restarted) is followed, not repeated.
+        # A session not yet home (this process was restarted) is followed, or fetched if it has
+        # ended, never repeated: a new one starts only when the last one is home.
         state = kernel_state(kid) if kid and not cloud.get("fetched") else None
-        if state not in ("queued", "running") and not (state == "complete" and not cloud.get("fetched")):
-            set_status(state="uploading", phase_started=_now())
+        if state is None:
+            set_status(state="uploading", phase_started=_now(), error=None)
             print(f"Uploading {args.run} to Kaggle...", flush=True)
             kid = push_run(run_dir, creds["username"], args.hours)
             cloud = save_cloud(kernel=kid, url=kernel_url(creds["username"], args.run), pushed=_now(), fetched=False)
             state = "queued"
-        set_status(state="queued" if state == "queued" else "cloud_running", kernel_url=cloud.get("url"),
-                   cloud_started=cloud.get("pushed"), cloud_checked=_now())
+        if state not in ENDED:
+            set_status(state="queued" if state == "queued" else "cloud_running", kernel_url=cloud.get("url"),
+                       cloud_started=cloud.get("pushed"), cloud_checked=_now())
         while state not in ENDED:
             time.sleep(CHECK_EVERY)
             try:
@@ -90,7 +94,7 @@ def main():
             set_status(state="queued" if state == "queued" else "cloud_running", cloud_checked=_now())
         set_status(state="downloading", cloud_checked=_now())
         print(f"Kaggle session ended ({state}); downloading the run...", flush=True)
-        log = fetch_output(kid, run_dir)
+        log, came = fetch_output(kid, run_dir)
         save_cloud(fetched=True, ended=_now(), outcome=state)
     except KaggleError as exc:
         set_status(state="failed", error=f"Kaggle: {exc}")
@@ -102,9 +106,16 @@ def main():
         status = json.loads(status_file.read_text())
     except (OSError, ValueError):
         status = {}
-    if state != "complete" or status.get("state") not in ("finished", "paused"):
+    if state in STOPPED and came and status.get("state") not in ("finished", "paused"):
+        # Stopped on Kaggle's page, its saved work home: stopped like a run closed here, to resume.
+        status["state"], status["error"] = "stopped", None
+    elif state != "complete" or status.get("state") not in ("finished", "paused"):
         status["state"] = "failed"
-        status["error"] = f"The Kaggle session ended with '{state}'" + (f"; see {log.name}." if log else ".")
+        if state in STOPPED:
+            status["error"] = ("The session was stopped on Kaggle, and Kaggle kept none of its files, so its "
+                               "training is lost. Resume starts again from where the run was before it.")
+        else:
+            status["error"] = f"The Kaggle session ended with '{state}'" + (f"; see {log.name}." if log else ".")
     best = run_dir / "checkpoints" / "best.pt"
     if args.publish and best.exists():
         Path(args.publish).parent.mkdir(parents=True, exist_ok=True)

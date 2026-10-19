@@ -63,7 +63,7 @@ the same commit that completes the work.
 - **Researched ruleset.** Every rule is backed by historical sources, and contested rules are
   settled by counting references. See [docs/RULES.md](docs/RULES.md).
 - **Verified rules engine.** A cross-check against an independent reference move generator and a
-  10,000-game random-play stress test; 223 tests in all.
+  10,000-game random-play stress test; 224 tests in all.
 - **AlphaZero search.** PUCT Monte Carlo Tree Search guided by a residual policy-value network
   (6 blocks × 64 filters, about 1M parameters), with exact values for finished games, root noise,
   temperature and tree reuse for self-play. Planted bugs in the search are all caught by the tests.
