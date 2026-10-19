@@ -9,7 +9,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import { Legend, LineChart, type Series } from '../components/LineChart'
 import { RunReport } from '../components/RunReport'
 import { Button, Collapse, Segmented, Switch } from '../components/ui'
-import { api, ApiError, type CloudStatus, type GenerationRow, type PauseWhen, type RunDetail, type RunStatus, type Where } from '../lib/api'
+import { api, ApiError, type CloudStatus, type GenerationRow, type PauseWhen, type RunDetail, type RunStatus, type ServerStatus, type Where } from '../lib/api'
 import { href } from '../lib/route'
 import { useGame } from '../state/game'
 
@@ -29,6 +29,7 @@ const PHASE: Record<string, string> = {
   queued: 'Queued on Kaggle',
   cloud_running: 'Training on Kaggle',
   downloading: 'Bringing the run home',
+  preparing: 'Setting up the server',
   reporting: 'Making the run report',
   finished: 'Finished',
   paused: 'Paused',
@@ -91,8 +92,13 @@ function useNow(active: boolean) {
 
 const PHASE_NAME = { selfplay: 'self-play', training: 'training', evaluating: 'testing' } as const
 
-/** Where a paused or stopped run is, in words. */
-function whereItStopped(status: RunStatus): string {
+/** Where a paused or stopped run is, in words. `lostTrack`: a run on your server that this Mac
+ * stopped following while it trained (the Mac restarted, say): it may be training there still. */
+function whereItStopped(status: RunStatus, lostTrack = false): string {
+  if (lostTrack) {
+    return 'This Mac stopped following the run, so it may still be training on the server. Connecting follows it again; '
+      + 'if it has stopped there, Resume carries on from where it stopped.'
+  }
   const g = status.generation
   if (status.state === 'paused') {
     if (status.paused_in === 'selfplay') {
@@ -196,13 +202,81 @@ function HeightTransition({ swapKey, children }: { swapKey: string; children: Re
 
 type ControlMode = 'idle' | 'pausing' | 'starting' | 'reporting' | 'cloud' | 'waiting' | 'stopped' | 'finished'
 
-function RunControls({ status, total, done, onChange }: {
-  status: RunStatus; total: number; done: number; onChange: (s?: RunStatus) => void
+/** The app's server: what it has and whether this Mac is connected to it (fetched when `wanted`). */
+function useServer(wanted: boolean) {
+  const [server, setServer] = useState<ServerStatus | null>(null)
+  const refresh = useCallback(() => {
+    void api.cloudStatus().then((c) => setServer(c.server), () => {})
+  }, [])
+  useEffect(() => {
+    if (wanted) refresh()
+  }, [wanted, refresh])
+  return { server, setServer, refresh }
+}
+
+/** "krish@10.1.19.63": who the app signs in as, from the SSH config when it says. */
+function serverLabel(server: Pick<ServerStatus, 'host' | 'hosts'> | null, host?: string | null): string {
+  const name = host ?? server?.host ?? ''
+  const known = server?.hosts.find((h) => h.name === name)
+  if (!known?.user) return name
+  return known.hostname === name ? `${known.user}@${name}` : `${name} (${known.user}@${known.hostname})`
+}
+
+/** Connect again to a server the app knows: just its password. */
+function ServerReconnect({ host, label, note, onConnected }: {
+  host: string; label: string; note: ReactNode; onConnected: (s: ServerStatus) => void
+}) {
+  const id = useId()
+  const [password, setPassword] = useState('')
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const connect = async () => {
+    if (sending) return
+    setSending(true)
+    setError(null)
+    try {
+      const cloud = await api.connectServer({ host, password: password || undefined })
+      setPassword('')
+      onConnected(cloud.server)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong.')
+    } finally {
+      setSending(false)
+    }
+  }
+  return (
+    <div className="rounded-xl border border-line bg-bg px-4 py-3">
+      <p className="text-[13.5px] leading-snug text-ink">{note}</p>
+      <form className="mt-2.5 flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); void connect() }}>
+        <label htmlFor={id} className="sr-only">Password for {label}</label>
+        <input id={id} type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="off"
+          placeholder="Password"
+          className="h-8 w-full max-w-[18rem] min-w-0 flex-1 rounded-lg border border-line bg-surface px-3 text-[13.5px] text-ink placeholder:text-ink-faint focus-visible:border-accent" />
+        <Button size="sm" type="submit" aria-busy={sending} icon={sending ? <Spinner /> : undefined}>
+          {sending ? 'Connecting' : 'Connect'}
+        </Button>
+      </form>
+      {error && <p className="cz-swap mt-2 text-[12.5px] text-danger">{error}</p>}
+    </div>
+  )
+}
+
+function RunControls({ status, total, done, lostTrack, onChange }: {
+  status: RunStatus; total: number; done: number; lostTrack: boolean; onChange: (s?: RunStatus) => void
 }) {
   const [choosing, setChoosing] = useState(false)
   const [sending, setSending] = useState<string | null>(null) // which control is waiting for the server
   const [error, setError] = useState<string | null>(null)
   const [more, setMore] = useState(10)
+  // A run on your server resumes over the connection: without one, connect first.
+  const onServer = status.where === 'server' && !status.live
+  const { server, refresh: refreshServer } = useServer(onServer)
+  const host = status.server_host ?? server?.host ?? null
+  const disconnected = onServer && server !== null && !!host && !(server.connected && server.host === host)
+  useEffect(() => {
+    if (!disconnected) return
+    setError(null) // the form below says it better
+  }, [disconnected])
   const act = async (id: string, call: () => Promise<RunStatus>) => {
     if (sending) return
     setSending(id)
@@ -212,6 +286,7 @@ function RunControls({ status, total, done, onChange }: {
       setChoosing(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.')
+      if (status.where === 'server') refreshServer() // the connection may have dropped: offer to connect
     } finally {
       setSending(null)
     }
@@ -220,7 +295,7 @@ function RunControls({ status, total, done, onChange }: {
   const finished = status.state === 'finished' && !status.live
   const mode: ControlMode = status.live
     ? status.where === 'kaggle' && ['uploading', 'queued', 'cloud_running', 'downloading'].includes(status.state) ? 'cloud'
-      : status.state === 'starting' ? 'starting' : status.state === 'reporting' ? 'reporting'
+      : status.state === 'starting' || status.state === 'preparing' ? 'starting' : status.state === 'reporting' ? 'reporting'
         : status.pause_requested ? 'pausing' : 'idle'
     : status.state === 'waiting' ? 'waiting' : finished ? 'finished' : 'stopped'
   const [colabUrl, setColabUrl] = useState<string | null>(null)
@@ -234,7 +309,8 @@ function RunControls({ status, total, done, onChange }: {
     body = (
       <p className="flex items-center gap-2.5 text-[13.5px] text-ink" role="status">
         <Spinner />
-        Starting the run: loading the network and its saved games.
+        {status.state === 'preparing' ? 'Getting the server ready; the training starts there next.'
+          : 'Starting the run: loading the network and its saved games.'}
       </p>
     )
   } else if (mode === 'cloud') {
@@ -320,8 +396,18 @@ function RunControls({ status, total, done, onChange }: {
     const starting = sending === 'resume'
     body = (
       <div className="space-y-3">
-        {mode === 'stopped' && <p className="max-w-[70ch] text-[13.5px] leading-snug text-ink-muted">{whereItStopped(status)}</p>}
-        <div className="flex flex-wrap items-center gap-3">
+        {mode === 'stopped' && <p className="max-w-[70ch] text-[13.5px] leading-snug text-ink-muted">{whereItStopped(status, lostTrack)}</p>}
+        {disconnected && host && (
+          <ServerReconnect host={host} label={serverLabel(server, host)}
+            note={<>This run trains on <span className="font-medium">{serverLabel(server, host)}</span>. Connect to it to{' '}
+              {lostTrack ? 'follow the run again' : mode === 'finished' ? 'train further' : 'resume'}.</>}
+            onConnected={() => {
+              refreshServer()
+              onChange()
+            }} />
+        )}
+        <div className={`flex flex-wrap items-center gap-3 transition-opacity duration-200 ${disconnected ? 'pointer-events-none opacity-40' : ''}`}
+          aria-disabled={disconnected || undefined}>
           {mode === 'finished' && (
             <label className="flex items-center gap-2 text-[13px] text-ink-muted">
               Train further, to
@@ -358,6 +444,9 @@ function StatusPanel({ status, detail, onChange }: { status: RunStatus; detail: 
   const live = status.live
   // A run whose process ended without saying so (closed, crashed, machine asleep) has stopped.
   const state = !live && !['finished', 'failed', 'paused', 'waiting'].includes(status.state) ? 'stopped' : status.state
+  // A run on your server that this Mac stopped following mid-run: it may be training there still.
+  const lostTrack = status.where === 'server' && !live && !['finished', 'failed', 'paused', 'stopped'].includes(status.state)
+  const lostConnection = status.where === 'server' && live && status.server_connected === false
   const pausing = live && !!status.pause_requested
   const total = status.generations || detail.config.generations
   const done = detail.generations.filter((g) => g.best !== undefined).length
@@ -391,6 +480,9 @@ function StatusPanel({ status, detail, onChange }: { status: RunStatus; detail: 
         : status.state === 'downloading' ? 'Downloading the finished run'
           : `Checked ${checked === null ? 'just now' : checked < 90 ? `${checked} s ago` : `${Math.round(checked / 60)} min ago`}; its charts arrive with the results`
     phaseValue = null
+  } else if (live && status.state === 'preparing') {
+    phase = status.setup ?? 'Getting the server ready'
+    phaseValue = null
   } else if (live && (status.state === 'reporting' || status.state === 'generation_done')) {
     phase = status.state === 'reporting' ? 'Making the run report' : 'Starting the next generation'
     phaseValue = null
@@ -413,7 +505,7 @@ function StatusPanel({ status, detail, onChange }: { status: RunStatus; detail: 
     setShown({ phase, phaseValue, timing })
   }
   const title = pausing && status.pause_requested === 'now' ? 'Pausing' : PHASE[state] ?? state
-  const tone = !live ? (state === 'paused' ? 'bg-accent' : 'bg-ink-faint') : 'bg-success'
+  const tone = !live || lostConnection ? (state === 'paused' ? 'bg-accent' : 'bg-ink-faint') : 'bg-success'
   const games = detail.generations.reduce((n, g) => n + (g.games ?? 0), 0)
   const positions = detail.generations.reduce((n, g) => n + (g.positions ?? 0), 0)
   const last = [...detail.generations].reverse().find((g) => g.eval.greedy)
@@ -422,15 +514,27 @@ function StatusPanel({ status, detail, onChange }: { status: RunStatus; detail: 
       <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
         <p className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 font-serif text-[22px] font-semibold text-ink">
           <span aria-hidden className={`relative inline-flex h-2.5 w-2.5 rounded-full transition-colors duration-500 ${tone}`}>
-            {live && <span className={`absolute inset-0 animate-ping rounded-full opacity-60 transition-colors duration-500 motion-reduce:hidden ${tone}`} />}
+            {live && !lostConnection && <span className={`absolute inset-0 animate-ping rounded-full opacity-60 transition-colors duration-500 motion-reduce:hidden ${tone}`} />}
           </span>
           <span key={title} className="cz-swap">{title}</span>
           {live && status.generation > 0 && status.state !== 'generation_done' && status.state !== 'starting' && (
             <span className="font-sans text-[15px] font-normal whitespace-nowrap text-ink-muted">for generation {status.generation}</span>
           )}
         </p>
-        <p className="text-[13px] text-ink-faint">{live ? 'Live' : 'Not running'} · last update {ago(status.seconds_since_update)}</p>
+        <p className="text-[13px] text-ink-faint">
+          {live ? lostConnection ? 'Not connected' : 'Live' : 'Not running'}
+          {status.where === 'server' && status.server_host && ` · on ${status.server_host}`} · last update {ago(status.seconds_since_update)}
+        </p>
       </div>
+      <Collapse open={lostConnection}>
+        <div className="pt-4">
+          {status.server_host && (
+            <ServerReconnect host={status.server_host} label={status.server_host}
+              note="Lost the connection to the server. The run carries on there; connect again to follow it."
+              onConnected={() => onChange()} />
+          )}
+        </div>
+      </Collapse>
       <Collapse open={!!phase}>
         <div className="space-y-1.5 pt-3">
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 text-[13px] tabular-nums">
@@ -457,7 +561,7 @@ function StatusPanel({ status, detail, onChange }: { status: RunStatus; detail: 
           </div>
         ))}
       </dl>
-      <RunControls status={{ ...status, state }} total={total} done={done} onChange={onChange} />
+      <RunControls status={{ ...status, state }} total={total} done={done} lostTrack={lostTrack} onChange={onChange} />
     </section>
   )
 }
@@ -722,6 +826,132 @@ function KaggleNote({ cloud, onConnected }: { cloud: CloudStatus | null; onConne
   )
 }
 
+const FIELD = 'mt-1 h-9 w-full rounded-lg border border-line bg-surface px-3 text-[14px] text-ink placeholder:text-ink-faint focus-visible:border-accent'
+
+/** Your own server, over SSH: connect with its address, a folder and its password (not kept),
+ * then choose how many of its cores self-play uses. */
+function ServerNote({ server, onChange, workers, onWorkers }: {
+  server: ServerStatus | null; onChange: (s: ServerStatus) => void; workers: number; onWorkers: (n: number) => void
+}) {
+  const [host, setHost] = useState(server?.host ?? '')
+  const [folder, setFolder] = useState(server?.folder ?? '~/sopProject/chaturangzero')
+  const [password, setPassword] = useState('')
+  const [sending, setSending] = useState<'connect' | 'disconnect' | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    if (server?.host) setHost((h) => h || server.host!)
+  }, [server?.host])
+  if (!server) return null
+  const act = async (which: 'connect' | 'disconnect', call: () => Promise<CloudStatus>) => {
+    if (sending) return
+    setSending(which)
+    setError(null)
+    try {
+      onChange((await call()).server)
+      setPassword('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong.')
+    } finally {
+      setSending(null)
+    }
+  }
+  if (!server.tools) {
+    return <CloudNote>Training on a server needs ssh and rsync on this Mac, and one of them is missing.</CloudNote>
+  }
+  if (server.connected && server.host) {
+    const f = server.facts ?? {}
+    const cores = f.cores ?? 1
+    const has = [f.cores && `${f.cores} cores`, f.gpu ?? 'no NVIDIA GPU', f.memory_gb && `${f.memory_gb} GB of memory`].filter(Boolean)
+    return (
+      <CloudNote>
+        <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+          <div className="min-w-0">
+            <p className="flex items-center gap-2 font-medium text-ink">
+              <span aria-hidden className="h-2 w-2 shrink-0 rounded-full bg-success" />
+              Connected to {serverLabel(server)}
+            </p>
+            <p className="mt-0.5">{has.join(' · ')}</p>
+          </div>
+          <Button size="sm" aria-busy={sending === 'disconnect'} icon={sending === 'disconnect' ? <Spinner /> : undefined}
+            onClick={() => act('disconnect', api.disconnectServer)}>
+            Disconnect
+          </Button>
+        </div>
+        <p className="mt-2.5">
+          Everything goes in <span className="font-medium text-ink">{server.folder}</span> on the server. The first run
+          there sets up Python in that folder, PyTorch included (a few GB, a few minutes, once). Training runs at low
+          priority, so others using the machine come first, and carries on if this Mac sleeps or the connection drops.
+        </p>
+        <div className="mt-3 flex flex-wrap items-end gap-x-3 gap-y-1">
+          <label className="block w-36 text-[12.5px] font-medium text-ink-muted">
+            Self-play processes
+            <input type="number" inputMode="numeric" min={1} max={cores} value={Number.isFinite(workers) ? workers : ''}
+              onChange={(e) => onWorkers(e.target.value === '' ? NaN : Number(e.target.value))}
+              className={`${FIELD} tabular-nums`} />
+          </label>
+          <p className="pb-2 text-[12px] text-ink-faint">
+            Of its {cores} cores: one game each. The rest are left for training and for others.
+          </p>
+        </div>
+        {error && <p className="mt-2 text-[12.5px] text-danger">{error}</p>}
+      </CloudNote>
+    )
+  }
+  const connect = () => act('connect', () => api.connectServer({ host: host.trim(), folder: folder.trim(), password: password || undefined }))
+  return (
+    <CloudNote>
+      <p className="font-medium text-ink">Connect to your server</p>
+      <p className="mt-1">
+        The run trains there over SSH, with Python, its packages and the runs all in one folder of yours. The password
+        opens the connection and is not saved anywhere; if the connection drops, connect again. The training carries on
+        there either way.
+      </p>
+      <form className="mt-3 space-y-3" onSubmit={(e) => { e.preventDefault(); void connect() }}>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block text-[12.5px] font-medium text-ink-muted">
+            Server
+            <input value={host} onChange={(e) => setHost(e.target.value.trim())} autoComplete="off" spellCheck={false}
+              placeholder="user@address" className={FIELD} />
+          </label>
+          <label className="block text-[12.5px] font-medium text-ink-muted">
+            Folder on the server
+            <input value={folder} onChange={(e) => setFolder(e.target.value.trim())} autoComplete="off" spellCheck={false}
+              className={FIELD} />
+          </label>
+        </div>
+        {server.hosts.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="mr-0.5 text-[12px] text-ink-faint">From your SSH config</span>
+            {server.hosts.map((h) => {
+              const on = host === h.name
+              return (
+                <button key={h.name} type="button" onClick={() => setHost(h.name)} aria-pressed={on}
+                  className={`h-7 rounded-md border px-2 text-[12px] tabular-nums transition-colors duration-150 ${
+                    on ? 'border-accent bg-accent-soft text-ink' : 'border-line text-ink-muted hover:border-line-strong hover:text-ink'
+                  }`}>
+                  {serverLabel(server, h.name)}
+                </button>
+              )
+            })}
+          </div>
+        )}
+        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+          <label className="block text-[12.5px] font-medium text-ink-muted">
+            Password
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="off"
+              className={FIELD} />
+          </label>
+          <Button size="sm" type="submit" aria-busy={sending === 'connect'} disabled={!host.trim()}
+            icon={sending === 'connect' ? <Spinner /> : undefined} className="h-9">
+            {sending === 'connect' ? 'Connecting' : 'Connect'}
+          </Button>
+        </div>
+      </form>
+      {error && <p key={error} className="cz-swap mt-2 text-[12.5px] text-danger">{error}</p>}
+    </CloudNote>
+  )
+}
+
 /** The form for a new training run. */
 function NewRun({ runs, first, secondsPerGame, onStarted, onCancel }: {
   runs: RunStatus[]; first: boolean; secondsPerGame: number
@@ -751,11 +981,21 @@ function NewRun({ runs, first, secondsPerGame, onStarted, onCancel }: {
   const [error, setError] = useState<string | null>(null)
   const [where, setWhere] = useState<Where>('mac')
   const [cloud, setCloud] = useState<CloudStatus | null>(null)
+  const [workers, setWorkers] = useState(NaN)
   useEffect(() => {
-    void api.cloudStatus().then(setCloud, () => {})
+    void api.cloudStatus().then((c) => {
+      setCloud(c)
+      if (c.server.workers) setWorkers(c.server.workers)
+    }, () => {})
   }, [])
-  // One run trains on this Mac at a time; cloud runs use other machines.
-  const live = where === 'mac' ? runs.find((r) => r.live && r.where === 'mac') : undefined
+  const setServer = (server: ServerStatus) => {
+    setCloud((c) => (c ? { ...c, server } : c))
+    if (server.workers) setWorkers((w) => (Number.isFinite(w) && server.connected ? w : server.workers!))
+  }
+  const server = cloud?.server ?? null
+  // One run trains on this Mac at a time, and one on the server; cloud runs use machines of their own.
+  const live = where === 'mac' || where === 'server' ? runs.find((r) => r.live && r.where === where) : undefined
+  const cores = server?.facts?.cores ?? 1
 
   const problem =
     !/^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/.test(name) ? 'Name it with letters, digits, - and _, starting with a letter or digit.'
@@ -764,7 +1004,9 @@ function NewRun({ runs, first, secondsPerGame, onStarted, onCancel }: {
           : !(games >= 2 && games <= 1000) ? 'Games per generation: 2 to 1,000.'
             : !(sims >= 2 && sims <= 2000) ? 'Simulations per move: 2 to 2,000.'
               : !(evalGames >= 0 && evalGames <= 200) ? 'Test games: 0 to 200.'
-                : null
+                : where === 'server' && server?.connected && !(workers >= 1 && workers <= cores)
+                  ? `Self-play processes: 1 to ${cores}.`
+                  : null
   const [tried, setTried] = useState(false)
   const shown = tried ? problem ?? error : error
 
@@ -775,7 +1017,8 @@ function NewRun({ runs, first, secondsPerGame, onStarted, onCancel }: {
     setError(null)
     try {
       const started = await api.startRun({ name, generations, games_per_generation: games, simulations: sims,
-        eval_games: evalGames, publish: publishing, auto_report: autoReport, where })
+        eval_games: evalGames, publish: publishing, auto_report: autoReport, where,
+        ...(where === 'server' && Number.isFinite(workers) ? { workers } : {}) })
       if (started.colab_url) window.open(started.colab_url, '_blank', 'noopener')
       onStarted(name)
     } catch (err) {
@@ -801,12 +1044,14 @@ function NewRun({ runs, first, secondsPerGame, onStarted, onCancel }: {
           { value: 'mac', label: 'This Mac' },
           { value: 'colab', label: 'Colab', title: 'Google Colab, through Google Drive' },
           { value: 'kaggle', label: 'Kaggle', title: 'A Kaggle GPU, started and followed from here' },
+          { value: 'server', label: 'Server', title: 'Your own machine, over SSH' },
         ]} />
       </div>
       <Collapse open={where !== 'mac'}>
         <div className="pt-3">
           {where === 'colab' && <ColabNote cloud={cloud} />}
           {where === 'kaggle' && <KaggleNote cloud={cloud} onConnected={setCloud} />}
+          {where === 'server' && <ServerNote server={server} onChange={setServer} workers={workers} onWorkers={setWorkers} />}
         </div>
       </Collapse>
       <div className="mt-5 grid gap-4 sm:grid-cols-3">
@@ -851,12 +1096,13 @@ function NewRun({ runs, first, secondsPerGame, onStarted, onCancel }: {
       </div>
       {live && (
         <p className="mt-5 text-[13.5px] leading-snug text-ink">
-          “{live.name}” is training now. Pause it first: one run at a time keeps each one fast.
+          “{live.name}” is training {where === 'server' ? 'on the server' : ''} now. Pause it first: one run at a time keeps each one fast.
         </p>
       )}
       <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-line pt-4">
         <Button variant="primary" size="sm" aria-busy={sending} onClick={start} icon={sending ? <Spinner /> : <Play size={14} />}>
-          {sending ? 'Starting' : where === 'colab' ? 'Start on Colab' : where === 'kaggle' ? 'Start on Kaggle' : 'Start training'}
+          {sending ? 'Starting' : where === 'colab' ? 'Start on Colab' : where === 'kaggle' ? 'Start on Kaggle'
+            : where === 'server' ? 'Start on the server' : 'Start training'}
         </Button>
         {onCancel && <Button size="sm" onClick={onCancel}>Cancel</Button>}
         {estimate && where === 'mac' && (
@@ -866,7 +1112,8 @@ function NewRun({ runs, first, secondsPerGame, onStarted, onCancel }: {
         )}
         {where !== 'mac' && Number.isFinite(total) && total > 0 && (
           <p className="text-[12.5px] text-ink-faint">
-            {total.toLocaleString()} self-play games on {where === 'colab' ? 'Colab' : 'Kaggle'}; this Mac stays free.
+            {total.toLocaleString()} self-play games on {where === 'colab' ? 'Colab' : where === 'kaggle' ? 'Kaggle'
+              : server?.host ? serverLabel(server) : 'your server'}; this Mac stays free.
           </p>
         )}
       </div>
@@ -889,7 +1136,7 @@ function measuredSecondsPerGame(detail: RunDetail | null): number {
 type RunKind = 'training' | 'starting' | 'waiting' | 'paused' | 'finished' | 'stopped' | 'failed'
 
 function runKind(r: RunStatus): RunKind {
-  if (r.live) return r.state === 'starting' || r.state === 'uploading' ? 'starting' : 'training'
+  if (r.live) return r.state === 'starting' || r.state === 'uploading' || r.state === 'preparing' ? 'starting' : 'training'
   if (r.state === 'waiting') return 'waiting'
   if (r.state === 'paused' || r.state === 'finished' || r.state === 'failed') return r.state
   return 'stopped' // the process ended without pausing
@@ -990,7 +1237,8 @@ function RunMenu({ runs, value, onChange }: { runs: RunStatus[]; value: string; 
   }
 
   // The state, and where it trains when that is not this Mac.
-  const label = (r: RunStatus) => `${runKind(r)}${r.where === 'colab' ? ' · Colab' : r.where === 'kaggle' ? ' · Kaggle' : ''}`
+  const label = (r: RunStatus) =>
+    `${runKind(r)}${r.where === 'colab' ? ' · Colab' : r.where === 'kaggle' ? ' · Kaggle' : r.where === 'server' ? ' · Server' : ''}`
   return (
     <div className="flex items-center gap-3">
       <span id={`${id}-label`} className="shrink-0 text-[13px] font-medium text-ink-muted">Run</span>
@@ -1126,7 +1374,8 @@ export function TrainingView() {
 
   const live = detail?.status.live ?? false
   useEffect(() => {
-    const changing = live && (!!detail?.status.pause_requested || detail?.status.state === 'starting')
+    const changing = live && (!!detail?.status.pause_requested || detail?.status.state === 'starting'
+      || detail?.status.state === 'preparing')
     const id = setTimeout(() => setTick((t) => t + 1), changing ? CHANGING_POLL_MS : live ? LIVE_POLL_MS : IDLE_POLL_MS)
     return () => clearTimeout(id)
   }, [live, tick, detail])

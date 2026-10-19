@@ -63,7 +63,7 @@ the same commit that completes the work.
 - **Researched ruleset.** Every rule is backed by historical sources, and contested rules are
   settled by counting references. See [docs/RULES.md](docs/RULES.md).
 - **Verified rules engine.** A cross-check against an independent reference move generator and a
-  10,000-game random-play stress test; 212 tests in all.
+  10,000-game random-play stress test; 223 tests in all.
 - **AlphaZero search.** PUCT Monte Carlo Tree Search guided by a residual policy-value network
   (6 blocks × 64 filters, about 1M parameters), with exact values for finished games, root noise,
   temperature and tree reuse for self-play. Planted bugs in the search are all caught by the tests.
@@ -498,9 +498,10 @@ network, but more games from the current network always help.
 
 ### Training in the cloud
 
-**New run** asks **Where**: this Mac, Colab or Kaggle. The cloud keeps the Mac free; it is not
-faster (self-play runs on the CPU, and Colab's free machines have 2 cores and Kaggle's about 4,
-against the 6 used here).
+**New run** asks **Where**: this Mac, Colab, Kaggle or your own server. The cloud keeps the Mac
+free; it is not faster (self-play runs on the CPU, and Colab's free machines have 2 cores and
+Kaggle's about 4, against the 6 used here). A server with many cores is: self-play plays one game
+per core.
 
 **Colab.** Google offers no way for another program to start a Colab notebook, so the app does
 the rest around the one click that needs you. It writes the run's folder and a request into
@@ -525,6 +526,30 @@ on Kaggle. To connect, create a token on kaggle.com (Settings, API, Generate New
 it with your username in New run; it is checked with Kaggle and kept in `~/.kaggle/access_token`,
 readable by you only. Install the tool with `pip install -e ".[cloud]"`.
 
+**Your own server.** Any Linux machine you can reach with `ssh` (Python 3.10 or newer, and
+`rsync`). In New run choose **Server**, give its address (or pick a host from `~/.ssh/config`), a
+folder for everything (`~/sopProject/chaturangzero` by default) and its password, and press
+**Connect**. The password opens one shared SSH connection (OpenSSH's ControlMaster, its socket in
+`~/.chaturanga/ssh/`, readable by you only) and is not kept: it reaches ssh through a pipe, never a
+file, and later commands and copies use the open connection. A server that accepts your SSH key
+needs no password. `scripts/server_run.py`, started in the background, gets the folder's Python
+environment ready (the first time: a few minutes, as PyTorch is a few GB; the build is chosen for
+the server's NVIDIA driver, or the CPU build without a GPU), copies the code, starts the training
+there at low priority, detached from the connection, and copies the run back every few seconds, so
+the Training page shows it live and Pause and Resume work as on the Mac. On the server everything
+stays in the folder:
+
+```
+<folder>/env/        the Python environment (pip's caches in cache/, temporary files in tmp/)
+<folder>/code/       the training code, copied before each start
+<folder>/runs/<run>  the runs, as in runs/ here
+```
+
+The training carries on if the Mac sleeps or the connection drops; the page then asks for the
+password again, and connecting picks the run up where it is, also after the Mac has restarted.
+**Self-play processes** sets how many of the server's cores it uses (by default all but four, left
+for the training and anyone else on the machine). Deleting a run deletes the server's copy too.
+
 **Playing the trained agent.** In the app choose **Trained** as the opponent (or for either side
 in Computers mode) and a level:
 
@@ -546,7 +571,10 @@ illegal move, an illegal visit, a wrong result, an unfinished game) are rejected
 the newest games within its capacity; a small network overfits a fixed buffer (the loss and
 gradients work); a run trains, publishes, takes a teammate's games, rejects a tampered one, and
 resumes with its optimiser state; the trained agent plays at every level and picks up a newly
-published network; and the Training API lists runs, losses, generations and games.
+published network; and the Training API lists runs, losses, generations and games. Cloud and
+server runs (`tests/test_cloud.py`, `tests/test_remote.py`) use stand-ins for Drive, the Kaggle
+tool and ssh: a server run signs in with a password that ends up in no file, trains, comes back
+live, pauses, resumes, and is followed again after the connection drops or the Mac restarts.
 
 ---
 
@@ -569,6 +597,7 @@ csf407-fable-chaturanga-zero/
 │   ├── endgames.py          # random reduced-material starting positions for self-play
 │   ├── analysis.py          # a run's report: findings, material probe, strength check
 │   ├── cloud.py             # training on Colab (through Google Drive) and Kaggle (through its tool)
+│   ├── remote.py            # training on your own server over SSH: connection, folder, copies
 │   └── agents.py            # players: random, greedy (2-ply material), MCTS, trained (four levels)
 ├── chaturanga_server/       # FastAPI app used by the web client (stateless)
 │   ├── app.py               # game and computer-move endpoints
@@ -591,7 +620,8 @@ csf407-fable-chaturanga-zero/
 │   ├── selfplay.py          # self-play games for a teammate's run
 │   ├── plot_training.py     # a run's loss and evaluation curves
 │   ├── report.py            # a run's report in the terminal (and the app's strength check)
-│   └── kaggle_run.py        # a run on Kaggle: upload, start, follow, bring home
+│   ├── kaggle_run.py        # a run on Kaggle: upload, start, follow, bring home
+│   └── server_run.py        # a run on your server: set up, start, follow live, pass pauses on
 ├── notebooks/
 │   └── train_colab.ipynb    # the same training on Google Colab, saved to Drive
 ├── docs/

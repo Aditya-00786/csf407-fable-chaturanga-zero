@@ -134,6 +134,11 @@ export const api = {
   /** Check a Kaggle API token and keep it on this Mac. */
   connectKaggle: (username: string, token: string) =>
     request<CloudStatus>('/api/training/cloud/kaggle', { username, token }),
+  /** Open the connection to your server (the password is used for that and not kept). */
+  connectServer: (settings: { host: string; folder?: string; password?: string; workers?: number }) =>
+    request<CloudStatus>('/api/training/server/connect', settings),
+  /** Close it; training there carries on. */
+  disconnectServer: () => request<CloudStatus>('/api/training/server/disconnect', {}),
   /** Start a run that is not running, carrying on where it stopped (optionally to more generations). */
   resumeRun: (name: string, generations?: number) =>
     request<RunStatus & { colab_url?: string }>(`/api/training/runs/${encodeURIComponent(name)}/resume`,
@@ -146,7 +151,8 @@ export type RunState = 'starting' | 'selfplay' | 'training' | 'evaluating' | 'ge
   | 'stopped' | 'failed'
   | 'waiting' // a Colab run waiting for its notebook to be run
   | 'uploading' | 'queued' | 'cloud_running' | 'downloading' // a Kaggle run, followed from here
-export type Where = 'mac' | 'colab' | 'kaggle'
+  | 'preparing' // a run on your server, while the server gets ready
+export type Where = 'mac' | 'colab' | 'kaggle' | 'server'
 export type PauseWhen = 'now' | 'after_phase' | 'after_generation'
 type Phase = 'selfplay' | 'training' | 'evaluating'
 
@@ -170,6 +176,12 @@ export interface RunStatus {
   kernel_url?: string
   cloud_started?: string
   cloud_checked?: string
+  /** A run on your server: what the server is getting ready, whether this Mac is connected to
+   * it (null when not following), the server, and when it was last checked. */
+  setup?: string | null
+  server_connected?: boolean | null
+  server_host?: string | null
+  server_checked?: string | null
   /** Why a run failed, when it says. */
   error?: string
   /** Live progress of the current phase: when it began, moves played so far and moves expected. */
@@ -193,14 +205,32 @@ export interface NewRunSettings {
   publish: boolean
   /** Make the run report (strength check included) as soon as the run finishes. */
   auto_report: boolean
-  /** Train on this Mac, on Colab (through Google Drive) or on Kaggle. */
+  /** Train on this Mac, on Colab (through Google Drive), on Kaggle or on your server. */
   where: Where
+  /** Self-play processes, on your server. */
+  workers?: number
 }
 
 export interface CloudStatus {
   /** Colab: the ChaturangZero folder in Google Drive, if Drive is synced here; the notebook's link. */
   colab: { drive: string | null; url: string }
   kaggle: { connected: boolean; username: string | null; tool: boolean }
+  server: ServerStatus
+}
+
+export interface ServerStatus {
+  /** The server new runs go to (null before the first Connect), and the folder everything goes in. */
+  host: string | null
+  folder: string
+  folder_path: string | null
+  workers: number | null
+  connected: boolean
+  /** What it had when last connected. */
+  facts: { hostname?: string; cores?: number; cpu?: string; memory_gb?: number; gpu?: string; python?: string } | null
+  /** Hosts named in ~/.ssh/config, as each signs in. */
+  hosts: { name: string; user: string | null; hostname: string }[]
+  /** ssh and rsync are on this Mac. */
+  tools: boolean
 }
 
 export interface LossPoint {

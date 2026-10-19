@@ -4,8 +4,9 @@ It reads what `chaturanga.training` writes to runs/<name>/ (status.json, metrics
 self-play game files), so it works the same while a run is going, after it stopped, or on a run
 copied from Colab. Three actions change things: a pause request (written to the run's control.json,
 which the run reads), resuming a run that is not running, and starting a new run (both start
-scripts/train.py, detached from the server; one run trains at a time). The server listens on
-127.0.0.1 by default, so only this machine can use them.
+scripts/train.py, detached from the server; one run trains at a time), on this Mac or elsewhere:
+Colab, Kaggle, or your own server over SSH (scripts/server_run.py starts it there and copies it
+back as it goes). The server listens on 127.0.0.1 by default, so only this machine can use them.
 """
 
 import json
@@ -16,12 +17,13 @@ import socket
 import subprocess
 import sys
 import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal, Optional
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr
 
 from chaturanga.agents import trained_checkpoint
 from chaturanga.selfplay import read_games
@@ -30,7 +32,8 @@ from chaturanga.training import TrainConfig, pending_pause, request_pause
 router = APIRouter(prefix="/api/training")
 
 ACTIVE = {"starting", "selfplay", "training", "evaluating", "generation_done", "reporting",
-          "uploading", "queued", "cloud_running", "downloading"}  # the last four: a Kaggle run, followed from here
+          "uploading", "queued", "cloud_running", "downloading",  # a Kaggle run, followed from here
+          "preparing"}  # a run on your server, while the server gets ready
 # A run updates its status every few seconds; one silent for longer has stopped (closed, crashed).
 LIVE_WITHIN_SECONDS = 300
 MAX_LOSS_POINTS = 300
@@ -66,7 +69,7 @@ def _all_runs() -> list[Path]:
 
 
 def _where(path: Path) -> str:
-    """Where a run trains: mac, colab or kaggle."""
+    """Where a run trains: mac, colab, kaggle or server."""
     try:
         return json.loads((path / "launch.json").read_text()).get("where", "mac")
     except (OSError, ValueError):
@@ -117,10 +120,27 @@ def _status(path: Path) -> dict:
     status["name"] = path.name
     status["where"] = _where(path)
     status["seconds_since_update"] = age
-    status["live"] = status.get("state") in ACTIVE and (
-        alive if alive is not None else age is not None and age < LIVE_WITHIN_SECONDS)
+    if status["where"] == "server":
+        # Followed from here by scripts/server_run.py: live while it follows a run training there.
+        # Its status is the server's, so its age says nothing when the connection is down.
+        notes = _server_notes(path)
+        alive = _process_alive({"pid": notes.get("follower_pid"), "host": notes.get("follower_host")})
+        status["live"] = status.get("state") in ACTIVE and bool(alive)
+        status["server_connected"] = bool(notes.get("connected")) if status["live"] else None
+        status["server_host"] = notes.get("host") or _launch_settings(path).get("host")
+        status["server_checked"] = notes.get("checked")
+    else:
+        status["live"] = status.get("state") in ACTIVE and (
+            alive if alive is not None else age is not None and age < LIVE_WITHIN_SECONDS)
     status["pause_requested"] = pending_pause(path) if status["live"] else None
     return status
+
+
+def _server_notes(path: Path) -> dict:
+    try:
+        return json.loads((path / "server.json").read_text())
+    except (OSError, ValueError):
+        return {}
 
 
 def _events(path: Path) -> list[dict]:
@@ -274,7 +294,9 @@ class StartRequest(BaseModel):
     eval_games: int = Field(20, ge=0, le=200, description="Test games against each opponent; 0 skips testing")
     publish: bool = Field(True, description="Make this run's best network the app's Trained opponent")
     auto_report: bool = Field(False, description="Make the run report as soon as the run finishes")
-    where: Literal["mac", "colab", "kaggle"] = Field("mac", description="Train on this Mac, on Colab or on Kaggle")
+    where: Literal["mac", "colab", "kaggle", "server"] = Field(
+        "mac", description="Train on this Mac, on Colab, on Kaggle or on your server (over SSH)")
+    workers: Optional[int] = Field(None, ge=1, le=1024, description="Self-play processes, on your server")
 
 
 _NEW_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$")
@@ -351,6 +373,66 @@ def _spawn_kaggle(path: Path, publish: bool, status: dict) -> dict:
     return _status(path)
 
 
+def _spawn_server(path: Path, generations: Optional[int], status: dict, follow_only: bool = False) -> dict:
+    """Start scripts/server_run.py for the run, detached: it gets the server ready, starts the
+    training there (or finds it already training) and copies it back as it goes."""
+    # A follower still bringing home the end of the run (it paused a moment ago) finishes first.
+    old = _server_notes(path)
+    for _ in range(100):
+        if not _process_alive({"pid": old.get("follower_pid"), "host": old.get("follower_host")}):
+            break
+        time.sleep(0.2)
+    else:
+        raise HTTPException(409, "Still copying the run back from the server: try again in a moment.")
+    script = Path(__file__).resolve().parent.parent / "scripts" / "server_run.py"
+    cmd = [sys.executable, "-u", str(script), "--run", path.name, "--runs-dir", str(path.parent)]
+    if generations:
+        cmd += ["--generations", str(generations)]
+    if follow_only:
+        cmd.append("--follow-only")
+    log = open(path / "server_run.log", "a")
+    try:
+        proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                                cwd=str(Path(__file__).resolve().parent.parent), start_new_session=True)
+    finally:
+        log.close()
+    threading.Thread(target=proc.wait, name=f"wait-server-{path.name}", daemon=True).start()
+    # Live at once: the follower's notes name it, and it takes over from here.
+    notes = {**_server_notes(path), "follower_pid": proc.pid, "follower_host": socket.gethostname(),
+             "connected": True, "host": _launch_settings(path).get("host"),
+             "checked": datetime.now(timezone.utc).isoformat(timespec="seconds"), "ended": None}
+    (path / "server.json").write_text(json.dumps(notes, indent=2))
+    if not follow_only:
+        fresh = {k: v for k, v in status.items() if k not in ("name", "seconds_since_update", "live", "pause_requested",
+                                                               "server_connected", "server_host", "server_checked")}
+        fresh.update(state="preparing", where="server", setup="Connecting to the server", paused_in=None,
+                     paused_after=None, error=None, phase_started=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                     updated=datetime.now(timezone.utc).isoformat(timespec="seconds"))
+        if generations:
+            fresh["generations"] = generations
+        _write_status(path, fresh)
+    return _status(path)
+
+
+def _server_ready() -> dict:
+    """The server's settings, if it is connected now; otherwise why not, as an HTTP error."""
+    from chaturanga import remote
+
+    settings = remote.settings()
+    if not settings:
+        raise HTTPException(409, "Connect to your server first: its address, a folder, and its password.")
+    if not remote.connected(settings["host"]):
+        raise HTTPException(409, f"Not connected to {settings['host']}: connect with its password first.")
+    return settings
+
+
+def _live_server_run() -> Optional[str]:
+    for p in _all_runs():
+        if _where(p) == "server" and _status(p)["live"]:
+            return p.name
+    return None
+
+
 def _write_status(path: Path, status: dict) -> None:
     tmp = path / "status.json.tmp"
     tmp.write_text(json.dumps(status))
@@ -371,7 +453,8 @@ def _wait_for_colab(path: Path, status: dict) -> dict:
 
 @router.post("/runs", status_code=202)
 def start_run(req: StartRequest):
-    """Start a new run: on this Mac (one at a time), on Colab (through Google Drive) or on Kaggle."""
+    """Start a new run: on this Mac (one at a time), on Colab (through Google Drive), on Kaggle, or
+    on your server (one at a time there too)."""
     from chaturanga.cloud import kaggle_credentials
 
     if not _NEW_NAME.match(req.name):
@@ -388,6 +471,17 @@ def start_run(req: StartRequest):
         if root is None:
             raise HTTPException(409, "Colab runs need Google Drive for desktop on this Mac, signed in with the Google "
                                      "account you use for Colab: it carries the run between Colab and this app.")
+    elif req.where == "server":
+        root = runs_dir()
+        server = _server_ready()
+        if req.workers:  # kept for the next run too
+            from chaturanga import remote
+
+            server = remote.save_settings(workers=req.workers)
+        busy = _live_server_run()
+        if busy:
+            raise HTTPException(409, f"The run {busy!r} is training on the server. Pause it first: one run at a time "
+                                     "keeps each fast.")
     else:
         root = runs_dir()
         if not kaggle_credentials():
@@ -399,10 +493,15 @@ def start_run(req: StartRequest):
                          simulations=req.simulations, eval_games=req.eval_games, auto_report=req.auto_report)
     path.mkdir(parents=True)
     (path / "config.json").write_text(json.dumps(config.to_json(), indent=2))
-    (path / "launch.json").write_text(json.dumps({"publish": req.publish, "where": req.where}))
+    launch = {"publish": req.publish, "where": req.where}
+    if req.where == "server":  # the run keeps the server it trains on, even if the app's server changes later
+        launch.update(host=server["host"], folder=server["folder_abs"], workers=server["workers"])
+    (path / "launch.json").write_text(json.dumps(launch))
     status = {"run": req.name, "generation": 0, "generations": req.generations}
     if req.where == "colab":
         return _wait_for_colab(path, status)
+    if req.where == "server":
+        return _spawn_server(path, None, status)
     if req.where == "kaggle":
         return _spawn_kaggle(path, req.publish, status)
     return _spawn(path, None, req.publish, status)
@@ -419,6 +518,12 @@ def resume_run(name: str, req: ResumeRequest):
         busy = _live_run()
         if busy:
             raise HTTPException(409, f"The run {busy!r} is training. Pause it first: one run at a time keeps each fast.")
+    if where == "server":
+        _server_connection(path)
+        busy = _live_server_run()
+        if busy:
+            raise HTTPException(409, f"The run {busy!r} is training on the server. Pause it first: one run at a time "
+                                     "keeps each fast.")
     config = json.loads((path / "config.json").read_text())
     target = req.generations or config.get("generations", 0)
     done = max((int(p.stem[4:]) for p in (path / "checkpoints").glob("gen_*.pt")), default=0)
@@ -432,7 +537,22 @@ def resume_run(name: str, req: ResumeRequest):
         return _wait_for_colab(path, status)
     if where == "kaggle":
         return _spawn_kaggle(path, publish, status)
+    if where == "server":
+        return _spawn_server(path, req.generations, status)
     return _spawn(path, req.generations, publish, status)
+
+
+def _server_connection(path: Path) -> dict:
+    """The run's server (from its launch settings), checked to be connected now."""
+    from chaturanga import remote
+
+    launch = _launch_settings(path)
+    host = launch.get("host")
+    if not host or not launch.get("folder"):
+        raise HTTPException(400, f"run {path.name!r} does not say which server it trains on")
+    if not remote.connected(host):
+        raise HTTPException(409, f"Not connected to {host}: connect with its password first.")
+    return launch
 
 
 # ---------------------------------------------------------------------- cloud accounts
@@ -451,7 +571,107 @@ def cloud_status():
     creds = kaggle_credentials()
     return {"colab": {"drive": str(drive.parent) if drive else None, "url": colab_url()},
             "kaggle": {"connected": creds is not None, "username": creds["username"] if creds else None,
-                       "tool": kaggle_tool() is not None}}
+                       "tool": kaggle_tool() is not None},
+            "server": _server_status()}
+
+
+def _server_status() -> dict:
+    from chaturanga import remote
+
+    settings = remote.settings() or {}
+    host = settings.get("host")
+    return {"host": host, "folder": settings.get("folder") or remote.DEFAULT_FOLDER,
+            "folder_path": settings.get("folder_abs"), "workers": settings.get("workers"),
+            "connected": remote.connected(host) if host else False, "facts": settings.get("facts"),
+            "hosts": remote.ssh_config_hosts(), "tools": bool(remote.ssh_tool() and remote.rsync_tool())}
+
+
+class ServerConnect(BaseModel):
+    host: str = Field(min_length=1, max_length=200, description="user@host, an address, or a name from ~/.ssh/config")
+    folder: Optional[str] = Field(None, max_length=300, description="Where everything goes on the server")
+    password: Optional[SecretStr] = Field(None, max_length=1000, description="Used to connect, and not kept")
+    workers: Optional[int] = Field(None, ge=1, le=1024, description="Self-play processes on the server")
+
+
+class ServerSettings(BaseModel):
+    folder: Optional[str] = Field(None, max_length=300)
+    workers: Optional[int] = Field(None, ge=1, le=1024)
+
+
+@router.post("/server/connect")
+def connect_server(req: ServerConnect):
+    """Open the connection to the server with its password (which is not kept), see what it has,
+    and follow any run that was training there while this Mac was away."""
+    from chaturanga import remote
+
+    host = req.host.strip()
+    previous = remote.settings() or {}
+    folder = (req.folder or "").strip() or (previous.get("folder") if previous.get("host") == host else None) \
+        or remote.DEFAULT_FOLDER
+    if not remote.FOLDER.match(folder):
+        raise HTTPException(400, "The folder is a path such as ~/sopProject/chaturangzero, without spaces or quotes.")
+    if not remote.ssh_tool() or not remote.rsync_tool():
+        raise HTTPException(501, "This Mac needs ssh and rsync to train on a server.")
+    try:
+        remote.connect(host, req.password.get_secret_value() if req.password else None)
+        facts = remote.server_facts(host)
+        folder_abs = remote.resolve_folder(folder, facts.get("home") or "~")
+    except remote.RemoteError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    if not facts.get("rsync"):
+        raise HTTPException(400, f"{host} has no rsync, which copies the runs back and forth: ask whoever runs it to "
+                                 "install it.")
+    same = previous.get("host") == host
+    workers = req.workers or (previous.get("workers") if same else None) or remote.default_workers(facts.get("cores"))
+    remote.save_settings(host=host, folder=folder, folder_abs=folder_abs, workers=workers, facts=facts)
+    _follow_server_runs()
+    return cloud_status()
+
+
+def _follow_server_runs() -> None:
+    """Runs last seen training on a server that no follower is following (this Mac restarted, say):
+    follow them again, or bring home how they ended."""
+    from chaturanga import remote
+
+    for path in _all_runs():
+        if _where(path) != "server":
+            continue
+        status = _status(path)
+        host = _launch_settings(path).get("host")
+        if not status["live"] and status.get("state") in ACTIVE and host and remote.connected(host):
+            _spawn_server(path, None, status, follow_only=True)
+
+
+@router.post("/server/settings")
+def server_settings(req: ServerSettings):
+    """Change the folder or the cores new runs use (a run keeps the folder it started in)."""
+    from chaturanga import remote
+
+    settings = remote.settings()
+    if not settings:
+        raise HTTPException(409, "Connect to your server first.")
+    changes: dict = {}
+    if req.folder is not None:
+        try:
+            changes.update(folder=req.folder.strip(),
+                           folder_abs=remote.resolve_folder(req.folder.strip(), (settings.get("facts") or {}).get("home", "~")))
+        except remote.RemoteError as exc:
+            raise HTTPException(400, str(exc)) from exc
+    if req.workers is not None:
+        changes["workers"] = req.workers
+    remote.save_settings(**changes)
+    return cloud_status()
+
+
+@router.post("/server/disconnect")
+def disconnect_server():
+    """Close the connection. Training on the server carries on; connect again to follow it."""
+    from chaturanga import remote
+
+    settings = remote.settings()
+    if settings:
+        remote.disconnect(settings["host"])
+    return cloud_status()
 
 
 @router.post("/cloud/kaggle")
@@ -481,6 +701,17 @@ def delete_run(name: str):
         raise HTTPException(409, f"The run {name!r} is training. Pause it before deleting it.")
     if _where(path) == "colab":  # a request still waiting for Colab goes too
         (path.parent.parent / "requests" / f"{name}.json").unlink(missing_ok=True)
+    if _where(path) == "server":  # and its copy on the server
+        from chaturanga import remote
+
+        launch = _launch_settings(path)
+        if launch.get("host") and launch.get("folder"):
+            if not remote.connected(launch["host"]):
+                raise HTTPException(409, f"Connect to {launch['host']} first, so the run's files there are deleted too.")
+            try:
+                remote.delete_run(launch["host"], launch["folder"], name)
+            except remote.RemoteError as exc:
+                raise HTTPException(502, f"Could not delete the run on the server: {exc}") from exc
     shutil.rmtree(path)
     return {"deleted": name}
 
