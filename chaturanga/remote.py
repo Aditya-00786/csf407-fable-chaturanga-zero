@@ -163,14 +163,21 @@ exit 1
 """
 
 
+def _reader(pipe: str) -> Optional[int]:
+    """The pipe opened for writing if ssh's helper has it open for reading, else None."""
+    try:
+        return os.open(pipe, os.O_WRONLY | os.O_NONBLOCK)
+    except OSError:  # ENXIO: no reader
+        return None
+
+
 def _feed(pipe: str, password: str, proc: subprocess.Popen, times: int = 2) -> None:
     """Write the password into the pipe each time ssh's helper opens it (at most `times`), while ssh runs."""
     data = (password + "\n").encode()
     sent = 0
     while sent < times and proc.poll() is None:
-        try:
-            fd = os.open(pipe, os.O_WRONLY | os.O_NONBLOCK)  # fails until the helper opens it
-        except OSError:
+        fd = _reader(pipe)
+        if fd is None:
             time.sleep(0.05)
             continue
         try:
@@ -181,6 +188,10 @@ def _feed(pipe: str, password: str, proc: subprocess.Popen, times: int = 2) -> N
         finally:
             os.close(fd)
         sent += 1
+        # Once per prompt: wait for this helper to finish reading before serving another.
+        while proc.poll() is None and (fd := _reader(pipe)) is not None:
+            os.close(fd)
+            time.sleep(0.05)
 
 
 def _explain(err: str, host: str) -> str:
@@ -482,6 +493,11 @@ def pull_run(host: str, folder: str, name: str, local: Path) -> None:
     """Copy what the run has made on the server into the run's folder here (its metrics, games,
     networks and log). Nothing here is deleted: a report made here stays."""
     rsync(host, [f"{host}:{run_path(folder, name)}/"], f"{local}/", *(f"--exclude={p}" for p in LOCAL_ONLY))
+    # A generation's games in progress (gen_NNNN.partial.<pid>.jsonl.gz) are merged into its file
+    # when it is done, and removed there: here too, once that file has arrived.
+    for partial in (local / "games").glob("gen_*.partial.*.jsonl.gz"):
+        if (partial.parent / f"{partial.name.split('.')[0]}.jsonl.gz").exists():
+            partial.unlink(missing_ok=True)
 
 
 def start_training(host: str, folder: str, name: str, workers: int, generations: Optional[int] = None) -> int:

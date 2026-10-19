@@ -226,6 +226,7 @@ def test_a_server_run_trains_there_and_comes_back_live(server):
     assert (there / "checkpoints" / "gen_0001.pt").exists()  # trained there...
     assert (local / "checkpoints" / "gen_0001.pt").exists() and (local / "metrics.jsonl").exists()  # ...and copied here
     assert (local / "games" / "gen_0001.jsonl.gz").exists() and "Done: 1 generations" in (local / "train.log").read_text()
+    assert not list((local / "games").glob("*.partial.*"))  # merged into the generation's file, there and here
     assert (server["folder"] / "code" / "chaturanga" / "training.py").exists()
     detail = client.get("/api/training/runs/s1").json()
     assert detail["status"]["where"] == "server" and len(detail["generations"]) == 1
