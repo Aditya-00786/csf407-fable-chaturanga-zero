@@ -128,17 +128,25 @@ export const api = {
   /** Delete a run that is not training, with everything it saved. */
   deleteRun: (name: string) =>
     request<{ deleted: string }>(`/api/training/runs/${encodeURIComponent(name)}`, undefined, 'DELETE'),
-  /** Start a new run (one run trains at a time). */
-  startRun: (settings: NewRunSettings) => request<RunStatus>('/api/training/runs', settings),
+  /** Start a new run (on this Mac one at a time; a Colab run comes back with the notebook's link). */
+  startRun: (settings: NewRunSettings) => request<RunStatus & { colab_url?: string }>('/api/training/runs', settings),
+  cloudStatus: () => request<CloudStatus>('/api/training/cloud'),
+  /** Check a Kaggle API token and keep it on this Mac. */
+  connectKaggle: (username: string, token: string) =>
+    request<CloudStatus>('/api/training/cloud/kaggle', { username, token }),
   /** Start a run that is not running, carrying on where it stopped (optionally to more generations). */
   resumeRun: (name: string, generations?: number) =>
-    request<RunStatus>(`/api/training/runs/${encodeURIComponent(name)}/resume`, generations ? { generations } : {}),
+    request<RunStatus & { colab_url?: string }>(`/api/training/runs/${encodeURIComponent(name)}/resume`,
+      generations ? { generations } : {}),
 }
 
 // ------------------------------------------------------------------ training (Watch training)
 
 export type RunState = 'starting' | 'selfplay' | 'training' | 'evaluating' | 'generation_done' | 'reporting' | 'finished' | 'paused'
   | 'stopped' | 'failed'
+  | 'waiting' // a Colab run waiting for its notebook to be run
+  | 'uploading' | 'queued' | 'cloud_running' | 'downloading' // a Kaggle run, followed from here
+export type Where = 'mac' | 'colab' | 'kaggle'
 export type PauseWhen = 'now' | 'after_phase' | 'after_generation'
 type Phase = 'selfplay' | 'training' | 'evaluating'
 
@@ -156,6 +164,14 @@ export interface RunStatus {
   best_generation?: number
   updated?: string
   seconds_since_update: number | null
+  /** Where the run trains. */
+  where: Where
+  /** A Kaggle run: its page on Kaggle, when it was started there and last checked. */
+  kernel_url?: string
+  cloud_started?: string
+  cloud_checked?: string
+  /** Why a run failed, when it says. */
+  error?: string
   /** Live progress of the current phase: when it began, moves played so far and moves expected. */
   phase_started?: string | null
   moves?: number | null
@@ -177,6 +193,14 @@ export interface NewRunSettings {
   publish: boolean
   /** Make the run report (strength check included) as soon as the run finishes. */
   auto_report: boolean
+  /** Train on this Mac, on Colab (through Google Drive) or on Kaggle. */
+  where: Where
+}
+
+export interface CloudStatus {
+  /** Colab: the ChaturangZero folder in Google Drive, if Drive is synced here; the notebook's link. */
+  colab: { drive: string | null; url: string }
+  kaggle: { connected: boolean; username: string | null; tool: boolean }
 }
 
 export interface LossPoint {

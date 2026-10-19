@@ -4,12 +4,12 @@
  * learn screens stay the primary experience.
  */
 
-import { Check, ChevronDown, LoaderCircle, Pause, Play, Plus, RefreshCw, Trash2, X } from 'lucide-react'
+import { Check, ChevronDown, Clock, ExternalLink, LoaderCircle, Pause, Play, Plus, RefreshCw, Trash2, X } from 'lucide-react'
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Legend, LineChart, type Series } from '../components/LineChart'
 import { RunReport } from '../components/RunReport'
-import { Button, Collapse, Switch } from '../components/ui'
-import { api, ApiError, type GenerationRow, type PauseWhen, type RunDetail, type RunStatus } from '../lib/api'
+import { Button, Collapse, Segmented, Switch } from '../components/ui'
+import { api, ApiError, type CloudStatus, type GenerationRow, type PauseWhen, type RunDetail, type RunStatus, type Where } from '../lib/api'
 import { href } from '../lib/route'
 import { useGame } from '../state/game'
 
@@ -24,6 +24,11 @@ const PHASE: Record<string, string> = {
   training: 'Training the network',
   evaluating: 'Testing the new network',
   generation_done: 'Generation finished',
+  waiting: 'Waiting for Colab',
+  uploading: 'Uploading to Kaggle',
+  queued: 'Queued on Kaggle',
+  cloud_running: 'Training on Kaggle',
+  downloading: 'Bringing the run home',
   reporting: 'Making the run report',
   finished: 'Finished',
   paused: 'Paused',
@@ -102,7 +107,9 @@ function whereItStopped(status: RunStatus): string {
     if (status.paused_after === 'training') return `Paused after training generation ${g}. Testing it is next.`
     return `Paused after generation ${g}.`
   }
-  if (status.state === 'failed') return 'Stopped with an error; the details are at the end of the run’s train.log.'
+  if (status.state === 'failed') {
+    return status.error ? `Stopped with an error. ${status.error}` : 'Stopped with an error; the details are at the end of the run’s train.log.'
+  }
   return 'The training process ended without pausing (closed or interrupted). Finished self-play games are kept.'
 }
 
@@ -187,7 +194,7 @@ function HeightTransition({ swapKey, children }: { swapKey: string; children: Re
   )
 }
 
-type ControlMode = 'idle' | 'pausing' | 'starting' | 'reporting' | 'stopped' | 'finished'
+type ControlMode = 'idle' | 'pausing' | 'starting' | 'reporting' | 'cloud' | 'waiting' | 'stopped' | 'finished'
 
 function RunControls({ status, total, done, onChange }: {
   status: RunStatus; total: number; done: number; onChange: (s?: RunStatus) => void
@@ -212,9 +219,14 @@ function RunControls({ status, total, done, onChange }: {
   const name = status.name
   const finished = status.state === 'finished' && !status.live
   const mode: ControlMode = status.live
-    ? status.state === 'starting' ? 'starting' : status.state === 'reporting' ? 'reporting'
-      : status.pause_requested ? 'pausing' : 'idle'
-    : finished ? 'finished' : 'stopped'
+    ? status.where === 'kaggle' && ['uploading', 'queued', 'cloud_running', 'downloading'].includes(status.state) ? 'cloud'
+      : status.state === 'starting' ? 'starting' : status.state === 'reporting' ? 'reporting'
+        : status.pause_requested ? 'pausing' : 'idle'
+    : status.state === 'waiting' ? 'waiting' : finished ? 'finished' : 'stopped'
+  const [colabUrl, setColabUrl] = useState<string | null>(null)
+  useEffect(() => {
+    if (mode === 'waiting') void api.cloudStatus().then((c) => setColabUrl(c.colab.url), () => {})
+  }, [mode])
   const target = Math.max(done + 1, total + more)
 
   let body: ReactNode
@@ -224,6 +236,36 @@ function RunControls({ status, total, done, onChange }: {
         <Spinner />
         Starting the run: loading the network and its saved games.
       </p>
+    )
+  } else if (mode === 'cloud') {
+    body = (
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <p className="text-[13.5px] leading-snug text-ink-muted">
+          Kaggle runs the training by itself; to stop it early, stop the session on Kaggle.
+        </p>
+        {status.kernel_url && (
+          <a href={status.kernel_url} target="_blank" rel="noopener noreferrer"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line-strong px-2.5 text-[13px] font-medium text-ink transition-colors duration-150 hover:border-ink-faint hover:bg-surface-2">
+            <ExternalLink size={14} aria-hidden />
+            Open on Kaggle
+          </a>
+        )}
+      </div>
+    )
+  } else if (mode === 'waiting') {
+    body = (
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <p className="text-[13.5px] leading-snug text-ink-muted">
+          Open the notebook in Colab and press Run all; the run shows here as soon as it starts there.
+        </p>
+        {colabUrl && (
+          <a href={colabUrl} target="_blank" rel="noopener noreferrer"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-2.5 text-[13px] font-medium text-accent-ink transition-colors duration-150 hover:bg-accent-hover">
+            <ExternalLink size={14} aria-hidden />
+            Open in Colab
+          </a>
+        )}
+      </div>
     )
   } else if (mode === 'reporting') {
     body = (
@@ -290,7 +332,11 @@ function RunControls({ status, total, done, onChange }: {
             </label>
           )}
           <Button size="sm" variant="primary" aria-busy={starting} icon={starting ? <Spinner /> : <Play size={14} />}
-            onClick={() => act('resume', () => api.resumeRun(name, mode === 'finished' ? target : undefined))}>
+            onClick={() => act('resume', async () => {
+              const resumed = await api.resumeRun(name, mode === 'finished' ? target : undefined)
+              if (resumed.colab_url) window.open(resumed.colab_url, '_blank', 'noopener')
+              return resumed
+            })}>
             {starting ? 'Starting' : mode === 'finished' ? 'Train further' : 'Resume'}
           </Button>
         </div>
@@ -311,7 +357,7 @@ function RunControls({ status, total, done, onChange }: {
 function StatusPanel({ status, detail, onChange }: { status: RunStatus; detail: RunDetail; onChange: (s?: RunStatus) => void }) {
   const live = status.live
   // A run whose process ended without saying so (closed, crashed, machine asleep) has stopped.
-  const state = !live && !['finished', 'failed', 'paused'].includes(status.state) ? 'stopped' : status.state
+  const state = !live && !['finished', 'failed', 'paused', 'waiting'].includes(status.state) ? 'stopped' : status.state
   const pausing = live && !!status.pause_requested
   const total = status.generations || detail.config.generations
   const done = detail.generations.filter((g) => g.best !== undefined).length
@@ -338,6 +384,13 @@ function StatusPanel({ status, detail, onChange }: { status: RunStatus; detail: 
       : status.opponent === 'random' ? 'Random' : status.opponent
     phase = `against ${against}, ${gamesDone} of ${status.games_total} games · ${moves.toLocaleString()} moves played`
     phaseValue = gamesDone >= status.games_total ? 1 : Math.max(gamesDone / status.games_total, byMoves)
+  } else if (live && ['uploading', 'queued', 'cloud_running', 'downloading'].includes(status.state)) {
+    const checked = status.cloud_checked ? Math.max(0, Math.round((now - Date.parse(status.cloud_checked)) / 1000)) : null
+    phase = status.state === 'uploading' ? 'Uploading the code and the run so far'
+      : status.state === 'queued' ? 'Waiting for a Kaggle GPU'
+        : status.state === 'downloading' ? 'Downloading the finished run'
+          : `Checked ${checked === null ? 'just now' : checked < 90 ? `${checked} s ago` : `${Math.round(checked / 60)} min ago`}; its charts arrive with the results`
+    phaseValue = null
   } else if (live && (status.state === 'reporting' || status.state === 'generation_done')) {
     phase = status.state === 'reporting' ? 'Making the run report' : 'Starting the next generation'
     phaseValue = null
@@ -589,6 +642,86 @@ function NumberField({ label, value, onChange, min, max, hint }: {
   )
 }
 
+function CloudNote({ children }: { children: ReactNode }) {
+  return <div className="rounded-xl border border-line bg-bg px-4 py-3 text-[13px] leading-relaxed text-ink-muted">{children}</div>
+}
+
+function ColabNote({ cloud }: { cloud: CloudStatus | null }) {
+  if (!cloud) return null
+  if (!cloud.colab.drive) {
+    return (
+      <CloudNote>
+        <p className="font-medium text-ink">Colab needs Google Drive for desktop on this Mac</p>
+        <p className="mt-1">
+          The run lives in your Google Drive, which carries it between Colab and this app. Install Google Drive for
+          desktop, sign in with the Google account you use for Colab, then reload this page.
+        </p>
+      </CloudNote>
+    )
+  }
+  return (
+    <CloudNote>
+      Starting opens the notebook in Colab: press <span className="font-medium text-ink">Run all</span> there (the first
+      time, Colab asks to connect to GitHub and Google Drive). The run trains into your Drive, so its progress shows here,
+      and Pause works from here too.
+    </CloudNote>
+  )
+}
+
+function KaggleNote({ cloud, onConnected }: { cloud: CloudStatus | null; onConnected: (c: CloudStatus) => void }) {
+  const [username, setUsername] = useState('')
+  const [token, setToken] = useState('')
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  if (!cloud) return null
+  if (cloud.kaggle.connected) {
+    return (
+      <CloudNote>
+        Runs on a Kaggle GPU from start to finish, as <span className="font-medium text-ink">{cloud.kaggle.username}</span>.
+        This app uploads the code privately, checks on the run every minute and brings it home when it ends. Kaggle
+        sessions stop at 12 hours, so a long run pauses itself after 11 and resumes in a new session.
+      </CloudNote>
+    )
+  }
+  const connect = async () => {
+    if (sending) return
+    setSending(true)
+    setError(null)
+    try {
+      onConnected(await api.connectKaggle(username, token))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong.')
+    } finally {
+      setSending(false)
+    }
+  }
+  return (
+    <CloudNote>
+      <p className="font-medium text-ink">Connect Kaggle</p>
+      <p className="mt-1">
+        On kaggle.com, open Settings, then API, and press Generate New Token. Paste it here with your Kaggle username; it is
+        checked with Kaggle and kept on this Mac only.
+      </p>
+      <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_1.4fr_auto] sm:items-end">
+        <label className="block text-[12.5px] font-medium text-ink-muted">
+          Username
+          <input value={username} onChange={(e) => setUsername(e.target.value.trim())} autoComplete="off" spellCheck={false}
+            className="mt-1 h-9 w-full rounded-lg border border-line bg-surface px-3 text-[14px] text-ink focus-visible:border-accent" />
+        </label>
+        <label className="block text-[12.5px] font-medium text-ink-muted">
+          API token
+          <input type="password" value={token} onChange={(e) => setToken(e.target.value.trim())} autoComplete="off"
+            className="mt-1 h-9 w-full rounded-lg border border-line bg-surface px-3 text-[14px] text-ink focus-visible:border-accent" />
+        </label>
+        <Button size="sm" aria-busy={sending} onClick={connect} icon={sending ? <Spinner /> : undefined} className="h-9">
+          {sending ? 'Checking' : 'Connect'}
+        </Button>
+      </div>
+      {error && <p className="mt-2 text-[12.5px] text-danger">{error}</p>}
+    </CloudNote>
+  )
+}
+
 /** The form for a new training run. */
 function NewRun({ runs, first, secondsPerGame, onStarted, onCancel }: {
   runs: RunStatus[]; first: boolean; secondsPerGame: number
@@ -616,7 +749,13 @@ function NewRun({ runs, first, secondsPerGame, onStarted, onCancel }: {
   const publishing = publish ?? trained === null
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const live = runs.find((r) => r.live)
+  const [where, setWhere] = useState<Where>('mac')
+  const [cloud, setCloud] = useState<CloudStatus | null>(null)
+  useEffect(() => {
+    void api.cloudStatus().then(setCloud, () => {})
+  }, [])
+  // One run trains on this Mac at a time; cloud runs use other machines.
+  const live = where === 'mac' ? runs.find((r) => r.live && r.where === 'mac') : undefined
 
   const problem =
     !/^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/.test(name) ? 'Name it with letters, digits, - and _, starting with a letter or digit.'
@@ -635,8 +774,9 @@ function NewRun({ runs, first, secondsPerGame, onStarted, onCancel }: {
     setSending(true)
     setError(null)
     try {
-      await api.startRun({ name, generations, games_per_generation: games, simulations: sims, eval_games: evalGames,
-        publish: publishing, auto_report: autoReport })
+      const started = await api.startRun({ name, generations, games_per_generation: games, simulations: sims,
+        eval_games: evalGames, publish: publishing, auto_report: autoReport, where })
+      if (started.colab_url) window.open(started.colab_url, '_blank', 'noopener')
       onStarted(name)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.')
@@ -656,6 +796,19 @@ function NewRun({ runs, first, secondsPerGame, onStarted, onCancel }: {
       <p className="mt-1 max-w-[62ch] text-[13.5px] leading-snug text-ink-muted">
         Starts from an untrained network. You can pause it at any time and resume it later.
       </p>
+      <div className="mt-5 max-w-md">
+        <Segmented<Where> label="Where" value={where} onChange={setWhere} size="sm" options={[
+          { value: 'mac', label: 'This Mac' },
+          { value: 'colab', label: 'Colab', title: 'Google Colab, through Google Drive' },
+          { value: 'kaggle', label: 'Kaggle', title: 'A Kaggle GPU, started and followed from here' },
+        ]} />
+      </div>
+      <Collapse open={where !== 'mac'}>
+        <div className="pt-3">
+          {where === 'colab' && <ColabNote cloud={cloud} />}
+          {where === 'kaggle' && <KaggleNote cloud={cloud} onConnected={setCloud} />}
+        </div>
+      </Collapse>
       <div className="mt-5 grid gap-4 sm:grid-cols-3">
         <div className="min-w-0">
           <label htmlFor="new-run-name" className="mb-1.5 block text-[13px] font-medium text-ink-muted">Name</label>
@@ -703,12 +856,17 @@ function NewRun({ runs, first, secondsPerGame, onStarted, onCancel }: {
       )}
       <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-line pt-4">
         <Button variant="primary" size="sm" aria-busy={sending} onClick={start} icon={sending ? <Spinner /> : <Play size={14} />}>
-          {sending ? 'Starting' : 'Start training'}
+          {sending ? 'Starting' : where === 'colab' ? 'Start on Colab' : where === 'kaggle' ? 'Start on Kaggle' : 'Start training'}
         </Button>
         {onCancel && <Button size="sm" onClick={onCancel}>Cancel</Button>}
-        {estimate && (
+        {estimate && where === 'mac' && (
           <p className="text-[12.5px] text-ink-faint">
             {total.toLocaleString()} self-play games, roughly {estimate} on this machine.
+          </p>
+        )}
+        {where !== 'mac' && Number.isFinite(total) && total > 0 && (
+          <p className="text-[12.5px] text-ink-faint">
+            {total.toLocaleString()} self-play games on {where === 'colab' ? 'Colab' : 'Kaggle'}; this Mac stays free.
           </p>
         )}
       </div>
@@ -728,10 +886,11 @@ function measuredSecondsPerGame(detail: RunDetail | null): number {
   return perGame * (50 / (detail.config.simulations || 50))
 }
 
-type RunKind = 'training' | 'starting' | 'paused' | 'finished' | 'stopped' | 'failed'
+type RunKind = 'training' | 'starting' | 'waiting' | 'paused' | 'finished' | 'stopped' | 'failed'
 
 function runKind(r: RunStatus): RunKind {
-  if (r.live) return r.state === 'starting' ? 'starting' : 'training'
+  if (r.live) return r.state === 'starting' || r.state === 'uploading' ? 'starting' : 'training'
+  if (r.state === 'waiting') return 'waiting'
   if (r.state === 'paused' || r.state === 'finished' || r.state === 'failed') return r.state
   return 'stopped' // the process ended without pausing
 }
@@ -749,6 +908,8 @@ function RunMark({ kind }: { kind: RunKind }) {
       return <LoaderCircle size={13} aria-hidden className="shrink-0 animate-spin text-success" />
     case 'paused':
       return <Pause size={13} aria-hidden className="shrink-0 fill-current text-accent" />
+    case 'waiting':
+      return <Clock size={13} aria-hidden className="shrink-0 text-accent" />
     case 'finished':
       return <Check size={14} aria-hidden className="shrink-0 text-ink-muted" strokeWidth={2.5} />
     case 'failed':
@@ -828,7 +989,8 @@ function RunMenu({ runs, value, onChange }: { runs: RunStatus[]; value: string; 
     }
   }
 
-  const label = (r: RunStatus) => runKind(r)
+  // The state, and where it trains when that is not this Mac.
+  const label = (r: RunStatus) => `${runKind(r)}${r.where === 'colab' ? ' · Colab' : r.where === 'kaggle' ? ' · Kaggle' : ''}`
   return (
     <div className="flex items-center gap-3">
       <span id={`${id}-label`} className="shrink-0 text-[13px] font-medium text-ink-muted">Run</span>
@@ -971,7 +1133,9 @@ export function TrainingView() {
 
   const secondsPerGame = useMemo(() => measuredSecondsPerGame(detail), [detail])
   const started = (name: string) => {
-    scroller.current?.scrollTo({ top: 0, behavior: 'smooth' }) // the new run shows at the top
+    // The new run shows at the top (on narrow screens the page around this view scrolls instead).
+    scroller.current?.scrollTo({ top: 0, behavior: 'smooth' })
+    scroller.current?.closest('main')?.scrollTo({ top: 0, behavior: 'smooth' })
     setCreating(false)
     setSelected(name)
     setDetail(null)

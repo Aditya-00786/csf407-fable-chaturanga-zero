@@ -47,7 +47,7 @@ the same commit that completes the work.
 - [Essential commands](#essential-commands)
 - [Using the engine](#using-the-engine)
 - [Search and network](#search-and-network)
-- [Training by self-play](#training-by-self-play)
+- [Training by self-play](#training-by-self-play) (and [in the cloud](#training-in-the-cloud))
 - [Web app](#web-app)
 - [Project structure](#project-structure)
 - [The rules in brief](#the-rules-in-brief)
@@ -63,7 +63,7 @@ the same commit that completes the work.
 - **Researched ruleset.** Every rule is backed by historical sources, and contested rules are
   settled by counting references. See [docs/RULES.md](docs/RULES.md).
 - **Verified rules engine.** A cross-check against an independent reference move generator and a
-  10,000-game random-play stress test; 200 tests in all.
+  10,000-game random-play stress test; 208 tests in all.
 - **AlphaZero search.** PUCT Monte Carlo Tree Search guided by a residual policy-value network
   (6 blocks × 64 filters, about 1M parameters), with exact values for finished games, root noise,
   temperature and tree reuse for self-play. Planted bugs in the search are all caught by the tests.
@@ -383,7 +383,8 @@ opponent picks it up without a restart.
 | `checkpoints/gen_NNNN.pt` | The network after each generation, plus `best.pt` and `train_state.pt` (the optimiser) |
 | `incoming/` | Drop teammates' game files here |
 | `control.json` | A pause request the run has not reached yet |
-| `launch.json` | For a run started from the app: whether it publishes its best network |
+| `launch.json` | For a run started from the app: whether it publishes its best network, and where it trains |
+| `cloud.json`, `kaggle.log` | A Kaggle run: its script on Kaggle, and the session's log once it is home |
 | `games/gen_NNNN.partial.*.jsonl.gz` | Finished games of a generation still being played (merged into `gen_NNNN.jsonl.gz` when it completes) |
 
 **Pausing and resuming.** A run can be paused three ways, from the Training page, from another
@@ -495,11 +496,34 @@ and sends back the `.jsonl.gz` file it writes, which goes into `runs/<run>/incom
 are merged, not trained networks: averaging separately trained weights does not give a better
 network, but more games from the current network always help.
 
-**Colab.** [notebooks/train_colab.ipynb](notebooks/train_colab.ipynb) runs the same pipeline on a
-free Colab GPU and keeps the run in Google Drive, so a disconnect loses nothing: run the cells
-again and it resumes. The repository is private, so the notebook clones it with a read-only
-GitHub token stored in Colab's Secrets. Copy `checkpoints/best.pt` from Drive into your local
-`checkpoints/` to play against it, or the whole run into `runs/` to see it on the Training page.
+### Training in the cloud
+
+**New run** asks **Where**: this Mac, Colab or Kaggle. The cloud keeps the Mac free; it is not
+faster (self-play runs on the CPU, and Colab's free machines have 2 cores and Kaggle's about 4,
+against the 6 used here).
+
+**Colab.** Google offers no way for another program to start a Colab notebook, so the app does
+the rest around the one click that needs you. It writes the run's folder and a request into
+`ChaturangZero` in your Google Drive and opens
+[notebooks/train_colab.ipynb](notebooks/train_colab.ipynb) in Colab, straight from GitHub; you
+press **Run all** (the first time, Colab asks to connect GitHub and Google Drive). The notebook
+takes the request and trains into Drive, so a disconnect loses nothing: run the cells again and
+it resumes. This needs **Google Drive for desktop** on the Mac, signed in with the same Google
+account: through it the app sees the run like any other (progress, Pause, which reaches Colab
+through Drive, Resume, which asks Colab again, the report), and a run that publishes gives the
+Trained opponent its network. The notebook clones the private repository with a read-only GitHub
+token kept in Colab's Secrets; it can also be run on its own, with the settings in its third cell.
+
+**Kaggle.** Kaggle's command-line tool can do everything, so a Kaggle run needs nothing after
+**Start on Kaggle**. `scripts/kaggle_run.py`, started in the background, uploads the code and the
+run so far as a private dataset, starts a private script on a Kaggle GPU, checks it every minute
+and downloads the finished run into `runs/`; restarting it (Resume, or after the Mac restarts)
+follows the same session instead of starting another. Kaggle sessions stop at 12 hours, so the
+script pauses the run after the generation in progress at 11; Resume continues it in a new
+session. Kaggle runs report their progress when they come home, not live, and stop from their page
+on Kaggle. To connect, create a token on kaggle.com (Settings, API, Generate New Token) and give
+it with your username in New run; it is checked with Kaggle and kept in `~/.kaggle/access_token`,
+readable by you only. Install the tool with `pip install -e ".[cloud]"`.
 
 **Playing the trained agent.** In the app choose **Trained** as the opponent (or for either side
 in Computers mode) and a level:
@@ -544,6 +568,7 @@ csf407-fable-chaturanga-zero/
 │   ├── training.py          # the generation loop: self-play, train, evaluate, checkpoint, pause, resume
 │   ├── endgames.py          # random reduced-material starting positions for self-play
 │   ├── analysis.py          # a run's report: findings, material probe, strength check
+│   ├── cloud.py             # training on Colab (through Google Drive) and Kaggle (through its tool)
 │   └── agents.py            # players: random, greedy (2-ply material), MCTS, trained (four levels)
 ├── chaturanga_server/       # FastAPI app used by the web client (stateless)
 │   ├── app.py               # game and computer-move endpoints
@@ -565,7 +590,8 @@ csf407-fable-chaturanga-zero/
 │   ├── train.py             # Milestone 3: self-play training
 │   ├── selfplay.py          # self-play games for a teammate's run
 │   ├── plot_training.py     # a run's loss and evaluation curves
-│   └── report.py            # a run's report in the terminal (and the app's strength check)
+│   ├── report.py            # a run's report in the terminal (and the app's strength check)
+│   └── kaggle_run.py        # a run on Kaggle: upload, start, follow, bring home
 ├── notebooks/
 │   └── train_colab.ipynb    # the same training on Google Colab, saved to Drive
 ├── docs/
