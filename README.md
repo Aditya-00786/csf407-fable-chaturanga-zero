@@ -408,7 +408,7 @@ restarted) resumes the same way. To train beyond the planned generations, add `-
 with the new total (or use **Train further** on a finished run); nothing caps it.
 
 **Why every self-play move is sampled.** AlphaZero sampled only its opening moves and then
-played the most visited move. Our first run did the same (it is kept as `runs/v1-greedy-after-30`),
+played the most visited move. Our first attempt did the same,
 and by generation 3 both sides had learned to shuffle pieces until a position repeated: 34 of 50
 self-play games ended in threefold repetition, the value head still could not tell a missing pair
 of Rathas from the starting position, and almost nothing decisive was left to learn from.
