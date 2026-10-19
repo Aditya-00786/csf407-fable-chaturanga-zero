@@ -359,12 +359,15 @@ function Charts({ detail }: { detail: RunDetail }) {
     { label: 'Training batches', color: 'var(--chart-1)', kind: 'line' as const },
     { label: 'New games, before training on them', color: 'var(--chart-2)', kind: 'dots' as const },
   ]
-  const evalSeries: Series[] = [
+  const allEvalSeries: Series[] = [
     { id: 'greedy', label: 'vs Greedy', color: 'var(--chart-1)', kind: 'line',
       points: gens.filter((g) => g.eval.greedy).map((g) => ({ x: g.generation, y: g.eval.greedy.score * 100 })) },
     { id: 'previous', label: 'vs previous generation', color: 'var(--chart-2)', kind: 'line',
       points: gens.filter((g) => g.eval.previous).map((g) => ({ x: g.generation, y: g.eval.previous.score * 100 })) },
+    { id: 'random', label: 'vs Random', color: 'var(--chart-3)', kind: 'line',
+      points: gens.filter((g) => g.eval.random).map((g) => ({ x: g.generation, y: g.eval.random.score * 100 })) },
   ]
+  const evalSeries = allEvalSeries.filter((series) => series.points.length > 0) // runs before Random was tested
   const decisive: Series[] = [{
     id: 'decisive', label: 'decisive', color: 'var(--chart-1)', kind: 'line',
     points: gens.filter((g) => g.games).map((g) => ({ x: g.generation, y: (1 - (g.draws ?? 0) / g.games!) * 100 })),
@@ -391,9 +394,10 @@ function Charts({ detail }: { detail: RunDetail }) {
         <div className="mt-2"><Legend items={[
           { label: 'vs Greedy', color: 'var(--chart-1)', kind: 'line' },
           { label: 'vs previous generation', color: 'var(--chart-2)', kind: 'line' },
+          ...(gens.some((g) => g.eval.random) ? [{ label: 'vs Random', color: 'var(--chart-3)', kind: 'line' as const }] : []),
         ]} /></div>
       </ChartCard>
-      <ChartCard title="Decisive self-play games" note="Games won by checkmate, bare king or stalemate rather than drawn. Decisive games teach the value head the most.">
+      <ChartCard title="Decisive self-play games" note="Games from the opening won by checkmate, bare king or stalemate rather than drawn (endgame starts are counted in the table). Decisive games teach the value head the most.">
         <LineChart label="Share of decisive self-play games by generation" series={decisive} xLabel="generation" integerX yMin={0} yMax={100} yFormat={fmtPct} />
       </ChartCard>
     </div>
@@ -406,8 +410,9 @@ function WatchButton({ run, row }: { run: string; row: GenerationRow }) {
   const open = async () => {
     setBusy(true)
     try {
-      // The shortest decisive game has the most happening per move; fall back to the first game.
-      const { games } = await api.selfPlayGames(run, row.generation)
+      // A game from the opening (the Play board starts there); the shortest decisive one has the
+      // most happening per move, else the first.
+      const games = (await api.selfPlayGames(run, row.generation)).games.filter((g) => !g.endgame)
       const decisive = games.filter((g) => g.winner !== null).sort((a, b) => a.plies - b.plies)
       const pick = decisive[0] ?? games[0]
       if (!pick) return
@@ -436,10 +441,10 @@ function GenerationTable({ run, detail }: { run: string; detail: RunDetail }) {
     <section aria-labelledby="gens-title" className="rounded-2xl border border-line bg-surface p-5">
       <h3 id="gens-title" className="font-serif text-[18px] font-semibold text-ink">Generations</h3>
       <div className="mt-3 overflow-x-auto">
-        <table className="w-full min-w-[760px] border-collapse text-left text-[13px] tabular-nums">
+        <table className="w-full min-w-[960px] border-collapse text-left text-[13px] tabular-nums">
           <thead>
             <tr className="border-b border-line-strong text-[12px] text-ink-faint">
-              {['Gen', 'Self-play W / D / B', 'Mean length', 'Loss', 'Loss on new games', 'vs previous', 'vs Greedy', ''].map((h) => (
+              {['Gen', 'From the opening W / D / B', 'Mean length', 'Endgame starts', 'Loss', 'Loss on new games', 'vs previous', 'vs Greedy', 'vs Random', ''].map((h) => (
                 <th key={h} scope="col" className="py-2 pr-4 font-medium">{h}</th>
               ))}
             </tr>
@@ -453,10 +458,14 @@ function GenerationTable({ run, detail }: { run: string; detail: RunDetail }) {
                 </th>
                 <td className="py-2 pr-4 text-ink-muted">{g.games ? `${g.white_wins} / ${g.draws} / ${g.black_wins}` : '–'}</td>
                 <td className="py-2 pr-4 text-ink-muted">{g.mean_plies ? `${Math.round(g.mean_plies)} plies` : '–'}</td>
+                <td className="py-2 pr-4 text-ink-muted">
+                  {g.endgames ? `${g.endgames.games - g.endgames.draws} of ${g.endgames.games} decisive` : '–'}
+                </td>
                 <td className="py-2 pr-4 text-ink-muted">{g.train_loss?.loss?.toFixed(2) ?? '–'}</td>
                 <td className="py-2 pr-4 text-ink-muted">{g.held_out ? g.held_out.loss.toFixed(2) : '–'}</td>
                 <td className="py-2 pr-4 text-ink-muted">{score(g, 'previous')}</td>
                 <td className="py-2 pr-4 text-ink-muted">{score(g, 'greedy')}</td>
+                <td className="py-2 pr-4 text-ink-muted">{score(g, 'random')}</td>
                 <td className="py-1.5 text-right"><WatchButton run={run} row={g} /></td>
               </tr>
             ))}

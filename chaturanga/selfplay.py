@@ -12,6 +12,7 @@ record is small, readable, and can be shared: a teammate's self-play games are j
 
 import gzip
 import json
+import random
 from dataclasses import asdict, dataclass, field
 from typing import Callable, Iterable, Iterator, Optional
 
@@ -19,6 +20,7 @@ import numpy as np
 
 from .config import DEFAULT_RULES, RulesConfig
 from .encoding import ACTION_SIZE, encode_state, move_to_action
+from .endgames import random_endgame
 from .game import GameState, move_to_str, parse_move
 from .mcts import MCTS, MCTSConfig, Evaluator
 
@@ -30,6 +32,8 @@ class SelfPlayConfig:
     concurrent: int = 8          # games played side by side, sharing batched evaluations
     noise: bool = True           # Dirichlet noise on the root priors, so self-play explores
     late_temperature: float = 0.0  # ...and after them at this temperature (0: always the most visited move)
+    endgame_fraction: float = 0.0  # share of games started from a random reduced-material position
+    endgame_max_pieces: int = 5    # pieces per side besides the Raja in those positions (at least 1)
 
 
 @dataclass
@@ -43,6 +47,7 @@ class GameRecord:
     contributor: str = ""
     seed: Optional[int] = None
     rules: dict = field(default_factory=lambda: asdict(DEFAULT_RULES))
+    start_fen: Optional[str] = None  # where the game began, if not the standard setup (an endgame start)
 
     @property
     def plies(self) -> int:
@@ -60,12 +65,25 @@ class GameRecord:
 
 # ---------------------------------------------------------------------- playing
 
+def start_position(seed: int, config: SelfPlayConfig, rules: RulesConfig = DEFAULT_RULES) -> Optional[GameState]:
+    """The endgame start for the game with this seed, or None for the standard setup. Decided by the
+    seed alone, so a replayed or resumed game starts where it did before."""
+    if config.endgame_fraction <= 0:
+        return None
+    rng = random.Random(seed * 2_654_435_761 + 97)
+    if rng.random() >= config.endgame_fraction:
+        return None
+    return random_endgame(rng, config.endgame_max_pieces, rules)
+
+
 class _Game:
-    def __init__(self, index: int, evaluator: Evaluator, mcts_config: MCTSConfig, seed: int, rules: RulesConfig):
+    def __init__(self, index: int, evaluator: Evaluator, mcts_config: MCTSConfig, seed: int, rules: RulesConfig,
+                 start: Optional[GameState] = None):
         self.index = index
         self.seed = seed
         self.mcts = MCTS(evaluator, mcts_config, seed=seed)
-        self.state = GameState.initial(rules)
+        self.state = start or GameState.initial(rules)
+        self.start_fen = start.to_fen() if start else None
         self.moves: list[str] = []
         self.visits: list[dict[str, int]] = []
         self.root = None
@@ -88,7 +106,7 @@ def play_games(evaluator: Evaluator, n_games: int, config: SelfPlayConfig = Self
     while waiting or active:
         while waiting and len(active) < max(1, config.concurrent):
             s = waiting.pop(0)
-            active.append(_Game(s, evaluator, mcts_config, s, rules))
+            active.append(_Game(s, evaluator, mcts_config, s, rules, start_position(s, config, rules)))
 
         for g in active:
             g.root = g.mcts.prepare(g.state, add_noise=config.noise)
@@ -110,7 +128,7 @@ def play_games(evaluator: Evaluator, n_games: int, config: SelfPlayConfig = Self
             if g.state.is_terminal():
                 out = g.state.outcome()
                 record = GameRecord(g.moves, g.visits, out.winner, out.reason, generation, contributor,
-                                    g.seed, asdict(rules))
+                                    g.seed, asdict(rules), g.start_fen)
                 done.append(record)
                 if on_game:
                     on_game(record)
@@ -130,7 +148,7 @@ def examples(record: GameRecord) -> tuple[np.ndarray, list[np.ndarray], list[np.
     shares (the policy target, sparse), and the result for the side to move (the value target).
     Raises ValueError if the record is not a legal game under its rules."""
     rules = RulesConfig(**record.rules)
-    state = GameState.initial(rules)
+    state = GameState.from_fen(record.start_fen, rules) if record.start_fen else GameState.initial(rules)
     if len(record.visits) != len(record.moves):
         raise ValueError("visits and moves differ in length")
     planes, actions, shares, sides = [], [], [], []
@@ -213,14 +231,25 @@ def read_games_salvaging(path: str) -> list[GameRecord]:
 
 
 def summarise(records: list[GameRecord]) -> dict:
-    """Results, endings and lengths of a set of games, for the training log."""
-    n = len(records)
-    white = sum(r.winner == 1 for r in records)
-    black = sum(r.winner == -1 for r in records)
-    reasons: dict[str, int] = {}
-    for r in records:
-        reasons[r.reason] = reasons.get(r.reason, 0) + 1
-    plies = [r.plies for r in records] or [0]
-    return {"games": n, "white_wins": white, "black_wins": black, "draws": n - white - black,
-            "reasons": reasons, "mean_plies": float(np.mean(plies)), "positions": int(sum(plies))}
+    """Results, endings and lengths of a set of games, for the training log. Games from the
+    standard setup are summarised on their own (so runs with and without endgame starts compare);
+    endgame starts get a line of their own, and `positions` counts every game."""
+    full = [r for r in records if not r.start_fen]
+    ends = [r for r in records if r.start_fen]
 
+    def tally(rs: list[GameRecord]) -> dict:
+        n = len(rs)
+        white = sum(r.winner == 1 for r in rs)
+        black = sum(r.winner == -1 for r in rs)
+        reasons: dict[str, int] = {}
+        for r in rs:
+            reasons[r.reason] = reasons.get(r.reason, 0) + 1
+        plies = [r.plies for r in rs] or [0]
+        return {"games": n, "white_wins": white, "black_wins": black, "draws": n - white - black,
+                "reasons": reasons, "mean_plies": float(np.mean(plies))}
+
+    out = tally(full)
+    out["positions"] = int(sum(r.plies for r in records))
+    if ends:
+        out["endgames"] = tally(ends)
+    return out

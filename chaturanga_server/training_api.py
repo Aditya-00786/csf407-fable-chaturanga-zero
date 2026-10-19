@@ -170,7 +170,8 @@ def _games_file(path: Path, generation: int) -> Path:
 @router.get("/runs/{name}/games/{generation}")
 def list_games(name: str, generation: int):
     file = _games_file(_run_dir(name), generation)
-    return {"games": [{"index": i, "winner": r.winner, "reason": r.reason, "plies": r.plies, "seed": r.seed}
+    return {"games": [{"index": i, "winner": r.winner, "reason": r.reason, "plies": r.plies, "seed": r.seed,
+                       "endgame": bool(r.start_fen)}
                       for i, r in enumerate(read_games(str(file)))]}
 
 
@@ -180,7 +181,7 @@ def get_game(name: str, generation: int, index: int):
     for i, r in enumerate(read_games(str(file))):
         if i == index:
             return {"index": i, "generation": generation, "moves": r.moves, "winner": r.winner,
-                    "reason": r.reason, "plies": r.plies, "network": r.generation}
+                    "reason": r.reason, "plies": r.plies, "network": r.generation, "start_fen": r.start_fen}
     raise HTTPException(404, f"generation {generation} has no game {index}")
 
 

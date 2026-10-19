@@ -194,6 +194,8 @@ export interface GenerationRow {
   contributed?: Record<string, number>
   buffer_positions?: number
   held_out?: { loss: number; value_loss: number; policy_loss: number; value_baseline?: number; step?: number }
+  /** Self-play games started from a random endgame (the fields above count games from the opening). */
+  endgames?: { games: number; white_wins: number; black_wins: number; draws: number; mean_plies: number }
   steps?: number
   eval: Record<string, EvalResult>
   best?: number
@@ -214,6 +216,8 @@ export interface SelfPlayGameInfo {
   winner: Color | null
   reason: OutcomeReason
   plies: number
+  /** Started from a random endgame rather than the standard setup. */
+  endgame: boolean
 }
 
 export interface SelfPlayGame extends SelfPlayGameInfo {

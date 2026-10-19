@@ -63,7 +63,7 @@ the same commit that completes the work.
 - **Researched ruleset.** Every rule is backed by historical sources, and contested rules are
   settled by counting references. See [docs/RULES.md](docs/RULES.md).
 - **Verified rules engine.** A cross-check against an independent reference move generator and a
-  10,000-game random-play stress test; 189 tests in all.
+  10,000-game random-play stress test; 192 tests in all.
 - **AlphaZero search.** PUCT Monte Carlo Tree Search guided by a residual policy-value network
   (6 blocks × 64 filters, about 1M parameters), with exact values for finished games, root noise,
   temperature and tree reuse for self-play. Planted bugs in the search are all caught by the tests.
@@ -351,7 +351,9 @@ accident. One run trains at a time: starting or resuming a second one asks you t
    uses 50 simulations with Dirichlet noise at the root, and the move played is sampled in
    proportion to the visit counts (see below for why not the most visited one). Every position
    becomes a training example: the board, the search's visit shares (the policy target) and, once
-   the game ends, the result for the side to move (the value target).
+   the game ends, the result for the side to move (the value target). 30% of the games are
+   **endgame starts**: they begin from a random legal position where each side has its Raja and
+   1 to 5 of its own pieces (see below).
 2. **Teammates' games.** Game files waiting in `runs/<run>/incoming/` are replayed move by move and
    added if every move and visit count is legal under our rules; anything else is set aside in
    `games/rejected/`.
@@ -360,12 +362,14 @@ accident. One run trains at a time: starting or resuming a second one asks you t
    policy's cross-entropy against the visit shares, with weight decay in the AdamW optimiser. The
    number of steps is set so each new position is sampled about four times (at most 300 steps):
    more passes over a few games make the value head memorise which game a position came from.
-4. **Evaluation.** The new network plays 20 games against the previous generation and 20 against
-   Greedy, without noise (sampling only its first 8 plies, so games differ).
+4. **Evaluation.** The new network plays 20 games each against the previous generation, Greedy and
+   Random, without noise; it samples its first 16 plies in proportion to visits so the games
+   differ.
 
-Self-play always uses the newest network, as AlphaZero does. The **best** network is the one that
-has scored highest against Greedy (later generations win ties). It is copied to
-`checkpoints/best.pt`, where the app's Trained opponent picks it up without a restart.
+Self-play always uses the newest network, as AlphaZero does. The **best** network is the one with
+the highest average score against Greedy and Random (40 games, so a few lucky draws do not decide
+it; later generations win ties). It is copied to `checkpoints/best.pt`, where the app's Trained
+opponent picks it up without a restart.
 
 **What a run keeps** (in `runs/<run>/`, git-ignored)
 
@@ -420,9 +424,37 @@ The policy target is the same visit distribution either way; only the games beco
 and more of them are won.
 
 **Measuring honestly.** A network can lower its training loss by memorising games. So before each
-generation trains on its new self-play games, the loss on those unseen games is logged too, and
-the value loss there is compared with the score of predicting a draw everywhere. The Training page
-and `plot_training.py` show both.
+generation trains on its new self-play games, the loss on those unseen games (from the opening) is
+logged too, and the value loss there is compared with the score of predicting a draw everywhere.
+The Training page and `plot_training.py` show both.
+
+**The first full run, and what it taught us.** Run `main` (20 generations, 1,000 self-play games
+from the opening, about 2 hours on an M1 with two pauses) finished with the pipeline working and
+the agent no stronger:
+
+| | Untrained | Generation 20 |
+|---|:-:|:-:|
+| Policy loss on unseen games | 8.32 | 2.50 (floor: 1.93) |
+| Value loss on unseen games, vs predicting a draw | 0.49 vs 0.47 | 0.40 vs 0.33 |
+| vs Random, 20 games at 50 simulations | 11 W / 9 D / 0 L (78%) | 1 W / 19 D / 0 L (52%) |
+| vs Greedy, 20 games | 0 / 0 / 20 (0%) | 0 / 1 / 19 (2%) |
+
+The policy head learned to predict the search's moves, and generalised. The value head did not
+learn at all: on unseen games it was worse than predicting a draw in every generation, and at
+generation 20 it rated a side missing both Rathas the same as the starting position. With a value
+that says "draw" everywhere, the sharper policy only narrows a search that has nothing to aim for,
+which is why generation 20 converts fewer games against Random than the untrained network did.
+The cause is the data: from the opening, games run about 250 plies and only about 40% are
+decided, so about 400 noisy results had to teach the value of every position.
+
+Two changes followed. **Endgame starts** (30% of self-play games, from random positions with a
+Raja and 1 to 5 pieces a side) give short, mostly decided games whose uneven material shows what
+pieces are worth, still from the rules alone. **Better testing**: successive generations drew
+18 to 20 of 20 games by repetition, which measured nothing, so test games now sample 16 opening
+plies instead of 8, Random joins the opponents, and the best network is chosen on 40 games
+against Greedy and Random rather than 20 against Greedy. Two further options are kept in reserve:
+training the value on the average of the result and the search's own estimate, and scoring
+capped games by material (which would add hand-written knowledge).
 
 **Team self-play.** Self-play is the slow part, and it parallelises across people as well as
 cores. Whoever runs the training shares a checkpoint (`runs/<run>/checkpoints/gen_NNNN.pt`);

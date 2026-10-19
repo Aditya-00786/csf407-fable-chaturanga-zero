@@ -75,7 +75,7 @@ def test_a_newly_published_network_is_picked_up(trained_network):
 @pytest.fixture(scope="module")
 def run_root(tmp_path_factory):
     root = tmp_path_factory.mktemp("runs")
-    cfg = TrainConfig(generations=1, games_per_generation=2, simulations=4, concurrent=2, steps_per_generation=12,
+    cfg = TrainConfig(generations=1, games_per_generation=2, simulations=4, concurrent=2, steps_per_generation=12, endgame_fraction=0,
                       batch_size=16, eval_games=2, eval_opponents=("previous",), blocks=1, channels=16)
     TrainingRun(str(root / "demo"), cfg, workers=0, device=torch.device("cpu"), log=lambda *_: None).run()
     return root

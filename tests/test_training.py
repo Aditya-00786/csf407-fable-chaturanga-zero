@@ -132,7 +132,7 @@ def test_training_fits_a_fixed_buffer(games):
 
 
 def test_training_run_end_to_end_and_resume(tmp_path, games):
-    cfg = TrainConfig(generations=1, games_per_generation=2, simulations=4, concurrent=2, steps_per_generation=5,
+    cfg = TrainConfig(generations=1, games_per_generation=2, simulations=4, concurrent=2, steps_per_generation=5, endgame_fraction=0,
                       batch_size=16, eval_games=2, eval_opponents=("previous",), blocks=1, channels=16)
     run_dir = tmp_path / "runs" / "t"
     publish = tmp_path / "checkpoints" / "best.pt"
@@ -197,7 +197,8 @@ def test_network_evaluator_drives_self_play():
 from chaturanga.selfplay import read_games as _read  # noqa: E402
 from chaturanga.training import pending_pause, request_pause  # noqa: E402
 
-PAUSE_CFG = TrainConfig(generations=1, games_per_generation=5, simulations=4, concurrent=1, steps_per_generation=30,
+# Full games from the opening (no endgame starts), so pauses land part way through self-play.
+PAUSE_CFG = TrainConfig(generations=1, games_per_generation=5, simulations=4, concurrent=1, steps_per_generation=30, endgame_fraction=0,
                         sample_reuse=0, batch_size=16, eval_games=2, eval_opponents=("previous",), blocks=1, channels=16)
 
 
@@ -312,14 +313,15 @@ def test_ctrl_c_pauses_like_now(tmp_path):
 
 def test_pause_now_stops_worker_processes_and_keeps_their_games(tmp_path):
     d = tmp_path / "r"
-    cfg = replace(PAUSE_CFG, games_per_generation=4)
+    # Enough games that the pause lands well before they are all played, however fast the machine.
+    cfg = replace(PAUSE_CFG, games_per_generation=12)
     status = _run(d, cfg, workers=2, when="now",
                   condition=lambda s: s.get("state") == "selfplay" and s.get("games_done", 0) >= 1)
     assert status["state"] == "paused"
     kept = {r.seed for f in (d / "games").glob("gen_0001.partial.*.jsonl.gz") for r in _read(str(f))}
-    assert 1 <= len(kept) < 4
+    assert 1 <= len(kept) < 12
     assert _run(d, cfg, workers=2)["state"] == "finished"
-    assert len({r.seed for r in _read(str(d / "games" / "gen_0001.jsonl.gz"))}) == 4
+    assert len({r.seed for r in _read(str(d / "games" / "gen_0001.jsonl.gz"))}) == 12
 
 
 def test_command_line_pause(tmp_path):
@@ -334,3 +336,45 @@ def test_command_line_pause(tmp_path):
     subprocess.run([sys.executable, str(script), "--runs-dir", str(tmp_path), "--run", "r", "--cancel-pause"], check=True,
                    capture_output=True)
     assert pending_pause(tmp_path / "r") is None
+
+
+# ---------------------------------------------------------------------- endgame starts
+
+import random as _random  # noqa: E402
+
+from chaturanga.endgames import random_endgame  # noqa: E402
+from chaturanga.selfplay import start_position, summarise  # noqa: E402
+from chaturanga.tables import is_attacked  # noqa: E402
+
+
+def test_endgame_starts_are_legal_unfinished_positions():
+    rng = _random.Random(0)
+    for _ in range(300):
+        s = random_endgame(rng, max_pieces=5)
+        assert s.outcome() is None and s.legal_moves()
+        for colour in (1, -1):
+            pieces = [p for p in s.board if p * colour > 0]
+            assert pieces.count(6 * colour) == 1 and 2 <= len(pieces) <= 6  # the Raja and 1 to 5 more
+        assert not any(abs(p) == 1 and not 8 <= sq < 56 for sq, p in enumerate(s.board))  # Padatis off ranks 1 and 8
+        assert not is_attacked(s.board, s.king_square(-s.side), s.side)  # the side not to move is not in check
+
+
+def test_endgame_starts_follow_the_seed_and_the_fraction():
+    cfg = SelfPlayConfig(endgame_fraction=0.3)
+    starts = [start_position(seed, cfg) for seed in range(1000)]
+    assert 0.25 < sum(s is not None for s in starts) / 1000 < 0.35
+    assert [s and s.to_fen() for s in starts[:50]] == [s and s.to_fen() for s in (start_position(i, cfg) for i in range(50))]
+    assert start_position(1, SelfPlayConfig()) is None  # off unless asked for
+
+
+def test_endgame_games_record_and_replay_their_start():
+    cfg = replace(FAST, endgame_fraction=1.0, endgame_max_pieces=2)
+    games = play_games(UniformEvaluator(), 4, cfg, seed=5)
+    for g in games:
+        assert g.start_fen and examples(g)[0].shape[0] == g.plies
+        moved = GameRecord.from_json(json.loads(json.dumps(g.to_json())))
+        moved.start_fen = None  # the same moves from the standard setup are not this game
+        with pytest.raises(ValueError):
+            examples(moved)
+    summary = summarise(games)
+    assert summary["games"] == 0 and summary["endgames"]["games"] == 4 and summary["positions"] == sum(g.plies for g in games)

@@ -5,11 +5,11 @@ Each generation g:
   2. teammates' games waiting in `incoming/` are checked and added (see `scripts/selfplay.py`);
   3. training: batches from the replay buffer (enough to sample each new position about
      `sample_reuse` times, at most `steps_per_generation`), giving network g;
-  4. evaluation: network g plays network g-1 and the Greedy baseline.
+  4. evaluation: network g plays network g-1 and the Greedy and Random baselines.
 
 Self-play always uses the newest network, as in AlphaZero (no gating). The best network, the one
-that scores highest against Greedy (later generations win ties), is copied to `best.pt` and,
-when asked, published where the web app picks it up.
+that scores highest against Greedy and Random together (later generations win ties), is copied
+to `best.pt` and, when asked, published where the web app picks it up.
 
 Everything a run produces lives in its directory, so a run stops and resumes at any point:
 
@@ -68,6 +68,11 @@ class TrainConfig:
     # generation 3 network, against 2 of 28 at 1), and draws teach the value head nothing.
     temperature_plies: int = 30
     late_temperature: float = 1.0
+    # A share of self-play games start from a random position with the Rajas and a few pieces each
+    # (see endgames.py): short, mostly decisive games whose uneven material shows what pieces are
+    # worth. From the opening alone, the value head of the first run learned nothing in 1,000 games.
+    endgame_fraction: float = 0.3
+    endgame_max_pieces: int = 5
     concurrent: int = 8               # self-play games per process, sharing batched evaluations
     buffer_positions: int = 60_000    # about the last six generations
     batch_size: int = 256
@@ -79,7 +84,10 @@ class TrainConfig:
     learning_rate: float = 1e-3
     weight_decay: float = 1e-4
     eval_games: int = 20              # per opponent after each generation; 0 skips evaluation
-    eval_opponents: tuple = ("previous", "greedy")
+    eval_opponents: tuple = ("previous", "greedy", "random")
+    # Test games sample their first moves in proportion to visits so they differ; with only 8 such
+    # plies, games between successive generations nearly all ended in repetition.
+    eval_opening_plies: int = 16
     blocks: int = NetConfig.blocks
     channels: int = NetConfig.channels
     seed: int = 0
@@ -91,7 +99,8 @@ class TrainConfig:
     @property
     def selfplay_config(self) -> SelfPlayConfig:
         return SelfPlayConfig(simulations=self.simulations, temperature_plies=self.temperature_plies,
-                              concurrent=self.concurrent, late_temperature=self.late_temperature)
+                              concurrent=self.concurrent, late_temperature=self.late_temperature,
+                              endgame_fraction=self.endgame_fraction, endgame_max_pieces=self.endgame_max_pieces)
 
     def to_json(self) -> dict:
         d = asdict(self)
@@ -201,20 +210,21 @@ class SearchPlayer:
         return self.mcts.choose_move(root, 1.0 if state.ply < self.opening_plies else 0.0)
 
 
-def _opponent(spec: str, seed: int, simulations: int):
+def _opponent(spec: str, seed: int, simulations: int, opening_plies: int):
     if spec == "greedy":
         return GreedyAgent(seed)
     if spec == "random":
         return RandomAgent(seed)
-    return SearchPlayer(_evaluator_for(spec), simulations, seed)  # a checkpoint path
+    return SearchPlayer(_evaluator_for(spec), simulations, seed, opening_plies)  # a checkpoint path
 
 
-def match_task(checkpoint: str, opponent: str, game_indices: list[int], simulations: int, seed: int) -> list[dict]:
+def match_task(checkpoint: str, opponent: str, game_indices: list[int], simulations: int, seed: int,
+               opening_plies: int = 8) -> list[dict]:
     """Games between a checkpoint and an opponent; the checkpoint plays White in even-numbered games."""
     out = []
     for i in game_indices:
-        player = SearchPlayer(_evaluator_for(checkpoint), simulations, seed + i)
-        other = _opponent(opponent, seed + 7919 * (i + 1), simulations)
+        player = SearchPlayer(_evaluator_for(checkpoint), simulations, seed + i, opening_plies)
+        other = _opponent(opponent, seed + 7919 * (i + 1), simulations, opening_plies)
         colour = WHITE if i % 2 == 0 else -WHITE
         state = GameState.initial()
         while not state.is_terminal():
@@ -583,9 +593,10 @@ class TrainingRun:
             if pool is None:
                 for i in range(n):
                     self._check_pause("now")
-                    keep(match_task(me, opponent, [i], self.config.simulations, seed))
+                    keep(match_task(me, opponent, [i], self.config.simulations, seed, self.config.eval_opening_plies))
             else:
-                self._gather([pool.apply_async(match_task, (me, opponent, [i], self.config.simulations, seed))
+                self._gather([pool.apply_async(match_task, (me, opponent, [i], self.config.simulations, seed,
+                                                            self.config.eval_opening_plies))
                               for i in range(n)], keep)
             wins = sum(g["score"] == 1 for g in games)
             draws = sum(g["score"] == 0.5 for g in games)
@@ -600,9 +611,13 @@ class TrainingRun:
         return results
 
     def _update_best(self, generation: int, evaluation: dict) -> None:
-        score = evaluation.get("greedy", {}).get("score", 0.0) if evaluation else 0.0
-        if not evaluation or "greedy" not in evaluation or score >= self.best_score:
-            self.best, self.best_score = generation, score
+        """The best network scores highest against the fixed baselines (Greedy and Random, averaged:
+        40 games rather than 20, so a few lucky draws do not decide it); later generations win ties.
+        Without a baseline test, the newest network is the best."""
+        baselines = [evaluation[k]["score"] for k in ("greedy", "random") if k in (evaluation or {})]
+        score = sum(baselines) / len(baselines) if baselines else None
+        if score is None or score >= self.best_score:
+            self.best, self.best_score = generation, (score if score is not None else self.best_score)
         best_path = self.dir / "checkpoints" / "best.pt"
         shutil.copyfile(self.checkpoint(self.best), best_path)
         if self.publish:
@@ -653,16 +668,21 @@ class TrainingRun:
                     self.buffer.add(r)
                 summary = summarise(records)
                 contributed = self._take_incoming()
-                held_out = held_out_loss(self.net, records, self.device, seed=generation)
+                # Measured on games from the standard setup: the position the agent is for.
+                held_out = held_out_loss(self.net, [r for r in records if not r.start_fen] or records, self.device,
+                                         seed=generation)
                 t1 = time.perf_counter()
                 self.record("selfplay", generation=generation, seconds=round(t1 - t0, 1), **summary,
                             contributed=contributed["added"], rejected=contributed["rejected"], buffer_games=self.buffer.games,
                             buffer_positions=len(self.buffer))
                 self.record("held_out", generation=generation, step=self.step,
                             **{k: round(v, 5) for k, v in held_out.items()})
-                self.log(f"Generation {generation}: {summary['games']} games in {t1 - t0:.0f} s "
-                         f"(W {summary['white_wins']} / D {summary['draws']} / B {summary['black_wins']}, "
-                         f"{summary['mean_plies']:.0f} plies on average)")
+                ends = summary.get("endgames")
+                endgame_note = (f"; {ends['games']} endgame starts, {ends['games'] - ends['draws']} decisive, "
+                                f"{ends['mean_plies']:.0f} plies on average") if ends else ""
+                self.log(f"Generation {generation}: {len(records)} games in {t1 - t0:.0f} s; from the opening "
+                         f"W {summary['white_wins']} / D {summary['draws']} / B {summary['black_wins']}, "
+                         f"{summary['mean_plies']:.0f} plies on average{endgame_note}")
                 self._check_pause("phase", after="selfplay")
 
                 losses = self._train(generation, summary["positions"] + contributed["positions"])
