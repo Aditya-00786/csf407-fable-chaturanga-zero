@@ -5,9 +5,11 @@
  * background), and its charts as an image to download.
  */
 
-import { Check, Download, LoaderCircle, Minus, Play, X } from 'lucide-react'
+import { Check, Download, LoaderCircle, Minus, Play, RefreshCw, X } from 'lucide-react'
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { api, type RunReport as Report, type RunSummary, type StrengthCheck, type Verdict } from '../lib/api'
+import { api, type GenerationRow, type RunReport as Report, type RunSummary, type StrengthCheck, type Verdict } from '../lib/api'
+import { Legend, LineChart } from './LineChart'
+import { StackedBars, type StackKey } from './StackedBars'
 import { Button } from './ui'
 
 const pct = (v: number) => `${Math.round(v * 100)}%`
@@ -91,7 +93,7 @@ function Findings({ s }: { s: RunSummary }) {
   )
 }
 
-function Probe({ probe }: { probe: NonNullable<Report['probe']> }) {
+function Probe({ probe }: { probe: NonNullable<Report['report']>['probe'] }) {
   const final = probe.networks[probe.networks.length - 1]
   const sees = final.material_gap > 0.2
   return (
@@ -224,12 +226,60 @@ function Strength({ run, check, onStarted }: { run: string; check: StrengthCheck
   )
 }
 
-export function RunReport({ run, generations, finished }: { run: string; generations: number; finished: boolean }) {
-  const [report, setReport] = useState<Report | null>(null)
+// How self-play games end: decided endings in colour, draws in greys.
+const ENDINGS: StackKey[] = [
+  { id: 'bare_king', label: 'Bare king', color: 'var(--chart-1)' },
+  { id: 'checkmate', label: 'Checkmate', color: 'var(--chart-3)' },
+  { id: 'stalemate', label: 'Stalemate', color: 'var(--chart-2)' },
+  { id: 'repetition', label: 'Repetition', color: 'var(--ink-muted)' },
+  { id: 'no_progress', label: '70 quiet moves', color: 'var(--ink-faint)' },
+  { id: 'max_plies', label: '300 plies', color: 'var(--line-strong)' },
+]
+
+/** The report's own charts: how self-play games ended, and how long they were. */
+function ReportCharts({ gens }: { gens: GenerationRow[] }) {
+  const played = gens.filter((g) => g.games && g.reasons)
+  return (
+    <div>
+      <h3 className="font-serif text-[18px] font-semibold text-ink">Self-play over the run</h3>
+      <div className="mt-3 grid gap-4 lg:grid-cols-2">
+        <div className="min-w-0 rounded-xl border border-line bg-bg p-4">
+          <p className="text-[14px] font-semibold text-ink">How games from the opening end</p>
+          <p className="mt-0.5 mb-3 text-[12.5px] text-ink-muted">Coloured endings are decided; grey ones are draws.</p>
+          <StackedBars label="How self-play games from the opening ended, by generation" xLabel="generation" keys={ENDINGS}
+            bars={played.map((g) => ({
+              x: g.generation,
+              values: Object.fromEntries(Object.entries(g.reasons!).map(([k, n]) => [k, (100 * n) / g.games!])),
+            }))} />
+          <div className="mt-2"><Legend items={ENDINGS.map((k) => ({ label: k.label, color: k.color, kind: 'box' as const }))} /></div>
+        </div>
+        <div className="min-w-0 rounded-xl border border-line bg-bg p-4">
+          <p className="text-[14px] font-semibold text-ink">Game length</p>
+          <p className="mt-0.5 mb-3 text-[12.5px] text-ink-muted">Average plies per game from the opening; games are drawn at 300.</p>
+          <LineChart label="Average self-play game length by generation" xLabel="generation" integerX yMin={0} yMax={300}
+            yFormat={(v) => String(Math.round(v))}
+            series={[{ id: 'plies', label: 'plies', color: 'var(--chart-1)', kind: 'line',
+              points: played.filter((g) => g.mean_plies).map((g) => ({ x: g.generation, y: g.mean_plies! })) }]} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function made(when: string) {
+  const d = new Date(when)
+  return Number.isNaN(d.getTime()) ? when : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+}
+
+export function RunReport({ run, generations, finished, gens }: {
+  run: string; generations: number; finished: boolean; gens: GenerationRow[]
+}) {
+  const [data, setData] = useState<Report | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [making, setMaking] = useState(false)
   const load = useCallback(async () => {
     try {
-      setReport(await api.runReport(run))
+      setData(await api.runReport(run))
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.')
@@ -237,41 +287,87 @@ export function RunReport({ run, generations, finished }: { run: string; generat
   }, [run])
 
   useEffect(() => {
-    setReport(null)
+    setData(null)
     void load()
-  }, [load, generations])
+  }, [load])
 
   // While a strength check plays, follow its progress.
-  const playing = report?.strength?.state === 'running'
+  const playing = data?.strength?.state === 'running'
   useEffect(() => {
     if (!playing) return
     const id = setInterval(() => void load(), 2000)
     return () => clearInterval(id)
   }, [playing, load])
 
+  const make = async () => {
+    if (making) return
+    setMaking(true)
+    setError(null)
+    try {
+      setData(await api.makeReport(run))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong.')
+    } finally {
+      setMaking(false)
+    }
+  }
+
+  const report = data?.report ?? null
+  const stale = report !== null && report.generations < generations
   return (
     <section aria-labelledby="report-title" className="rounded-2xl border border-line bg-surface p-5 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 id="report-title" className="font-serif text-[22px] font-semibold text-ink">Run report</h2>
           <p className="mt-1 text-[13.5px] text-ink-muted">
-            {finished ? 'What the run learned' : `What the run has learned so far, after ${generations} generations`}, from what
-            it saved.
+            {report
+              ? `Made ${made(report.made)}, after ${report.generations} generation${report.generations === 1 ? '' : 's'}.`
+              : finished ? 'What the run learned, worked out from what it saved.'
+                : `What the run has learned so far, after ${generations} generations.`}
           </p>
         </div>
-        <a href={api.chartsUrl(run)} download={`${run}-training.png`}
-          className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-line-strong px-2.5 text-[13px] font-medium text-ink transition-colors duration-150 hover:border-ink-faint hover:bg-surface-2">
-          <Download size={14} aria-hidden />
-          Download charts
-        </a>
+        {report && (
+          <div className="flex shrink-0 items-center gap-2">
+            <Button size="sm" aria-busy={making} onClick={make}
+              icon={making ? <LoaderCircle size={14} className="animate-spin" /> : <RefreshCw size={14} />}>
+              {making ? 'Updating' : 'Update report'}
+            </Button>
+            <a href={api.chartsUrl(run)} download={`${run}-training.png`}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line-strong px-2.5 text-[13px] font-medium text-ink transition-colors duration-150 hover:border-ink-faint hover:bg-surface-2">
+              <Download size={14} aria-hidden />
+              Download charts
+            </a>
+          </div>
+        )}
       </div>
       {error && <p className="mt-4 text-[13px] text-danger">{error}</p>}
-      {!report && !error && <div className="mt-5 h-40 animate-pulse rounded-xl bg-bg" aria-busy="true" />}
+      {!data && !error && <div className="mt-5 h-24 animate-pulse rounded-xl bg-bg" aria-busy="true" />}
+      {data && !report && (
+        <div className="cz-swap mt-5 rounded-xl border border-dashed border-line-strong px-5 py-6">
+          <p className="max-w-[70ch] text-[13.5px] leading-relaxed text-ink-muted">
+            The report sums up what the run learned: whether its policy and value heads learned, whether the value sees
+            material, how its test scores moved, and charts of its self-play. It takes a few seconds; a strength check
+            can follow.
+          </p>
+          <div className="mt-4">
+            <Button variant="primary" size="sm" aria-busy={making} onClick={make}
+              icon={making ? <LoaderCircle size={14} className="animate-spin" /> : <Play size={14} />}>
+              {making ? 'Making the report' : 'Make report'}
+            </Button>
+          </div>
+        </div>
+      )}
       {report && (
-        <div className="cz-swap mt-5 space-y-7">
+        <div key={report.made} className="cz-swap mt-5 space-y-7">
+          {stale && (
+            <p className="text-[13px] text-ink-muted">
+              The run has {generations} generations now; update the report to include the latest.
+            </p>
+          )}
           <Findings s={report.summary} />
-          {report.probe && report.probe.networks.length > 0 && <Probe probe={report.probe} />}
-          <Strength run={run} check={report.strength} onStarted={() => void load()} />
+          {report.probe.networks.length > 0 && <Probe probe={report.probe} />}
+          <ReportCharts gens={gens} />
+          <Strength run={run} check={data!.strength} onStarted={() => void load()} />
         </div>
       )}
     </section>

@@ -8,7 +8,6 @@ import { Check, ChevronDown, LoaderCircle, Pause, Play, Plus, RefreshCw, Trash2,
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Legend, LineChart, type Series } from '../components/LineChart'
 import { RunReport } from '../components/RunReport'
-import { StackedBars, type StackKey } from '../components/StackedBars'
 import { Button, Collapse, Switch } from '../components/ui'
 import { api, ApiError, type GenerationRow, type PauseWhen, type RunDetail, type RunStatus } from '../lib/api'
 import { href } from '../lib/route'
@@ -25,6 +24,7 @@ const PHASE: Record<string, string> = {
   training: 'Training the network',
   evaluating: 'Testing the new network',
   generation_done: 'Generation finished',
+  reporting: 'Making the run report',
   finished: 'Finished',
   paused: 'Paused',
   stopped: 'Stopped',
@@ -33,15 +33,6 @@ const PHASE: Record<string, string> = {
 
 const pct = (v: number) => `${Math.round(v * 100)}%`
 
-// How self-play games end: decided endings in colour, draws in greys.
-const ENDINGS: StackKey[] = [
-  { id: 'bare_king', label: 'Bare king', color: 'var(--chart-1)' },
-  { id: 'checkmate', label: 'Checkmate', color: 'var(--chart-3)' },
-  { id: 'stalemate', label: 'Stalemate', color: 'var(--chart-2)' },
-  { id: 'repetition', label: 'Repetition', color: 'var(--ink-muted)' },
-  { id: 'no_progress', label: '70 quiet moves', color: 'var(--ink-faint)' },
-  { id: 'max_plies', label: '300 plies', color: 'var(--line-strong)' },
-]
 
 function ago(seconds: number | null) {
   if (seconds === null) return 'never'
@@ -163,7 +154,7 @@ function HeightTransition({ swapKey, children }: { swapKey: string; children: Re
   )
 }
 
-type ControlMode = 'idle' | 'pausing' | 'starting' | 'stopped' | 'finished'
+type ControlMode = 'idle' | 'pausing' | 'starting' | 'reporting' | 'stopped' | 'finished'
 
 function RunControls({ status, total, done, onChange }: {
   status: RunStatus; total: number; done: number; onChange: (s?: RunStatus) => void
@@ -188,7 +179,8 @@ function RunControls({ status, total, done, onChange }: {
   const name = status.name
   const finished = status.state === 'finished' && !status.live
   const mode: ControlMode = status.live
-    ? status.state === 'starting' ? 'starting' : status.pause_requested ? 'pausing' : 'idle'
+    ? status.state === 'starting' ? 'starting' : status.state === 'reporting' ? 'reporting'
+      : status.pause_requested ? 'pausing' : 'idle'
     : finished ? 'finished' : 'stopped'
   const target = Math.max(done + 1, total + more)
 
@@ -198,6 +190,13 @@ function RunControls({ status, total, done, onChange }: {
       <p className="flex items-center gap-2.5 text-[13.5px] text-ink" role="status">
         <Spinner />
         Starting the run: loading the network and its saved games.
+      </p>
+    )
+  } else if (mode === 'reporting') {
+    body = (
+      <p className="flex items-center gap-2.5 text-[13.5px] text-ink" role="status">
+        <Spinner />
+        Training is done; making the run report and its strength check.
       </p>
     )
   } else if (mode === 'pausing') {
@@ -412,20 +411,6 @@ function Charts({ detail }: { detail: RunDetail }) {
       <ChartCard title="Decisive self-play games" note="Games from the opening won by checkmate, bare king or stalemate rather than drawn (endgame starts are counted in the table). Decisive games teach the value head the most.">
         <LineChart label="Share of decisive self-play games by generation" series={decisive} xLabel="generation" integerX yMin={0} yMax={100} yFormat={fmtPct} />
       </ChartCard>
-      <ChartCard title="How self-play games end" note="Games from the opening, by how they ended. Coloured endings are decided; grey ones are draws.">
-        <StackedBars label="How self-play games from the opening ended, by generation" xLabel="generation" keys={ENDINGS}
-          bars={gens.filter((g) => g.games && g.reasons).map((g) => ({
-            x: g.generation,
-            values: Object.fromEntries(Object.entries(g.reasons!).map(([k, n]) => [k, (100 * n) / g.games!])),
-          }))} />
-        <div className="mt-2"><Legend items={ENDINGS.map((k) => ({ label: k.label, color: k.color, kind: 'box' as const }))} /></div>
-      </ChartCard>
-      <ChartCard title="Self-play game length" note="Average plies per game from the opening. Games are drawn at 300.">
-        <LineChart label="Average self-play game length by generation" xLabel="generation" integerX yMin={0} yMax={300}
-          yFormat={(v) => String(Math.round(v))}
-          series={[{ id: 'plies', label: 'plies', color: 'var(--chart-1)', kind: 'line',
-            points: gens.filter((g) => g.mean_plies).map((g) => ({ x: g.generation, y: g.mean_plies! })) }]} />
-      </ChartCard>
     </div>
   )
 }
@@ -562,6 +547,7 @@ function NewRun({ runs, first, secondsPerGame, onStarted, onCancel }: {
   useEffect(() => refreshTrained(), [refreshTrained])
   // A new run takes over the Trained opponent only if no other run has given it a network yet.
   const [publish, setPublish] = useState<boolean | null>(null)
+  const [autoReport, setAutoReport] = useState(false)
   const publishing = publish ?? trained === null
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -585,7 +571,7 @@ function NewRun({ runs, first, secondsPerGame, onStarted, onCancel }: {
     setError(null)
     try {
       await api.startRun({ name, generations, games_per_generation: games, simulations: sims, eval_games: evalGames,
-        publish: publishing })
+        publish: publishing, auto_report: autoReport })
       onStarted(name)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.')
@@ -627,14 +613,23 @@ function NewRun({ runs, first, secondsPerGame, onStarted, onCancel }: {
             hint="Against the generation before and Greedy." />
         </div>
       </Collapse>
-      <div className="mt-5 max-w-md">
-        <Switch label="Use its best network as the Trained opponent in Play" checked={publishing} onChange={setPublish} />
-        {trained && (
+      <div className="mt-5 max-w-md space-y-4">
+        <div>
+          <Switch label="Make the run report when it finishes" checked={autoReport} onChange={setAutoReport} />
           <p className="mt-1 text-[12.5px] leading-snug text-ink-faint">
-            {publishing ? `Replaces the network from the run “${trained.run ?? 'unknown'}” as it improves.`
-              : `The Trained opponent keeps the network from the run “${trained.run ?? 'unknown'}”.`}
+            {autoReport ? 'Includes a strength check against Random and Greedy: a few more minutes at the end.'
+              : 'Off: make it from the run’s report section when you want it.'}
           </p>
-        )}
+        </div>
+        <div>
+          <Switch label="Use its best network as the Trained opponent in Play" checked={publishing} onChange={setPublish} />
+          {trained && (
+            <p className="mt-1 text-[12.5px] leading-snug text-ink-faint">
+              {publishing ? `Replaces the network from the run “${trained.run ?? 'unknown'}” as it improves.`
+                : `The Trained opponent keeps the network from the run “${trained.run ?? 'unknown'}”.`}
+            </p>
+          )}
+        </div>
       </div>
       {live && (
         <p className="mt-5 text-[13.5px] leading-snug text-ink">
@@ -987,7 +982,7 @@ export function TrainingView() {
                 setTick((t) => t + 1)
               }} />
               {!detail.status.live && detail.generations.some((g) => g.best !== undefined) && (
-                <RunReport run={selected} finished={detail.status.state === 'finished'}
+                <RunReport run={selected} finished={detail.status.state === 'finished'} gens={detail.generations}
                   generations={detail.generations.filter((g) => g.best !== undefined).length} />
               )}
               <Charts detail={detail} />

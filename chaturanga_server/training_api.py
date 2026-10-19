@@ -29,7 +29,7 @@ from chaturanga.training import TrainConfig, pending_pause, request_pause
 
 router = APIRouter(prefix="/api/training")
 
-ACTIVE = {"starting", "selfplay", "training", "evaluating", "generation_done"}
+ACTIVE = {"starting", "selfplay", "training", "evaluating", "generation_done", "reporting"}
 # A run updates its status every few seconds; one silent for longer has stopped (closed, crashed).
 LIVE_WITHIN_SECONDS = 300
 MAX_LOSS_POINTS = 300
@@ -212,6 +212,7 @@ class StartRequest(BaseModel):
     simulations: int = Field(50, ge=2, le=2000)
     eval_games: int = Field(20, ge=0, le=200, description="Test games against each opponent; 0 skips testing")
     publish: bool = Field(True, description="Make this run's best network the app's Trained opponent")
+    auto_report: bool = Field(False, description="Make the run report as soon as the run finishes")
 
 
 _NEW_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$")
@@ -284,7 +285,7 @@ def start_run(req: StartRequest):
     if busy:
         raise HTTPException(409, f"The run {busy!r} is training. Pause it first: one run at a time keeps each fast.")
     config = TrainConfig(generations=req.generations, games_per_generation=req.games_per_generation,
-                         simulations=req.simulations, eval_games=req.eval_games)
+                         simulations=req.simulations, eval_games=req.eval_games, auto_report=req.auto_report)
     path.mkdir(parents=True)
     (path / "config.json").write_text(json.dumps(config.to_json(), indent=2))
     (path / "launch.json").write_text(json.dumps({"publish": req.publish}))
@@ -339,26 +340,25 @@ def _strength_status(path: Path) -> Optional[dict]:
 
 @router.get("/runs/{name}/report")
 def run_report(name: str):
-    """The run's summary (from its metrics), the material probe of its untrained, best and final
-    networks (cached until a network changes), and the strength check if one has been played."""
-    from chaturanga.analysis import run_summary, value_probe
+    """The run's saved report (None until one is made) and its strength check, if one was played.
+    Reading never makes a report: that waits for a request, or the run's auto_report."""
+    from chaturanga.analysis import read_report
 
     path = _run_dir(name)
-    probe = None
-    ckpts = sorted((path / "checkpoints").glob("gen_*.pt"))
-    if ckpts:
-        key = [str(ckpts[-1].stat().st_mtime_ns), len(ckpts)]
-        cache = path / "report" / "probe.json"
-        try:
-            cached = json.loads(cache.read_text())
-            probe = cached["probe"] if cached.get("key") == key else None
-        except (OSError, ValueError, KeyError):
-            probe = None
-        if probe is None:
-            probe = value_probe(path)
-            cache.parent.mkdir(exist_ok=True)
-            cache.write_text(json.dumps({"key": key, "probe": probe}))
-    return {"summary": run_summary(path), "probe": probe, "strength": _strength_status(path)}
+    return {"report": read_report(path), "strength": _strength_status(path)}
+
+
+@router.post("/runs/{name}/report")
+def make_run_report(name: str):
+    """Make (or remake) the report: findings, material probe and charts. A few seconds."""
+    from chaturanga.analysis import make_report
+
+    path = _run_dir(name)
+    if _status(path)["live"]:
+        raise HTTPException(409, f"The run {name!r} is training. Pause it or let it finish first.")
+    if not list((path / "checkpoints").glob("gen_*.pt")):
+        raise HTTPException(400, f"run {name!r} has no networks yet")
+    return {"report": make_report(path), "strength": _strength_status(path)}
 
 
 @router.post("/runs/{name}/report/strength", status_code=202)

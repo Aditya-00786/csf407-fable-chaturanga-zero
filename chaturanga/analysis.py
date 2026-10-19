@@ -1,6 +1,8 @@
 """A training run's report: what it learned, read from what the run saved.
 
-Three parts, each usable on its own (the app's Training page and scripts/report.py share them):
+A report is made on request (the Run report's button, scripts/report.py) or, if the run was
+started with auto_report, when it finishes; make_report saves it in report/report.json with the
+charts. Its parts, each usable on its own:
 
   run_summary(run_dir)       instant, from metrics.jsonl: did the policy learn, did the value beat
                              predicting a draw on unseen games, how the scores and self-play moved;
@@ -21,6 +23,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 STRENGTH_FILE = Path("report") / "strength.json"
+REPORT_FILE = Path("report") / "report.json"
 
 # Each pair differs by one side's material, with White to move; the second of each pair is the
 # first with colours of the missing pieces swapped, so a value that sees material rates them apart.
@@ -157,6 +160,42 @@ def value_probe(run_dir) -> dict:
         gap = sum(values[a] - values[b] for a, b in _IMBALANCES) / len(_IMBALANCES)
         networks.append({"label": label, "generation": generation, "values": values, "material_gap": gap})
     return {"positions": [name for name, _ in PROBES], "networks": networks}
+
+
+# ---------------------------------------------------------------------- the saved report
+
+def read_report(run_dir) -> Optional[dict]:
+    try:
+        return json.loads((Path(run_dir) / REPORT_FILE).read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def draw_charts(run_dir) -> Optional[Path]:
+    """The six-panel chart (scripts/plot_training.py) as runs/<run>/training.png, or None without
+    matplotlib."""
+    import subprocess
+    import sys
+
+    run_dir = Path(run_dir)
+    script = Path(__file__).resolve().parent.parent / "scripts" / "plot_training.py"
+    done = subprocess.run([sys.executable, str(script), "--run", run_dir.name, "--runs-dir", str(run_dir.parent)],
+                          capture_output=True, text=True, timeout=180)
+    return run_dir / "training.png" if done.returncode == 0 else None
+
+
+def make_report(run_dir) -> dict:
+    """Work out the findings and the material probe, draw the charts, and save the report."""
+    run_dir = Path(run_dir)
+    report = {"made": _now(), "summary": run_summary(run_dir), "probe": value_probe(run_dir),
+              "charts": draw_charts(run_dir) is not None}
+    report["generations"] = report["summary"]["generations"]
+    path = run_dir / REPORT_FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(report))
+    tmp.replace(path)
+    return report
 
 
 # ---------------------------------------------------------------------- the strength check

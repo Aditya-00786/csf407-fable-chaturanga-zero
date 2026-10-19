@@ -63,7 +63,7 @@ the same commit that completes the work.
 - **Researched ruleset.** Every rule is backed by historical sources, and contested rules are
   settled by counting references. See [docs/RULES.md](docs/RULES.md).
 - **Verified rules engine.** A cross-check against an independent reference move generator and a
-  10,000-game random-play stress test; 196 tests in all.
+  10,000-game random-play stress test; 199 tests in all.
 - **AlphaZero search.** PUCT Monte Carlo Tree Search guided by a residual policy-value network
   (6 blocks × 64 filters, about 1M parameters), with exact values for finished games, root noise,
   temperature and tree reuse for self-play. Planted bugs in the search are all caught by the tests.
@@ -249,7 +249,7 @@ The server keeps no game state, so undo and review are just shorter move lists.
 | **Play** | The board fills the screen. A floating card shows whose turn it is. The toolbar has **Game**, which opens a drawer (Esc closes it) with the mode, move list (click to review), captured pieces, display options (including Reduced graphics) and Rotate. Beside it, a ‹ button slides out quick actions: Undo (Start / Pause against computers), Full screen and New game. Opening the drawer tucks them away again. **Details** in the drawer switches between *Essential*, which shows headlines only and is the default, and *Full*. Under Full, four toggles turn individual extras on or off: move hints, move and quiet-ply counters, why the game ended, and rule sources. While reviewing, a bar at the foot of the board steps through the moves (⏮ ◀ ▶ ⏭, or ← → Home End) and replays the game at Slow, Normal or Fast; stepping back plays the move in reverse, captured pieces returning from their tray. Modes: two players (the board turns to face the player to move after each move; Rotate overrides it only until the turn next changes hands, and a switch turns it off), vs computer (Random, Greedy, MCTS or Trained; the trained agent has four levels, Easy, Medium, Hard and Impossible, set by its search budget), or computer vs computer with a pace control; it waits for **Start** (in the drawer, or in the quick actions, where it takes Undo's place) and can be paused and resumed. |
 | **Learn** | 11 lessons: the board, each piece, check and checkmate, bare king, stalemate and draws. Most end with a one-move task that the engine checks. Like Play, the board fills the screen: a floating card shows the lesson, its task, feedback and a hint; **Lessons** opens the lesson list from the left and **Lesson** opens the lesson text from the right (both closed by default, Esc closes them); a ‹ button slides out Reset board, previous and next lesson, and Full screen. `tests/test_lessons.py` checks that every lesson position is legal and every task can be solved. |
 | **Rules** | A compact reference: setup, the pieces and how a game ends. The sources behind each rule are in `docs/RULES.md`, not in the app. |
-| **Training** | Follows a training run from `runs/`: what it is doing now (self-play, training or evaluation, with progress), with a menu of runs (our own, keyboard-friendly; each run marked training, starting, paused, finished, stopped or failed), **New run** to start training, **Delete** for a run that is not training (after a confirmation; the network it gave the Trained opponent stays), **Pause** (now, after this phase or after this generation), **Resume** for a paused or stopped run, and **Train further** for a finished one, the policy and value losses (including the loss on each generation's new games before training on them, against the score of always predicting a draw), the evaluation scores, the share of decisive self-play games, and a table of every generation. **Watch** on a row replays that generation's shortest decisive self-play game on the Play board. For a run that is not training, a **Run report** sums up what it learned (see [The run report](#the-run-report)) and offers its charts as an image. It refreshes every few seconds while the run is live. |
+| **Training** | Follows a training run from `runs/`: what it is doing now (self-play, training or evaluation, with progress), with a menu of runs (our own, keyboard-friendly; each run marked training, starting, paused, finished, stopped or failed), **New run** to start training, **Delete** for a run that is not training (after a confirmation; the network it gave the Trained opponent stays), **Pause** (now, after this phase or after this generation), **Resume** for a paused or stopped run, and **Train further** for a finished one, the policy and value losses (including the loss on each generation's new games before training on them, against the score of always predicting a draw), the evaluation scores, the share of decisive self-play games, and a table of every generation. **Watch** on a row replays that generation's shortest decisive self-play game on the Play board. For a run that is not training, the **Run report** section makes a report on request: what it learned, its self-play charts and a strength check (see [The run report](#the-run-report)). It refreshes every few seconds while the run is live. |
 
 **Camera:** drag to orbit the board. Zoom with the mouse wheel, a two-finger scroll, a trackpad pinch, or a two-finger pinch on a touch screen.
 
@@ -459,8 +459,12 @@ capped games by material (which would add hand-written knowledge).
 
 ### The run report
 
-When a run finishes (or is paused), the Training page shows what it learned; `python scripts/report.py
---run <name>` prints the same in a terminal and draws the charts.
+A report sums up what a run learned. It is made only when asked: **Make report** in the Training
+page's Run report section (for a run that is not training), or `python scripts/report.py --run
+<name>` in a terminal. A run started with **Make the run report when it finishes** (off by default
+in New run; `auto_report` in its config) makes its report, strength check included, as soon as its
+last generation is done. The report is saved in `runs/<run>/report/report.json`; if the run trains
+further, **Update report** brings it up to date.
 
 - **Findings**, from the run's metrics: whether the policy learned to predict the search (its loss
   on unseen games, against the lowest it can reach), whether the value beat predicting a draw on
@@ -473,8 +477,11 @@ When a run finishes (or is paused), the Training page shows what it learned; `py
   run trains): the untrained, best and final networks each play Random and Greedy from the
   opening. This is what showed that the first run's final network was weaker than its untrained
   one. Results are kept in `runs/<run>/report/strength.json`.
+- **Self-play over the run**: how games from the opening ended, generation by generation (decided
+  endings in colour, draws in grey), and their average length. These charts live in the report;
+  the page's other charts follow the run live.
 - **Download charts**: the six-panel figure from `plot_training.py` (losses, test scores, self-play
-  results, endings and length), redrawn when the run changes.
+  results, endings and length).
 
 **Team self-play.** Self-play is the slow part, and it parallelises across people as well as
 cores. Whoever runs the training shares a checkpoint (`runs/<run>/checkpoints/gen_NNNN.pt`);

@@ -245,10 +245,12 @@ def test_start_a_new_run_from_the_app(tmp_path, monkeypatch):
     monkeypatch.setenv("CHATURANGA_RUNS", str(tmp_path))
     started = _capture_popen(monkeypatch)
     r = client.post("/api/training/runs", json={"name": "quick", "generations": 3, "games_per_generation": 8,
-                                                 "simulations": 20, "eval_games": 4, "publish": False})
+                                                 "simulations": 20, "eval_games": 4, "publish": False,
+                                                 "auto_report": True})
     assert r.status_code == 202 and r.json()["state"] == "starting" and r.json()["live"] is True
     config = json.loads((tmp_path / "quick" / "config.json").read_text())
     assert (config["generations"], config["games_per_generation"], config["simulations"], config["eval_games"]) == (3, 8, 20, 4)
+    assert config["auto_report"] is True
     cmd = started["cmd"]
     assert cmd[cmd.index("--run") + 1] == "quick" and cmd[cmd.index("--publish") + 1] == ""  # not published
     assert [r["name"] for r in client.get("/api/training/runs").json()["runs"]] == ["quick"]
@@ -315,19 +317,25 @@ def test_delete_stays_inside_the_runs_folder(tmp_path, monkeypatch):
 
 # ---------------------------------------------------------------------- the run report
 
-def test_report_summarises_the_run_and_probes_its_networks(run_root, monkeypatch):
+def test_a_report_is_made_only_when_asked(run_root, monkeypatch):
     monkeypatch.setenv("CHATURANGA_RUNS", str(run_root))
-    r = client.get("/api/training/runs/demo/report").json()
+    assert client.get("/api/training/runs/demo/report").json() == {"report": None, "strength": None}
+    assert not (run_root / "demo" / "report" / "report.json").exists()
+    r = client.post("/api/training/runs/demo/report").json()["report"]
     s = r["summary"]
-    assert s["generations"] == 1 and s["policy"]["verdict"] in ("learned", "not_learned")
+    assert r["generations"] == 1 and s["policy"]["verdict"] in ("learned", "not_learned")
     assert s["value"]["generations"] == 1 and s["strength"]["previous"]["last_generation"] == 1
     probe = r["probe"]
     assert len(probe["positions"]) == 6 and [n["label"] for n in probe["networks"]] == ["untrained", "final"]
     assert all(len(n["values"]) == 6 and -1 <= min(n["values"]) <= max(n["values"]) <= 1 for n in probe["networks"])
-    assert r["strength"] is None
-    # The probe is kept until a network changes.
-    assert (run_root / "demo" / "report" / "probe.json").exists()
-    assert client.get("/api/training/runs/demo/report").json()["probe"] == probe
+    # Saved with the run, and read back as it was.
+    assert client.get("/api/training/runs/demo/report").json()["report"] == r
+
+
+def test_no_report_while_the_run_trains(tmp_path, monkeypatch):
+    monkeypatch.setenv("CHATURANGA_RUNS", str(tmp_path))
+    _fake_run(tmp_path, "main", state="training", pid=os.getpid())
+    assert client.post("/api/training/runs/main/report").status_code == 409
 
 
 def test_strength_check_plays_every_network_against_both_baselines(run_root):

@@ -116,8 +116,10 @@ export const api = {
   /** Ask a running run to pause; null withdraws the request. */
   pauseRun: (name: string, when: PauseWhen | null) =>
     request<RunStatus>(`/api/training/runs/${encodeURIComponent(name)}/pause`, { when }),
-  /** What a run learned: summary, material probe and (if played) the strength check. */
+  /** The run's saved report (null until one is made) and its strength check, if played. */
   runReport: (name: string) => request<RunReport>(`/api/training/runs/${encodeURIComponent(name)}/report`),
+  /** Make (or remake) the report: findings, material probe and charts. */
+  makeReport: (name: string) => request<RunReport>(`/api/training/runs/${encodeURIComponent(name)}/report`, {}),
   /** Play the strength check in the background. */
   startStrength: (name: string, games: number) =>
     request<StrengthCheck>(`/api/training/runs/${encodeURIComponent(name)}/report/strength`, { games }),
@@ -135,7 +137,7 @@ export const api = {
 
 // ------------------------------------------------------------------ training (Watch training)
 
-export type RunState = 'starting' | 'selfplay' | 'training' | 'evaluating' | 'generation_done' | 'finished' | 'paused'
+export type RunState = 'starting' | 'selfplay' | 'training' | 'evaluating' | 'generation_done' | 'reporting' | 'finished' | 'paused'
   | 'stopped' | 'failed'
 export type PauseWhen = 'now' | 'after_phase' | 'after_generation'
 type Phase = 'selfplay' | 'training' | 'evaluating'
@@ -169,6 +171,8 @@ export interface NewRunSettings {
   eval_games: number
   /** Make the run's best network the Trained opponent in Play. */
   publish: boolean
+  /** Make the run report (strength check included) as soon as the run finishes. */
+  auto_report: boolean
 }
 
 export interface LossPoint {
@@ -265,8 +269,15 @@ export interface StrengthCheck {
   error?: string
 }
 
-export interface RunReport {
+export interface SavedReport {
+  made: string
+  generations: number
   summary: RunSummary
-  probe: ValueProbe | null
+  probe: ValueProbe
+  charts: boolean
+}
+
+export interface RunReport {
+  report: SavedReport | null
   strength: StrengthCheck | null
 }

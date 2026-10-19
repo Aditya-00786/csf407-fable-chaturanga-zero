@@ -88,6 +88,10 @@ class TrainConfig:
     # Test games sample their first moves in proportion to visits so they differ; with only 8 such
     # plies, games between successive generations nearly all ended in repetition.
     eval_opening_plies: int = 16
+    # Make the run report (findings, material probe, charts and a strength check of `report_games`
+    # games per match) as soon as the last generation is done. Off: the report waits for a request.
+    auto_report: bool = False
+    report_games: int = 20
     blocks: int = NetConfig.blocks
     channels: int = NetConfig.channels
     seed: int = 0
@@ -643,6 +647,18 @@ class TrainingRun:
         self.set_status(state="generation_done", generation=generation, best_generation=self.best,
                         games_done=None, games_total=None, opponent=None)
 
+    def _report(self) -> None:
+        """The run report, made as the run finishes (auto_report)."""
+        from .analysis import format_strength, make_report, measure_strength
+
+        self.set_status(state="reporting", phase=None)
+        self.log("Making the run report...")
+        make_report(self.dir)
+        if self.config.report_games > 0:
+            data = measure_strength(self.dir, games=self.config.report_games, workers=self.workers,
+                                    log=lambda *_: None)
+            self.log(format_strength(data))
+
     # -- the loop
 
     def run(self) -> None:
@@ -698,8 +714,10 @@ class TrainingRun:
                 if generation < cfg.generations:
                     self._check_pause("generation", after="generation")
             self._stop_pool(abandon=False)
-            self.set_status(state="finished")
             self.log(f"Done: {cfg.generations} generations; best network is generation {self.best}.")
+            if cfg.auto_report:
+                self._report()
+            self.set_status(state="finished")
         except (Paused, KeyboardInterrupt):
             self._stop_pool(abandon=True)
             phase = self.status.get("state")
