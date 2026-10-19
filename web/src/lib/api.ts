@@ -156,6 +156,10 @@ export interface RunStatus {
   best_generation?: number
   updated?: string
   seconds_since_update: number | null
+  /** Live progress of the current phase: when it began, moves played so far and moves expected. */
+  phase_started?: string | null
+  moves?: number | null
+  moves_expected?: number | null
   /** A pause asked for and not yet reached (live runs only). */
   pause_requested: PauseWhen | null
   /** Where a paused run stopped: in the middle of a phase, or just after one. */

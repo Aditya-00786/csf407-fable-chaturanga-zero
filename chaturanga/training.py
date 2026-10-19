@@ -36,6 +36,7 @@ import os
 import shutil
 import signal
 import socket
+import threading
 import time
 from dataclasses import asdict, dataclass, fields
 from datetime import datetime, timezone
@@ -173,10 +174,37 @@ def pending_pause(run_dir) -> Optional[str]:
 _worker_cache: dict = {}
 
 
-def _init_worker() -> None:
+# Live progress: moves played and games finished, counted by whoever plays them (a worker process
+# or the run itself) so the run can report progress between finished batches. None: not counted.
+_progress: Optional[tuple] = None
+
+
+class _Counter:
+    """A plain counter with the interface of multiprocessing.Value, for play in one process."""
+
+    def __init__(self):
+        self.value = 0
+        self._lock = threading.Lock()
+
+    def get_lock(self):
+        return self._lock
+
+
+def _count(moves: int = 0, games: int = 0) -> None:
+    if _progress is None:
+        return
+    for counter, n in zip(_progress, (moves, games)):
+        if n:
+            with counter.get_lock():
+                counter.value += n
+
+
+def _init_worker(moves=None, games=None) -> None:
+    global _progress
     torch.set_num_threads(1)  # one process per core is faster than threads for batch sizes this small
     # Ctrl+C is for the main process, which pauses the run and stops the workers itself.
     signal.signal(signal.SIGINT, signal.SIG_IGN)
+    _progress = (moves, games) if moves is not None else None
 
 
 def _evaluator_for(checkpoint: str) -> NetworkEvaluator:
@@ -191,9 +219,14 @@ def selfplay_task(checkpoint: str, seeds: list[int], config: SelfPlayConfig,
                   generation: int, contributor: str, save_prefix: Optional[str] = None) -> list[dict]:
     """Play the games with these seeds. With `save_prefix`, each game is also saved the moment it
     ends (to <prefix>.<pid>.jsonl.gz), so a pause or crash loses only games still in progress."""
-    save = (lambda r: append_games(f"{save_prefix}.{os.getpid()}.jsonl.gz", [r])) if save_prefix else None
+    def on_game(r: GameRecord) -> None:
+        if save_prefix:
+            append_games(f"{save_prefix}.{os.getpid()}.jsonl.gz", [r])
+        _count(games=1)
+
     records = play_games(_evaluator_for(checkpoint), len(seeds), config, generation=generation,
-                         contributor=contributor, on_game=save, seeds=seeds)
+                         contributor=contributor, on_game=on_game, seeds=seeds,
+                         on_move=lambda n: _count(moves=n))
     return [r.to_json() for r in records]
 
 
@@ -234,6 +267,8 @@ def match_task(checkpoint: str, opponent: str, game_indices: list[int], simulati
         while not state.is_terminal():
             mover = player if state.side == colour else other
             state = state.apply(mover.select_move(state))
+            _count(moves=1)
+        _count(games=1)
         result = state.outcome()
         out.append({"score": (result.value_for(colour) + 1) / 2, "reason": result.reason, "plies": state.ply,
                     "colour": colour})
@@ -341,6 +376,14 @@ class TrainingRun:
         self._pending_eval: Optional[dict] = None  # a trained generation whose evaluation was interrupted
         self._paused_after: Optional[str] = None
         self._pool = None
+        # Live progress between finished batches: counters the players add to, and the phase's
+        # reporter that a ticker thread calls twice a second.
+        ctx = mp.get_context("spawn")
+        self._moves, self._games = ctx.Value("q", 0), ctx.Value("q", 0)
+        self._live: Optional[Callable[[], None]] = None
+        self._status_lock = threading.Lock()
+        self._plies_per_game = 240.0  # a first guess (an untrained network's games); then measured each generation
+        self._eval_plies = {"previous": 280.0, "random": 260.0, "greedy": 130.0}
 
     # -- paths and records
 
@@ -359,10 +402,31 @@ class TrainingRun:
             f.write(json.dumps({"event": event, "time": _now(), **data}) + "\n")
 
     def set_status(self, **changes) -> None:
-        self.status.update(changes, updated=_now())
-        tmp = self.dir / "status.json.tmp"
-        tmp.write_text(json.dumps(self.status))
-        tmp.replace(self.dir / "status.json")
+        with self._status_lock:  # the ticker thread writes too
+            self.status.update(changes, updated=_now())
+            tmp = self.dir / "status.json.tmp"
+            tmp.write_text(json.dumps(self.status))
+            tmp.replace(self.dir / "status.json")
+
+    def _phase(self, expected_moves: Optional[float] = None, games_before: int = 0) -> None:
+        """Start a phase's live progress: from now, moves played and games finished (on top of
+        `games_before`) are reported twice a second, with the time the phase began."""
+        base_moves, base_games = self._moves.value, self._games.value
+        expected = round(expected_moves) if expected_moves else None
+        self.set_status(phase_started=_now(), moves=0 if expected else None, moves_expected=expected)
+        if not expected:
+            self._live = None
+            return
+
+        def live() -> None:
+            changes = {"moves": self._moves.value - base_moves}
+            total = self.status.get("games_total")
+            if total:
+                games = games_before + self._games.value - base_games
+                changes["games_done"] = min(total, max(self.status.get("games_done") or 0, games))
+            self.set_status(**changes)
+
+        self._live = live
 
     # -- pausing
 
@@ -432,7 +496,8 @@ class TrainingRun:
         if self._pool is None:
             # multiprocessing's Pool (unlike concurrent.futures) can stop its workers at once,
             # which "pause now" needs: games in progress are abandoned, not waited for.
-            self._pool = mp.get_context("spawn").Pool(self.workers, initializer=_init_worker)
+            self._pool = mp.get_context("spawn").Pool(self.workers, initializer=_init_worker,
+                                                      initargs=(self._moves, self._games))
         return self._pool
 
     def _gather(self, pending: list, on_result: Callable) -> None:
@@ -480,6 +545,7 @@ class TrainingRun:
         if records:
             self.log(f"  resuming self-play: {len(records)} of {n} games were already played")
         self.set_status(state="selfplay", generation=generation, games_done=len(records), games_total=n)
+        self._phase(len(missing) * self._plies_per_game, games_before=len(records))
 
         def keep(new: list[GameRecord]) -> None:
             records.extend(new)
@@ -492,11 +558,13 @@ class TrainingRun:
 
             def on_game(r: GameRecord) -> None:
                 append_games(own, [r])
+                _count(games=1)
                 keep([r])
 
             try:
                 play_games(evaluator, len(missing), self.config.selfplay_config, generation=generation - 1,
-                           on_game=on_game, seeds=missing, should_stop=lambda: bool(self._pause_due("now")))
+                           on_game=on_game, seeds=missing, should_stop=lambda: bool(self._pause_due("now")),
+                           on_move=lambda k: _count(moves=k))
             finally:
                 self.net.to(self.device)
             self._check_pause("now")
@@ -507,6 +575,9 @@ class TrainingRun:
                                                       str(prefix)))
                      for seeds in chunks(missing, size)]
             self._gather(tasks, lambda result: keep([GameRecord.from_json(d) for d in result]))
+        self._live = None
+        if records:
+            self._plies_per_game = sum(r.plies for r in records) / len(records)
         records.sort(key=lambda r: r.seed)
         tmp = path.with_suffix(".tmp")
         write_games(str(tmp), records)
@@ -559,6 +630,7 @@ class TrainingRun:
     def _train(self, generation: int, new_positions: int) -> dict:
         steps = self.steps_for(new_positions)
         self.set_status(state="training", step=0, steps_total=steps)
+        self._phase()
         rng = np.random.default_rng(self.config.seed * 7_919 + generation)
 
         def on_progress(step, losses):
@@ -586,6 +658,7 @@ class TrainingRun:
             else:
                 continue
             self.set_status(state="evaluating", opponent=spec, games_done=0, games_total=n)
+            self._phase(n * self._eval_plies.get(spec, 220.0))
             seed = self.config.seed * 1_000_003 + generation * 10_000 + 5_000
             pool = self._pool_or_none()
             games: list[dict] = []
@@ -602,6 +675,8 @@ class TrainingRun:
                 self._gather([pool.apply_async(match_task, (me, opponent, [i], self.config.simulations, seed,
                                                             self.config.eval_opening_plies))
                               for i in range(n)], keep)
+            self._live = None
+            self._eval_plies[spec] = sum(g["plies"] for g in games) / len(games)
             wins = sum(g["score"] == 1 for g in games)
             draws = sum(g["score"] == 0.5 for g in games)
             score = sum(g["score"] for g in games) / len(games)
@@ -645,13 +720,15 @@ class TrainingRun:
         self.record("generation", generation=generation, best=self.best, steps=steps, seconds=round(seconds, 1),
                     **{k: round(v, 5) for k, v in losses.items()})
         self.set_status(state="generation_done", generation=generation, best_generation=self.best,
-                        games_done=None, games_total=None, opponent=None)
+                        games_done=None, games_total=None, opponent=None, moves=None, moves_expected=None,
+                        phase_started=None)
 
     def _report(self) -> None:
         """The run report, made as the run finishes (auto_report)."""
         from .analysis import format_strength, make_report, measure_strength
 
-        self.set_status(state="reporting", phase=None)
+        self.set_status(state="reporting")
+        self._phase()
         self.log("Making the run report...")
         make_report(self.dir)
         if self.config.report_games > 0:
@@ -662,8 +739,23 @@ class TrainingRun:
     # -- the loop
 
     def run(self) -> None:
+        global _progress
         cfg = self.config
         request_pause(self.dir, None)  # a request left over from an earlier run no longer applies
+        # Games played in this process (no worker pool) count towards the same live progress.
+        _progress = (self._moves, self._games)
+        stop_ticking = threading.Event()
+
+        def tick() -> None:
+            while not stop_ticking.wait(0.5):
+                report = self._live
+                if report:
+                    try:
+                        report()
+                    except Exception:  # progress is a courtesy; never let it stop the run
+                        pass
+
+        threading.Thread(target=tick, name="progress", daemon=True).start()
         try:
             last = self._load_or_create()
             self.log(f"Run {self.name}: generation {last} of {cfg.generations}, {self.buffer.games} games "
@@ -735,4 +827,7 @@ class TrainingRun:
             self.set_status(state="failed")
             raise
         finally:
+            stop_ticking.set()
+            self._live = None
+            _progress = None
             request_pause(self.dir, None)

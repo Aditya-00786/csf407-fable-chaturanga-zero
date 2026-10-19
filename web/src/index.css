@@ -175,6 +175,32 @@ p {
   transform-origin: top;
 }
 
+/* Work under way: a soft sheen runs along a progress bar's filled part, and a band sweeps across
+   one with no measure yet. Reduced motion stops both (see above). */
+@keyframes cz-sheen {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+.cz-sheen {
+  background: linear-gradient(90deg, transparent, oklch(1 0 0 / 0.35), transparent);
+  animation: cz-sheen 1.6s var(--ease-in-out-cubic) infinite;
+}
+@keyframes cz-sweep {
+  from {
+    left: -25%;
+  }
+  to {
+    left: 100%;
+  }
+}
+.cz-sweep {
+  animation: cz-sweep 1.4s var(--ease-in-out-cubic) infinite;
+}
+
 /* Quick actions slide out from the toolbar toggle. */
 @keyframes cz-slide-in {
   from {

@@ -94,11 +94,13 @@ def play_games(evaluator: Evaluator, n_games: int, config: SelfPlayConfig = Self
                rules: RulesConfig = DEFAULT_RULES,
                on_game: Optional[Callable[[GameRecord], None]] = None,
                seeds: Optional[list[int]] = None,
-               should_stop: Optional[Callable[[], bool]] = None) -> list[GameRecord]:
+               should_stop: Optional[Callable[[], bool]] = None,
+               on_move: Optional[Callable[[int], None]] = None) -> list[GameRecord]:
     """Play `n_games` self-play games, `config.concurrent` at a time. Game i uses seed + i (or
     the i-th of `seeds`, which replaces both), so the same seed and network always produce the
     same game. `should_stop` is asked after every move; when it says yes, the finished games are
-    returned and the unfinished ones dropped."""
+    returned and the unfinished ones dropped. `on_move(n)` hears of each round of n moves played,
+    for live progress."""
     mcts_config = MCTSConfig(simulations=config.simulations)
     waiting = list(seeds) if seeds is not None else [seed + i for i in range(n_games)]
     active: list[_Game] = []
@@ -134,6 +136,8 @@ def play_games(evaluator: Evaluator, n_games: int, config: SelfPlayConfig = Self
                     on_game(record)
             else:
                 still.append(g)
+        if on_move:
+            on_move(len(active))
         active = still
         if should_stop and should_stop():
             break

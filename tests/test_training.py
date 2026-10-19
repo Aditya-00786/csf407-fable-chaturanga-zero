@@ -397,3 +397,26 @@ def test_without_auto_report_a_finished_run_has_no_report(tmp_path):
     d = tmp_path / "r"
     assert _run(d, replace(PAUSE_CFG, games_per_generation=2))["state"] == "finished"
     assert read_report(d) is None and not (d / "report").exists()
+
+
+def test_progress_is_reported_while_games_are_played(tmp_path):
+    """Live moves and finished games reach the status between finished batches, in every phase."""
+    seen = []
+
+    class Watching(TrainingRun):
+        def set_status(self, **changes):
+            super().set_status(**changes)
+            if self.status.get("state") in ("selfplay", "evaluating") and self.status.get("moves"):
+                seen.append((self.status["state"], self.status["moves"], self.status.get("games_done"),
+                             self.status.get("moves_expected"), self.status.get("phase_started")))
+
+    cfg = replace(PAUSE_CFG, games_per_generation=4)
+    for workers in (0, 2):
+        seen.clear()
+        Watching(str(tmp_path / f"w{workers}"), cfg, workers=workers, device=torch.device("cpu"), log=lambda *_: None).run()
+        for state in ("selfplay", "evaluating"):
+            mine = [s for s in seen if s[0] == state]
+            assert mine, f"no live progress during {state} with {workers} workers"
+            moves = [s[1] for s in mine]
+            assert moves == sorted(moves) and moves[-1] > 0  # it only grows within a phase
+            assert all(s[3] and s[4] for s in mine)          # with an estimate and a start time

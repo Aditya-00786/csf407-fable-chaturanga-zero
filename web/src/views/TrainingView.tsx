@@ -13,7 +13,7 @@ import { api, ApiError, type GenerationRow, type PauseWhen, type RunDetail, type
 import { href } from '../lib/route'
 import { useGame } from '../state/game'
 
-const LIVE_POLL_MS = 4000
+const LIVE_POLL_MS = 2000
 const IDLE_POLL_MS = 30000
 // While a pause or a start is under way, so the change shows within a second or so.
 const CHANGING_POLL_MS = 1200
@@ -42,13 +42,46 @@ function ago(seconds: number | null) {
   return `${Math.round(seconds / 86400)} days ago`
 }
 
-function Progress({ value, label }: { value: number; label: string }) {
+/** A progress bar. While work is under way a soft sheen runs along the filled part, so it never
+ * looks frozen between updates; with no measure yet (`value` null) a short band sweeps across. */
+function Progress({ value, label, active = false }: { value: number | null; label: string; active?: boolean }) {
   return (
-    <div role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(value * 100)}
-      className="h-1.5 overflow-hidden rounded-full bg-surface-2">
-      <div className="h-full rounded-full bg-accent transition-[width] duration-500 ease-out-quart" style={{ width: `${Math.min(100, value * 100)}%` }} />
+    <div role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100}
+      aria-valuenow={value === null ? undefined : Math.round(value * 100)}
+      className="relative h-1.5 overflow-hidden rounded-full bg-surface-2">
+      {value === null ? (
+        <div className="cz-sweep absolute inset-y-0 w-1/4 rounded-full bg-accent" />
+      ) : (
+        <div className="relative h-full overflow-hidden rounded-full bg-accent transition-[width] duration-700 ease-out-quart"
+          style={{ width: `${Math.min(100, Math.max(0, value) * 100)}%` }}>
+          {active && <div className="cz-sheen absolute inset-0" />}
+        </div>
+      )}
     </div>
   )
+}
+
+/** Seconds as "45 s" or "3 min 05 s". */
+function clock(seconds: number) {
+  if (seconds < 60) return `${seconds} s`
+  return `${Math.floor(seconds / 60)} min ${String(seconds % 60).padStart(2, '0')} s`
+}
+
+function remaining(seconds: number) {
+  if (seconds < 60) return 'under a minute left'
+  const m = Math.round(seconds / 60)
+  return m === 1 ? 'about a minute left' : `about ${m} min left`
+}
+
+/** The time now, ticking every second while `active`: elapsed times count up between updates. */
+function useNow(active: boolean) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!active) return
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [active])
+  return now
 }
 
 const PHASE_NAME = { selfplay: 'self-play', training: 'training', evaluating: 'testing' } as const
@@ -282,21 +315,50 @@ function StatusPanel({ status, detail, onChange }: { status: RunStatus; detail: 
   const pausing = live && !!status.pause_requested
   const total = status.generations || detail.config.generations
   const done = detail.generations.filter((g) => g.best !== undefined).length
+  // This phase: what is happening, how far along (smoothly, by moves played against the moves
+  // expected, as well as by finished games), how long it has taken and roughly how long is left.
+  const now = useNow(live)
+  const started = status.phase_started ? Date.parse(status.phase_started) : NaN
+  const elapsed = Number.isNaN(started) ? null : Math.max(0, Math.round((now - started) / 1000))
+  const gamesDone = status.games_done ?? 0
+  const moves = status.moves ?? 0
+  const byMoves = status.moves_expected ? Math.min(0.97, moves / status.moves_expected) : 0
   let phase = ''
-  let phaseValue = 0
+  let phaseValue: number | null = 0
   if (live && status.state === 'selfplay' && status.games_total) {
-    phase = `${status.games_done ?? 0} of ${status.games_total} games`
-    phaseValue = (status.games_done ?? 0) / status.games_total
+    const warming = moves === 0 && gamesDone === 0
+    phase = warming ? 'Starting the self-play processes'
+      : `${gamesDone} of ${status.games_total} games · ${moves.toLocaleString()} moves played`
+    phaseValue = warming ? null : gamesDone >= status.games_total ? 1 : Math.max(gamesDone / status.games_total, byMoves)
   } else if (live && status.state === 'training' && status.steps_total) {
     phase = `step ${status.step ?? 0} of ${status.steps_total}`
     phaseValue = (status.step ?? 0) / status.steps_total
   } else if (live && status.state === 'evaluating' && status.games_total) {
-    phase = `against ${status.opponent === 'previous' ? 'the previous generation' : status.opponent === 'greedy' ? 'Greedy' : status.opponent}, ${status.games_done ?? 0} of ${status.games_total} games`
-    phaseValue = (status.games_done ?? 0) / status.games_total
+    const against = status.opponent === 'previous' ? 'the previous generation' : status.opponent === 'greedy' ? 'Greedy'
+      : status.opponent === 'random' ? 'Random' : status.opponent
+    phase = `against ${against}, ${gamesDone} of ${status.games_total} games · ${moves.toLocaleString()} moves played`
+    phaseValue = gamesDone >= status.games_total ? 1 : Math.max(gamesDone / status.games_total, byMoves)
+  } else if (live && (status.state === 'reporting' || status.state === 'generation_done')) {
+    phase = status.state === 'reporting' ? 'Making the run report' : 'Starting the next generation'
+    phaseValue = null
   }
+  // Time left: worked out from the last update (how long the phase had taken and how far it had
+  // got then), then counted down between updates, so it moves steadily rather than flickering.
+  const updated = status.updated ? Date.parse(status.updated) : NaN
+  const atUpdate = Number.isNaN(updated) || Number.isNaN(started) ? null : Math.max(0, (updated - started) / 1000)
+  let left = ''
+  if (phaseValue !== null && phaseValue < 1 && elapsed !== null && elapsed >= 8) {
+    if (phaseValue >= 0.97) left = status.state === 'training' ? '' : 'finishing the last games'
+    else if (phaseValue >= 0.04 && atUpdate !== null) {
+      left = remaining(Math.max(0, (atUpdate * (1 - phaseValue)) / phaseValue - (now - updated) / 1000))
+    }
+  }
+  const timing = elapsed === null ? '' : left ? `${clock(elapsed)} · ${left}` : clock(elapsed)
   // The phase bar folds away when the run stops; keep its last reading on show while it does.
-  const [shown, setShown] = useState({ phase, phaseValue })
-  if (phase && (phase !== shown.phase || phaseValue !== shown.phaseValue)) setShown({ phase, phaseValue })
+  const [shown, setShown] = useState({ phase, phaseValue, timing })
+  if (phase && (phase !== shown.phase || phaseValue !== shown.phaseValue || timing !== shown.timing)) {
+    setShown({ phase, phaseValue, timing })
+  }
   const title = pausing && status.pause_requested === 'now' ? 'Pausing' : PHASE[state] ?? state
   const tone = !live ? (state === 'paused' ? 'bg-accent' : 'bg-ink-faint') : 'bg-success'
   const games = detail.generations.reduce((n, g) => n + (g.games ?? 0), 0)
@@ -318,8 +380,11 @@ function StatusPanel({ status, detail, onChange }: { status: RunStatus; detail: 
       </div>
       <Collapse open={!!phase}>
         <div className="space-y-1.5 pt-3">
-          <p className="text-[13px] text-ink-muted tabular-nums">{shown.phase}</p>
-          <Progress value={shown.phaseValue} label="This phase" />
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 text-[13px] tabular-nums">
+            <p className="text-ink-muted">{shown.phase}</p>
+            {shown.timing && <p className="text-ink-faint">{shown.timing}</p>}
+          </div>
+          <Progress value={shown.phaseValue} label="This phase" active={live} />
         </div>
       </Collapse>
       <div className="mt-5 space-y-1.5">
