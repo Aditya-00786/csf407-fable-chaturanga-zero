@@ -534,7 +534,9 @@ csf407-fable-chaturanga-zero/
 │   ├── mcts.py              # PUCT Monte Carlo Tree Search
 │   ├── selfplay.py          # self-play games (batched across games), game records, training examples
 │   ├── replay_buffer.py     # the most recent positions, sampled for training
-│   ├── training.py          # the generation loop: self-play, train, evaluate, checkpoint, resume
+│   ├── training.py          # the generation loop: self-play, train, evaluate, checkpoint, pause, resume
+│   ├── endgames.py          # random reduced-material starting positions for self-play
+│   ├── analysis.py          # a run's report: findings, material probe, strength check
 │   └── agents.py            # players: random, greedy (2-ply material), MCTS, trained (four levels)
 ├── chaturanga_server/       # FastAPI app used by the web client (stateless)
 │   ├── app.py               # game and computer-move endpoints
@@ -555,7 +557,8 @@ csf407-fable-chaturanga-zero/
 │   ├── mcts_benchmark.py    # MCTS speed and matches against the baselines (untrained or a checkpoint)
 │   ├── train.py             # Milestone 3: self-play training
 │   ├── selfplay.py          # self-play games for a teammate's run
-│   └── plot_training.py     # a run's loss and evaluation curves
+│   ├── plot_training.py     # a run's loss and evaluation curves
+│   └── report.py            # a run's report in the terminal (and the app's strength check)
 ├── notebooks/
 │   └── train_colab.ipynb    # the same training on Google Colab, saved to Drive
 ├── docs/
