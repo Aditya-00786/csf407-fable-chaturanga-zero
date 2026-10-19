@@ -275,7 +275,7 @@ export interface GenerationRow {
 export interface RunDetail {
   status: RunStatus
   config: { generations: number; games_per_generation: number; simulations: number; steps_per_generation: number;
-    blocks: number; channels: number; [key: string]: unknown }
+    blocks: number; channels: number; value_mix?: number; [key: string]: unknown }
   train: LossPoint[]
   generations: GenerationRow[]
 }

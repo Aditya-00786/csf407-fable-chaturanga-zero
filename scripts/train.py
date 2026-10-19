@@ -27,7 +27,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import torch  # noqa: E402
 
-from chaturanga.training import TrainConfig, TrainingRun, request_pause, training_device  # noqa: E402
+from chaturanga.training import TrainConfig, TrainingRun, buffer_for, request_pause, training_device  # noqa: E402
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 
@@ -36,7 +36,7 @@ OPTIONS = {
     "generations": "generations", "games": "games_per_generation", "sims": "simulations",
     "steps": "steps_per_generation", "batch": "batch_size", "lr": "learning_rate",
     "buffer": "buffer_positions", "eval_games": "eval_games", "concurrent": "concurrent", "reuse": "sample_reuse",
-    "late_temperature": "late_temperature", "endgames": "endgame_fraction",
+    "late_temperature": "late_temperature", "endgames": "endgame_fraction", "value_mix": "value_mix",
     "blocks": "blocks", "channels": "channels", "seed": "seed",
 }
 
@@ -76,6 +76,8 @@ def main():
     else:
         config = defaults
     changes = {name: getattr(args, flag) for flag, name in OPTIONS.items() if getattr(args, flag) is not None}
+    if args.games is not None and args.buffer is None and not os.path.exists(config_file):
+        changes["buffer_positions"] = buffer_for(args.games)  # a new run's buffer grows with its generations
     config = replace(config, **changes)
 
     device = torch.device(args.device) if args.device else training_device()

@@ -38,7 +38,9 @@ class SelfPlayConfig:
 
 @dataclass
 class GameRecord:
-    """One self-play game. `visits[i]` holds the search's visit counts before `moves[i]`."""
+    """One self-play game. `visits[i]` holds the search's visit counts before `moves[i]`, and
+    `values[i]` its estimate of the result for the side to move there (games recorded before it
+    was kept have none)."""
     moves: list[str]
     visits: list[dict[str, int]]
     winner: Optional[int]        # 1 White, -1 Black, None for a draw
@@ -48,6 +50,7 @@ class GameRecord:
     seed: Optional[int] = None
     rules: dict = field(default_factory=lambda: asdict(DEFAULT_RULES))
     start_fen: Optional[str] = None  # where the game began, if not the standard setup (an endgame start)
+    values: list[float] = field(default_factory=list)
 
     @property
     def plies(self) -> int:
@@ -86,6 +89,7 @@ class _Game:
         self.start_fen = start.to_fen() if start else None
         self.moves: list[str] = []
         self.visits: list[dict[str, int]] = []
+        self.values: list[float] = []
         self.root = None
 
 
@@ -123,6 +127,7 @@ def play_games(evaluator: Evaluator, n_games: int, config: SelfPlayConfig = Self
         for g in active:
             counts = MCTS.visit_counts(g.root)
             g.visits.append({move_to_str(m): c for m, c in counts.items() if c})
+            g.values.append(round(MCTS.root_value(g.root), 4))
             temperature = 1.0 if g.state.ply < config.temperature_plies else config.late_temperature
             move = g.mcts.choose_move(g.root, temperature)
             g.moves.append(move_to_str(move))
@@ -130,7 +135,7 @@ def play_games(evaluator: Evaluator, n_games: int, config: SelfPlayConfig = Self
             if g.state.is_terminal():
                 out = g.state.outcome()
                 record = GameRecord(g.moves, g.visits, out.winner, out.reason, generation, contributor,
-                                    g.seed, asdict(rules), g.start_fen)
+                                    g.seed, asdict(rules), g.start_fen, g.values)
                 done.append(record)
                 if on_game:
                     on_game(record)
@@ -155,6 +160,7 @@ def examples(record: GameRecord) -> tuple[np.ndarray, list[np.ndarray], list[np.
     state = GameState.from_fen(record.start_fen, rules) if record.start_fen else GameState.initial(rules)
     if len(record.visits) != len(record.moves):
         raise ValueError("visits and moves differ in length")
+    search_values(record)  # checked here too, so a game with impossible values is rejected whole
     planes, actions, shares, sides = [], [], [], []
     for text, visits in zip(record.moves, record.visits):
         if state.is_terminal():
@@ -175,6 +181,19 @@ def examples(record: GameRecord) -> tuple[np.ndarray, list[np.ndarray], list[np.
         raise ValueError(f"recorded result {record.winner}/{record.reason} but the moves give {out.winner}/{out.reason}")
     z = np.array([out.value_for(s) for s in sides], dtype=np.float32)
     return np.stack(planes) if planes else np.zeros((0, 15, 8, 8), np.float32), actions, shares, z
+
+
+def search_values(record: GameRecord) -> Optional[np.ndarray]:
+    """The search's estimate of the result at each position (for the side to move), or None for a
+    game recorded without them. Raises ValueError if they do not fit the game."""
+    if not record.values:
+        return None
+    if len(record.values) != len(record.moves):
+        raise ValueError("values and moves differ in length")
+    q = np.asarray(record.values, dtype=np.float32)
+    if not np.all(np.isfinite(q)) or np.any(np.abs(q) > 1.0):
+        raise ValueError("a search value outside [-1, 1]")
+    return q
 
 
 def policy_target(state: GameState, visits: dict[str, int]) -> tuple[np.ndarray, np.ndarray]:

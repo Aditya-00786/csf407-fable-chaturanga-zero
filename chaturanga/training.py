@@ -75,13 +75,18 @@ class TrainConfig:
     endgame_fraction: float = 0.3
     endgame_max_pieces: int = 5
     concurrent: int = 8               # self-play games per process, sharing batched evaluations
-    buffer_positions: int = 60_000    # about the last six generations
+    buffer_positions: int = 60_000    # about the last six generations of 50 games; see buffer_for
     batch_size: int = 256
-    steps_per_generation: int = 300   # at most; see sample_reuse
+    steps_per_generation: int = 2_000  # at most; see sample_reuse
     # Training steps per generation are sized so the new positions are sampled about this many
     # times on average (a replay ratio). More passes over few games make the value head memorise
     # which game a position came from instead of learning to judge it. 0 always runs the maximum.
     sample_reuse: float = 4.0
+    # The value target: the game's result blended with the search's estimate at each position
+    # (0: the result alone, as in AlphaZero; 0.5: their average). With the result alone, the value
+    # head of the first two runs learned the few hundred games in its buffer by heart (3x below the
+    # predict-a-draw loss on them, above it on new games). See replay_buffer.py.
+    value_mix: float = 0.5
     learning_rate: float = 1e-3
     weight_decay: float = 1e-4
     eval_games: int = 20              # per opponent after each generation; 0 skips evaluation
@@ -119,6 +124,13 @@ class TrainConfig:
         if "eval_opponents" in data:
             data["eval_opponents"] = tuple(data["eval_opponents"])
         return cls(**data)
+
+
+def buffer_for(games_per_generation: int) -> int:
+    """A replay buffer for this many games per generation: the default 60,000 positions, or about
+    the last three generations when they are larger (a game is about 200 positions). Far more
+    games than the network can learn by heart is what makes its value judge positions."""
+    return max(TrainConfig.buffer_positions, games_per_generation * 600)
 
 
 def training_device() -> torch.device:
@@ -367,7 +379,7 @@ class TrainingRun:
         self.status: dict = {"run": self.name, "state": "starting", "generation": 0,
                              "generations": self.config.generations, "pid": os.getpid(),
                              "host": socket.gethostname()}
-        self.buffer = ReplayBuffer(self.config.buffer_positions)
+        self.buffer = ReplayBuffer(self.config.buffer_positions, value_mix=self.config.value_mix)
         self.net: Optional[PolicyValueNet] = None
         self.optimizer: Optional[torch.optim.Optimizer] = None
         self.step = 0

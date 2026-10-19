@@ -615,7 +615,8 @@ function Charts({ detail }: { detail: RunDetail }) {
         <div className="mt-2"><Legend items={[...lossLegend,
           { label: 'Lowest possible (the targets’ own entropy)', color: 'var(--ink-faint)', kind: 'ref' }]} /></div>
       </ChartCard>
-      <ChartCard title="Value loss" note="How far its prediction of the result is from how games ended. On new games it must beat the dashed line, the score of always predicting a draw.">
+      <ChartCard title="Value loss" note={`How far its prediction of the result is from how games ended. On new games it must beat the dashed line, the score of always predicting a draw.${
+        detail.config.value_mix ? ' Training batches aim at the result averaged with the search’s own estimate, so their line sits lower.' : ''}`}>
         <LineChart label="Value loss by training step" series={lossSeries('value_loss')} xLabel="training step" yFormat={fmtLoss}
           reference={{ label: 'predicting a draw', points: held.filter((g) => g.held_out!.value_baseline !== undefined)
             .map((g) => ({ x: heldX(g), y: g.held_out!.value_baseline! })) }} />
@@ -966,7 +967,14 @@ function NewRun({ runs, first, secondsPerGame, onStarted, onCancel }: {
   }
   const [name, setName] = useState(suggest)
   const [generations, setGenerations] = useState(20)
-  const [games, setGames] = useState(50)
+  // The server plays many games at once: 500 a generation gives the value head more games than it
+  // can learn by heart. Elsewhere 50 keeps a run to hours. A number typed in stays.
+  const [games, setGamesValue] = useState(50)
+  const [gamesTyped, setGamesTyped] = useState(false)
+  const setGames = (n: number) => {
+    setGamesValue(n)
+    setGamesTyped(true)
+  }
   const [sims, setSims] = useState(50)
   const [evalGames, setEvalGames] = useState(20)
   const [more, setMore] = useState(false)
@@ -980,6 +988,10 @@ function NewRun({ runs, first, secondsPerGame, onStarted, onCancel }: {
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [where, setWhere] = useState<Where>('mac')
+  const chooseWhere = (w: Where) => {
+    setWhere(w)
+    if (!gamesTyped) setGamesValue(w === 'server' ? 500 : 50)
+  }
   const [cloud, setCloud] = useState<CloudStatus | null>(null)
   const [workers, setWorkers] = useState(NaN)
   useEffect(() => {
@@ -1040,7 +1052,7 @@ function NewRun({ runs, first, secondsPerGame, onStarted, onCancel }: {
         Starts from an untrained network. You can pause it at any time and resume it later.
       </p>
       <div className="mt-5 max-w-md">
-        <Segmented<Where> label="Where" value={where} onChange={setWhere} size="sm" options={[
+        <Segmented<Where> label="Where" value={where} onChange={chooseWhere} size="sm" options={[
           { value: 'mac', label: 'This Mac' },
           { value: 'colab', label: 'Colab', title: 'Google Colab, through Google Drive' },
           { value: 'kaggle', label: 'Kaggle', title: 'A Kaggle GPU, started and followed from here' },
@@ -1061,7 +1073,8 @@ function NewRun({ runs, first, secondsPerGame, onStarted, onCancel }: {
             className="h-9 w-full rounded-lg border border-line bg-bg px-3 text-[14px] text-ink transition-colors duration-150 hover:border-line-strong focus-visible:border-accent" />
         </div>
         <NumberField label="Generations" value={generations} onChange={setGenerations} min={1} max={1000} />
-        <NumberField label="Games per generation" value={games} onChange={setGames} min={2} max={1000} />
+        <NumberField label="Games per generation" value={games} onChange={setGames} min={2} max={1000}
+          hint={where === 'server' ? 'Hundreds, so the value head learns positions rather than games.' : undefined} />
       </div>
       <button type="button" onClick={() => setMore((m) => !m)} aria-expanded={more}
         className="mt-4 inline-flex items-center gap-1 rounded-md text-[13px] font-medium text-ink-muted transition-colors duration-150 hover:text-ink">

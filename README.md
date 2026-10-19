@@ -63,7 +63,7 @@ the same commit that completes the work.
 - **Researched ruleset.** Every rule is backed by historical sources, and contested rules are
   settled by counting references. See [docs/RULES.md](docs/RULES.md).
 - **Verified rules engine.** A cross-check against an independent reference move generator and a
-  10,000-game random-play stress test; 224 tests in all.
+  10,000-game random-play stress test; 230 tests in all.
 - **AlphaZero search.** PUCT Monte Carlo Tree Search guided by a residual policy-value network
   (6 blocks × 64 filters, about 1M parameters), with exact values for finished games, root noise,
   temperature and tree reuse for self-play. Planted bugs in the search are all caught by the tests.
@@ -352,17 +352,20 @@ accident. One run trains at a time: starting or resuming a second one asks you t
    uses 50 simulations with Dirichlet noise at the root, and the move played is sampled in
    proportion to the visit counts (see below for why not the most visited one). Every position
    becomes a training example: the board, the search's visit shares (the policy target) and, once
-   the game ends, the result for the side to move (the value target). 30% of the games are
+   the game ends, the value target: the result for the side to move, averaged with the search's
+   own estimate of it at that position (see below). 30% of the games are
    **endgame starts**: they begin from a random legal position where each side has its Raja and
    1 to 5 of its own pieces (see below).
 2. **Teammates' games.** Game files waiting in `runs/<run>/incoming/` are replayed move by move and
    added if every move and visit count is legal under our rules; anything else is set aside in
    `games/rejected/`.
 3. **Training.** Batches of 256 positions come from the replay buffer, the most recent 60,000
-   positions (about six generations). The loss is AlphaZero's: the value's squared error plus the
-   policy's cross-entropy against the visit shares, with weight decay in the AdamW optimiser. The
-   number of steps is set so each new position is sampled about four times (at most 300 steps):
-   more passes over a few games make the value head memorise which game a position came from.
+   positions (about six generations of 50 games), or about three generations when they are larger
+   (600 positions per game a generation: 300,000 for 500 games). The loss is AlphaZero's: the
+   value's squared error plus the policy's cross-entropy against the visit shares, with weight
+   decay in the AdamW optimiser. The number of steps is set so each new position is sampled about
+   four times (at most 2,000 steps): more passes over a few games make the value head memorise
+   which game a position came from.
 4. **Evaluation.** The new network plays 20 games each against the previous generation, Greedy and
    Random, without noise; it samples its first 16 plies in proportion to visits so the games
    differ.
@@ -379,7 +382,7 @@ opponent picks it up without a restart.
 | `config.json` | The run's settings |
 | `metrics.jsonl` | One line per event: training losses every 10 steps, self-play results, the loss on each generation's new games before training on them, evaluations |
 | `status.json` | What the run is doing right now; the app's Training page reads it |
-| `games/gen_NNNN.jsonl.gz` | Every self-play game: the moves, the visit counts at each move and the result (about 40 KB per game) |
+| `games/gen_NNNN.jsonl.gz` | Every self-play game: the moves, the visit counts and the search's value at each move, and the result (about 40 KB per game) |
 | `checkpoints/gen_NNNN.pt` | The network after each generation, plus `best.pt` and `train_state.pt` (the optimiser) |
 | `incoming/` | Drop teammates' game files here |
 | `control.json` | A pause request the run has not reached yet |
@@ -457,6 +460,33 @@ plies instead of 8, Random joins the opponents, and the best network is chosen o
 against Greedy and Random rather than 20 against Greedy. Two further options are kept in reserve:
 training the value on the average of the result and the search's own estimate, and scoring
 capped games by material (which would add hand-written knowledge).
+
+**The second run, on the lab server.** Run `main-v2` (the same 20 generations of 50 games, now
+with endgame starts and the better testing) took 34 minutes on the server with 9 self-play
+processes, against about 2 hours for `main` on the Mac. It failed the same way, and showed why:
+
+| Value loss of generation 19 (vs predicting a draw) | Games it trained on | New games |
+|---|:-:|:-:|
+| From the opening | 0.11 (0.31) | 0.43 (0.36) |
+| Endgame starts | 0.21 (0.68) | 0.65 (0.63) |
+
+On games in its buffer the value head was three times better than predicting a draw; on new games
+it was worse. It had learned the 300 or so games in its buffer by heart: every position of a game
+shares one result, and a network of this size can tell which game a position came from. Its
+policy generalised (2.56 on trained games, 2.59 on new ones). The strength check showed the cost:
+against Random the untrained network scored 9 W / 9 D / 2 L, the best and final networks 1 W /
+19 D and 3 W / 17 D, and none of them won a game against Greedy. Half of the opening games reached
+the 300-ply cap, as draws, often with a Ratha or more of material between the sides.
+
+Two changes follow, both still from the rules alone. **Far more games**: on the server a
+generation can be 500 games, with a buffer of about three generations (300,000 positions), so
+the value head sees far more games than it can learn by heart. **A blended value target**: each
+position's target is the average of the game's result and the search's own estimate there
+(`value_mix` 0.5, a common AlphaZero variant). Positions of one game then get
+different targets, which are less noisy and harder to memorise. Losses on new games are still
+measured against the result alone, so the honest test is unchanged. Scoring capped games by
+material is set aside, to keep the agent learning from self-play alone; stronger weight decay
+(1e-4 to 1e-3) is kept in reserve.
 
 ### The run report
 

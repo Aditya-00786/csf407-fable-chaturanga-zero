@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field, SecretStr
 
 from chaturanga.agents import trained_checkpoint
 from chaturanga.selfplay import read_games
-from chaturanga.training import TrainConfig, pending_pause, request_pause
+from chaturanga.training import TrainConfig, buffer_for, pending_pause, request_pause
 
 router = APIRouter(prefix="/api/training")
 
@@ -490,7 +490,8 @@ def start_run(req: StartRequest):
     if path.exists():
         raise HTTPException(409, f"There is already a run named {req.name!r}.")
     config = TrainConfig(generations=req.generations, games_per_generation=req.games_per_generation,
-                         simulations=req.simulations, eval_games=req.eval_games, auto_report=req.auto_report)
+                         simulations=req.simulations, eval_games=req.eval_games, auto_report=req.auto_report,
+                         buffer_positions=buffer_for(req.games_per_generation))
     path.mkdir(parents=True)
     (path / "config.json").write_text(json.dumps(config.to_json(), indent=2))
     launch = {"publish": req.publish, "where": req.where}

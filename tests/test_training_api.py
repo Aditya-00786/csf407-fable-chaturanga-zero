@@ -251,9 +251,21 @@ def test_start_a_new_run_from_the_app(tmp_path, monkeypatch):
     config = json.loads((tmp_path / "quick" / "config.json").read_text())
     assert (config["generations"], config["games_per_generation"], config["simulations"], config["eval_games"]) == (3, 8, 20, 4)
     assert config["auto_report"] is True
+    assert config["buffer_positions"] == 60_000 and config["value_mix"] == 0.5
     cmd = started["cmd"]
     assert cmd[cmd.index("--run") + 1] == "quick" and cmd[cmd.index("--publish") + 1] == ""  # not published
     assert [r["name"] for r in client.get("/api/training/runs").json()["runs"]] == ["quick"]
+
+
+def test_a_run_with_many_games_gets_a_buffer_to_match(tmp_path, monkeypatch):
+    """About the last three generations: more games than the value head can learn by heart."""
+    import json
+
+    monkeypatch.setenv("CHATURANGA_RUNS", str(tmp_path))
+    _capture_popen(monkeypatch)
+    assert client.post("/api/training/runs", json={"name": "big", "games_per_generation": 500}).status_code == 202
+    config = json.loads((tmp_path / "big" / "config.json").read_text())
+    assert config["buffer_positions"] == 300_000 and config["steps_per_generation"] >= 4 * 500 * 200 // 256
 
 
 def test_a_new_run_needs_a_fresh_valid_name(tmp_path, monkeypatch):

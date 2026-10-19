@@ -4,6 +4,12 @@ It keeps whole games, newest last, and drops the oldest games once it holds more
 `capacity` positions, so the network trains on recent play by an improving network rather
 than on everything since the start. Positions are stored compactly (half-precision planes,
 sparse policy targets) and a sampled batch is expanded to dense tensors.
+
+The value target can blend the game's result z with the search's own estimate q at each position
+(`value_mix`: 0 is the result alone, 0.5 their average). Every position of a game shares one
+result, which a network can learn by heart for the few games it has seen; the search's estimate
+differs from position to position and is less noisy, so the blend is harder to memorise and closer
+to what the position is worth. Games recorded without search values use their result alone.
 """
 
 from collections import deque
@@ -12,12 +18,13 @@ from typing import Optional
 import numpy as np
 
 from .encoding import ACTION_SIZE
-from .selfplay import GameRecord, examples
+from .selfplay import GameRecord, examples, search_values
 
 
 class ReplayBuffer:
-    def __init__(self, capacity: int = 60_000):
+    def __init__(self, capacity: int = 60_000, value_mix: float = 0.0):
         self.capacity = capacity
+        self.value_mix = value_mix
         self._games: deque = deque()   # (planes f16, actions, shares, z), one entry per game
         self._size = 0
         self._flat: Optional[tuple] = None  # concatenated view, rebuilt after changes
@@ -33,6 +40,9 @@ class ReplayBuffer:
     def add(self, record: GameRecord) -> int:
         """Add a game's positions (raises ValueError for an invalid record). Returns their number."""
         planes, actions, shares, z = examples(record)
+        q = search_values(record)
+        if self.value_mix and q is not None:
+            z = ((1.0 - self.value_mix) * z + self.value_mix * q).astype(np.float32)
         self._games.append((planes.astype(np.float16), actions, shares, z))
         self._size += len(z)
         self.games_added += 1

@@ -116,6 +116,61 @@ def test_buffer_keeps_the_newest_games_within_capacity(games):
     assert np.allclose(pi.sum(1), 1) and set(np.unique(z)) <= {-1.0, 0.0, 1.0}
 
 
+@pytest.fixture(scope="module")
+def endgame_games():
+    """Games from endgame starts with one piece a side: short, and the search sees their ends coming."""
+    return play_games(UniformEvaluator(), 3, replace(FAST, simulations=24, endgame_fraction=1.0, endgame_max_pieces=1),
+                      seed=5, rules=SHORT)
+
+
+def test_records_keep_the_search_value_of_every_position(games, endgame_games):
+    for g in games + endgame_games:
+        assert len(g.values) == g.plies and all(-1.0 <= v <= 1.0 for v in g.values)
+    # The uniform evaluator scores every unfinished position 0, so a value away from 0 is a result
+    # the search saw coming, for the side to move: the winner, before the move that ends the game.
+    decisive = [g for g in endgame_games if g.winner is not None]
+    assert decisive and all(g.values[-1] > 0 for g in decisive)
+
+
+def test_the_value_target_blends_the_result_with_the_search_value(endgame_games):
+    g = max(endgame_games, key=lambda g: sum(abs(v) for v in g.values))
+    z = examples(g)[3]
+    plain, mixed = ReplayBuffer(), ReplayBuffer(value_mix=0.5)
+    plain.add(g)
+    mixed.add(g)
+    assert np.allclose(plain._flatten()[3], z)
+    assert np.allclose(mixed._flatten()[3], 0.5 * z + 0.5 * np.array(g.values), atol=1e-6)
+    assert not np.allclose(mixed._flatten()[3], z)
+    # A game recorded before search values were kept reads as before and trains on its result alone.
+    data = g.to_json()
+    data.pop("values")
+    old = GameRecord.from_json(data)
+    assert old.values == []
+    fresh = ReplayBuffer(value_mix=0.5)
+    fresh.add(old)
+    assert np.allclose(fresh._flatten()[3], z)
+
+
+def test_impossible_search_values_are_rejected(games):
+    g = games[0]
+    for values in (g.values[:-1], [2.0] + g.values[1:], [float("nan")] + g.values[1:]):
+        with pytest.raises(ValueError):
+            examples(replace(g, values=values))
+
+
+def test_held_out_loss_scores_the_result_alone(games):
+    """The honest measure stays how well the value predicts results, whatever training aims at."""
+    net = new_network(TINY, seed=0)
+    other = [replace(g, values=[0.9] * g.plies) for g in games]
+    a, b = held_out_loss(net, games, torch.device("cpu")), held_out_loss(net, other, torch.device("cpu"))
+    assert a["value_loss"] == pytest.approx(b["value_loss"])
+
+
+def test_a_run_trains_on_the_blend_it_is_set_to(tmp_path):
+    run = TrainingRun(str(tmp_path / "r"), TrainConfig(value_mix=0.25), log=lambda *_: None)
+    assert run.buffer.value_mix == 0.25
+
+
 def test_training_fits_a_fixed_buffer(games):
     """The loss and gradients work: a small network can overfit a few games."""
     buf = ReplayBuffer()
