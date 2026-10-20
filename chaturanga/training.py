@@ -187,6 +187,10 @@ def pending_pause(run_dir) -> Optional[str]:
 
 # One evaluator per worker process, reloaded when the checkpoint changes.
 _worker_cache: dict = {}
+# Where a worker process evaluates positions. Its search always runs on its own CPU core; the
+# network runs there too, or on the GPU for the first `gpu_workers` processes of a run (see
+# TrainingRun), so both work at once.
+_worker_device = torch.device("cpu")
 
 
 # Live progress: moves played and games finished, counted by whoever plays them (a worker process
@@ -214,19 +218,24 @@ def _count(moves: int = 0, games: int = 0) -> None:
                 counter.value += n
 
 
-def _init_worker(moves=None, games=None) -> None:
-    global _progress
+def _init_worker(moves=None, games=None, devices=None, started=None) -> None:
+    global _progress, _worker_device
     torch.set_num_threads(1)  # one process per core is faster than threads for batch sizes this small
     # Ctrl+C is for the main process, which pauses the run and stops the workers itself.
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     _progress = (moves, games) if moves is not None else None
+    if devices and started is not None:  # each process takes the next device as it starts
+        with started.get_lock():
+            index = started.value
+            started.value += 1
+        _worker_device = torch.device(devices[index % len(devices)])
 
 
 def _evaluator_for(checkpoint: str) -> NetworkEvaluator:
     key = (checkpoint, os.path.getmtime(checkpoint))
     if _worker_cache.get("key") != key:
         net, _ = load_checkpoint(checkpoint)
-        _worker_cache.update(key=key, evaluator=NetworkEvaluator(net, torch.device("cpu")))
+        _worker_cache.update(key=key, evaluator=NetworkEvaluator(net, _worker_device))
     return _worker_cache["evaluator"]
 
 
@@ -359,10 +368,12 @@ def held_out_loss(net: PolicyValueNet, records: list[GameRecord], device: torch.
 class TrainingRun:
     def __init__(self, directory: str, config: Optional[TrainConfig] = None, workers: int = 0,
                  device: Optional[torch.device] = None, selfplay_device: Optional[torch.device] = None,
-                 publish: Optional[str] = None, log: Callable[[str], None] = print):
+                 publish: Optional[str] = None, log: Callable[[str], None] = print, gpu_workers: int = 0):
         self.dir = Path(directory)
         self.name = self.dir.name
         self.workers = workers
+        # Of the worker processes, how many evaluate positions on the GPU (the rest on their CPU core).
+        self.gpu_workers = min(gpu_workers, workers) if torch.cuda.is_available() else 0
         self.device = device or training_device()
         self.selfplay_device = selfplay_device or (torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"))
         self.publish = publish
@@ -511,8 +522,10 @@ class TrainingRun:
         if self._pool is None:
             # multiprocessing's Pool (unlike concurrent.futures) can stop its workers at once,
             # which "pause now" needs: games in progress are abandoned, not waited for.
-            self._pool = mp.get_context("spawn").Pool(self.workers, initializer=_init_worker,
-                                                      initargs=(self._moves, self._games))
+            ctx = mp.get_context("spawn")
+            devices = ["cuda"] * self.gpu_workers + ["cpu"] * (self.workers - self.gpu_workers)
+            self._pool = ctx.Pool(self.workers, initializer=_init_worker,
+                                  initargs=(self._moves, self._games, devices, ctx.Value("i", 0)))
         return self._pool
 
     def _gather(self, pending: list, on_result: Callable) -> None:
@@ -775,7 +788,8 @@ class TrainingRun:
             last = self._load_or_create()
             self.log(f"Run {self.name}: generation {last} of {cfg.generations}, {self.buffer.games} games "
                      f"({len(self.buffer):,} positions) in the buffer; training on {self.device}, "
-                     f"self-play on {self.workers or 1} {'processes' if self.workers else 'process'}")
+                     f"self-play on {self.workers or 1} {'processes' if self.workers else 'process'}"
+                     + (f" ({self.gpu_workers} with the network on the GPU)" if self.gpu_workers else ""))
             if last == 0 and not (self.dir / "checkpoints" / "best.pt").exists():
                 self._update_best(0, {})
             self.set_status(generation=last, best_generation=self.best, paused_in=None, paused_after=None)

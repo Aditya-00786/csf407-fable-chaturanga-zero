@@ -268,6 +268,20 @@ def test_a_run_with_many_games_gets_a_buffer_to_match(tmp_path, monkeypatch):
     assert config["buffer_positions"] == 300_000 and config["steps_per_generation"] >= 4 * 500 * 200 // 256
 
 
+def test_a_new_run_can_have_a_larger_network(tmp_path, monkeypatch):
+    import json
+
+    monkeypatch.setenv("CHATURANGA_RUNS", str(tmp_path))
+    _capture_popen(monkeypatch)
+    assert client.post("/api/training/runs", json={"name": "small"}).status_code == 202
+    (tmp_path / "small" / "status.json").write_text(json.dumps({"state": "finished"}))  # one run at a time here
+    assert client.post("/api/training/runs", json={"name": "large", "blocks": 10, "channels": 128}).status_code == 202
+    sizes = {n: json.loads((tmp_path / n / "config.json").read_text()) for n in ("small", "large")}
+    assert (sizes["small"]["blocks"], sizes["small"]["channels"]) == (6, 64)
+    assert (sizes["large"]["blocks"], sizes["large"]["channels"]) == (10, 128)
+    assert client.post("/api/training/runs", json={"name": "huge", "channels": 4096}).status_code == 422
+
+
 def test_a_new_run_needs_a_fresh_valid_name(tmp_path, monkeypatch):
     monkeypatch.setenv("CHATURANGA_RUNS", str(tmp_path))
     _capture_popen(monkeypatch)

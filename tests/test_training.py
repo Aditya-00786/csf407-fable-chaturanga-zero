@@ -166,6 +166,33 @@ def test_held_out_loss_scores_the_result_alone(games):
     assert a["value_loss"] == pytest.approx(b["value_loss"])
 
 
+def test_worker_processes_take_their_devices_in_turn(monkeypatch):
+    """The first `gpu_workers` processes to start run the network on the GPU, the rest on their core."""
+    import multiprocessing
+    import signal
+
+    from chaturanga import training
+
+    started = multiprocessing.get_context("spawn").Value("i", 0)
+    threads, handler = torch.get_num_threads(), signal.getsignal(signal.SIGINT)
+    monkeypatch.setattr(training, "_worker_device", training._worker_device)
+    monkeypatch.setattr(training, "_progress", None)
+    try:
+        seen = []
+        for _ in range(4):
+            training._init_worker(None, None, ["cuda", "cpu", "cpu"], started)
+            seen.append(training._worker_device.type)
+    finally:
+        torch.set_num_threads(threads)
+        signal.signal(signal.SIGINT, handler)
+    assert seen == ["cuda", "cpu", "cpu", "cuda"]  # a process restarted later takes the next turn
+
+
+def test_gpu_workers_need_a_gpu(tmp_path):
+    run = TrainingRun(str(tmp_path / "r"), TrainConfig(), workers=4, gpu_workers=6, log=lambda *_: None)
+    assert run.gpu_workers == (4 if torch.cuda.is_available() else 0)
+
+
 def test_a_run_trains_on_the_blend_it_is_set_to(tmp_path):
     run = TrainingRun(str(tmp_path / "r"), TrainConfig(value_mix=0.25), log=lambda *_: None)
     assert run.buffer.value_mix == 0.25

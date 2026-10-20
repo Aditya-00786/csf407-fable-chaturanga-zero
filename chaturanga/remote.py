@@ -500,11 +500,14 @@ def pull_run(host: str, folder: str, name: str, local: Path) -> None:
             partial.unlink(missing_ok=True)
 
 
-def start_training(host: str, folder: str, name: str, workers: int, generations: Optional[int] = None) -> int:
+def start_training(host: str, folder: str, name: str, workers: int, generations: Optional[int] = None,
+                   gpu_workers: int = 0) -> int:
     """Start scripts/train.py on the server, detached from the connection (it trains on if the
-    connection drops) and at low priority (others using the machine come first); its process id."""
+    connection drops) and at low priority (others using the machine come first); its process id.
+    `gpu_workers` of the self-play processes run the network on the server's GPU."""
     q = shlex.quote
     extra = f" --generations {int(generations)}" if generations else ""
+    extra += f" --gpu-workers {int(gpu_workers)}" if gpu_workers else ""
     out = run(host, f"""F={q(folder)}
 {_env_exports()}
 cd "$F/code"

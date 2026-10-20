@@ -182,6 +182,31 @@ def test_hosts_from_the_ssh_config_are_offered(server, monkeypatch, tmp_path):
     assert hosts[0] == {"name": "lab", "user": "tester", "hostname": "lab.example"}  # as `ssh -G` resolves it
 
 
+def test_training_on_the_server_can_put_the_network_on_its_gpu(monkeypatch):
+    scripts = []
+    monkeypatch.setattr(remote, "run", lambda host, script, **kw: scripts.append(script) or "pid=42")
+    assert remote.start_training("lab", "/srv/f", "big", workers=20, generations=40, gpu_workers=12) == 42
+    assert "--workers 20" in scripts[0] and "--gpu-workers 12" in scripts[0] and "--generations 40" in scripts[0]
+    remote.start_training("lab", "/srv/f", "small", workers=8)
+    assert "--gpu-workers" not in scripts[1]
+
+
+def test_a_server_run_with_gpu_processes_plays_more_games_per_process(server, monkeypatch):
+    from chaturanga_server import training_api
+
+    monkeypatch.setattr(training_api, "_spawn_server", lambda path, generations, status, follow_only=False: {})
+    assert _connect().status_code == 200
+    plain = client.post("/api/training/runs", json={"name": "cpu", "where": "server"})
+    gpu = client.post("/api/training/runs", json={"name": "gpu", "where": "server", "workers": 10, "gpu_workers": 10,
+                                                  "blocks": 10, "channels": 128, "simulations": 200})
+    assert plain.status_code == gpu.status_code == 202
+    config = {n: json.loads((server["runs"] / n / "config.json").read_text()) for n in ("cpu", "gpu")}
+    launch = json.loads((server["runs"] / "gpu" / "launch.json").read_text())
+    assert config["cpu"]["concurrent"] == 8 and config["gpu"]["concurrent"] == 32
+    assert (launch["workers"], launch["gpu_workers"]) == (10, 10)
+    assert (config["gpu"]["blocks"], config["gpu"]["channels"], config["gpu"]["simulations"]) == (10, 128, 200)
+
+
 def test_a_server_run_needs_a_connection(server):
     started = client.post("/api/training/runs", json={"name": "s1", "where": "server"})
     assert started.status_code == 409 and "Connect" in started.json()["detail"]
@@ -218,7 +243,8 @@ def test_a_server_run_trains_there_and_comes_back_live(server):
     assert started.status_code == 202, started.text
     assert started.json()["state"] == "preparing" and started.json()["live"] is True
     launch = json.loads((server["runs"] / "s1" / "launch.json").read_text())
-    assert launch == {"publish": True, "where": "server", "host": "lab", "folder": str(server["folder"]), "workers": 1}
+    assert launch == {"publish": True, "where": "server", "host": "lab", "folder": str(server["folder"]), "workers": 1,
+                      "gpu_workers": 0}
 
     done = _wait("s1", lambda r: not r["live"])
     assert done["state"] == "finished", (server["runs"] / "s1" / "server_run.log").read_text()

@@ -56,6 +56,7 @@ def main():
     launch = json.loads((run_dir / "launch.json").read_text())
     host, folder = launch["host"], launch["folder"]
     workers = int(launch.get("workers") or 1)
+    gpu_workers = int(launch.get("gpu_workers") or 0)
     try:
         status = json.loads(status_file.read_text())
     except (OSError, ValueError):
@@ -124,10 +125,11 @@ def main():
             remote.push_run(host, folder, args.run, run_dir, everything=fresh)
             (run_dir / "control.json").unlink(missing_ok=True)  # the run clears its own as it starts
             remote.send_control(host, folder, args.run, None)
-            pid = remote.start_training(host, folder, args.run, workers, args.generations)
+            pid = remote.start_training(host, folder, args.run, workers, args.generations, gpu_workers)
             note(remote_pid=pid, started=_now(), hostname=facts.get("hostname"))
             gpu = check.get("gpu") if check else None
-            print(f"Started {args.run} on {host} (process {pid}): {workers} self-play processes, "
+            on_gpu = f" ({min(gpu_workers, workers)} with the network on the GPU)" if gpu_workers and gpu else ""
+            print(f"Started {args.run} on {host} (process {pid}): {workers} self-play processes{on_gpu}, "
                   f"training on {gpu or 'the CPU'}.", flush=True)
             set_status(state="starting", setup=None, phase_started=_now())
     except remote.NotConnected as exc:

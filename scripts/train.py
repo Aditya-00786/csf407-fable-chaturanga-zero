@@ -48,6 +48,9 @@ def main():
     ap.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 2),
                     help="self-play processes (default: cores - 2); 0 plays in this process, for a GPU")
     ap.add_argument("--device", help="training device: cuda, mps or cpu (default: the best available)")
+    ap.add_argument("--gpu-workers", type=int, default=0,
+                    help="self-play processes that run the network on the GPU (CUDA); the rest on their own "
+                         "CPU core, and every process's search on its core (default 0)")
     ap.add_argument("--publish", default=os.path.join(ROOT, "checkpoints", "best.pt"),
                     help="copy the best network here for the web app (default checkpoints/best.pt; '' to skip)")
     control = ap.add_mutually_exclusive_group()
@@ -81,7 +84,8 @@ def main():
     config = replace(config, **changes)
 
     device = torch.device(args.device) if args.device else training_device()
-    TrainingRun(run_dir, config, workers=args.workers, device=device, publish=args.publish or None).run()
+    TrainingRun(run_dir, config, workers=args.workers, device=device, publish=args.publish or None,
+                gpu_workers=args.gpu_workers).run()
 
 
 if __name__ == "__main__":

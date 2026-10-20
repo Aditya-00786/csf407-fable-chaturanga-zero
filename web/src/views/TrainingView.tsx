@@ -831,8 +831,9 @@ const FIELD = 'mt-1 h-9 w-full rounded-lg border border-line bg-surface px-3 tex
 
 /** Your own server, over SSH: connect with its address, a folder and its password (not kept),
  * then choose how many of its cores self-play uses. */
-function ServerNote({ server, onChange, workers, onWorkers }: {
+function ServerNote({ server, onChange, workers, onWorkers, gpuWorkers, onGpuWorkers }: {
   server: ServerStatus | null; onChange: (s: ServerStatus) => void; workers: number; onWorkers: (n: number) => void
+  gpuWorkers: number; onGpuWorkers: (n: number) => void
 }) {
   const [host, setHost] = useState(server?.host ?? '')
   const [folder, setFolder] = useState(server?.folder ?? '~/sopProject/chaturangzero')
@@ -883,16 +884,26 @@ function ServerNote({ server, onChange, workers, onWorkers }: {
           there sets up Python in that folder, PyTorch included (a few GB, a few minutes, once). Training runs at low
           priority, so others using the machine come first, and carries on if this Mac sleeps or the connection drops.
         </p>
-        <div className="mt-3 flex flex-wrap items-end gap-x-3 gap-y-1">
-          <label className="block w-36 text-[12.5px] font-medium text-ink-muted">
+        <div className="mt-3 flex flex-wrap items-start gap-x-4 gap-y-3">
+          <label className="block w-40 text-[12.5px] font-medium text-ink-muted">
             Self-play processes
             <input type="number" inputMode="numeric" min={1} max={cores} value={Number.isFinite(workers) ? workers : ''}
               onChange={(e) => onWorkers(e.target.value === '' ? NaN : Number(e.target.value))}
               className={`${FIELD} tabular-nums`} />
+            <span className="mt-1 block text-[12px] font-normal text-ink-faint">One core each, of its {cores}.</span>
           </label>
-          <p className="pb-2 text-[12px] text-ink-faint">
-            Of its {cores} cores: one game each. The rest are left for training and for others.
-          </p>
+          {f.gpu && (
+            <label className="block w-40 text-[12.5px] font-medium text-ink-muted">
+              Of them on the GPU
+              <input type="number" inputMode="numeric" min={0} max={Number.isFinite(workers) ? workers : cores}
+                value={Number.isFinite(gpuWorkers) ? gpuWorkers : ''}
+                onChange={(e) => onGpuWorkers(e.target.value === '' ? NaN : Number(e.target.value))}
+                className={`${FIELD} tabular-nums`} />
+              <span className="mt-1 block text-[12px] font-normal text-ink-faint">
+                Their network runs on the GPU, 32 games at a time; their search stays on their core.
+              </span>
+            </label>
+          )}
         </div>
         {error && <p className="mt-2 text-[12.5px] text-danger">{error}</p>}
       </CloudNote>
@@ -953,6 +964,12 @@ function ServerNote({ server, onChange, workers, onWorkers }: {
   )
 }
 
+type NetworkSize = 'standard' | 'large'
+const NETWORK_SIZES: Record<NetworkSize, { blocks: number; channels: number }> = {
+  standard: { blocks: 6, channels: 64 },
+  large: { blocks: 10, channels: 128 },
+}
+
 /** The form for a new training run. */
 function NewRun({ runs, first, secondsPerGame, onStarted, onCancel }: {
   runs: RunStatus[]; first: boolean; secondsPerGame: number
@@ -977,6 +994,7 @@ function NewRun({ runs, first, secondsPerGame, onStarted, onCancel }: {
   }
   const [sims, setSims] = useState(50)
   const [evalGames, setEvalGames] = useState(20)
+  const [size, setSize] = useState<NetworkSize>('standard')
   const [more, setMore] = useState(false)
   const trained = useGame((s) => s.trained)
   const refreshTrained = useGame((s) => s.refreshTrained)
@@ -994,10 +1012,12 @@ function NewRun({ runs, first, secondsPerGame, onStarted, onCancel }: {
   }
   const [cloud, setCloud] = useState<CloudStatus | null>(null)
   const [workers, setWorkers] = useState(NaN)
+  const [gpuWorkers, setGpuWorkers] = useState(0)
   useEffect(() => {
     void api.cloudStatus().then((c) => {
       setCloud(c)
       if (c.server.workers) setWorkers(c.server.workers)
+      setGpuWorkers(c.server.gpu_workers ?? 0)
     }, () => {})
   }, [])
   const setServer = (server: ServerStatus) => {
@@ -1018,7 +1038,9 @@ function NewRun({ runs, first, secondsPerGame, onStarted, onCancel }: {
               : !(evalGames >= 0 && evalGames <= 200) ? 'Test games: 0 to 200.'
                 : where === 'server' && server?.connected && !(workers >= 1 && workers <= cores)
                   ? `Self-play processes: 1 to ${cores}.`
-                  : null
+                  : where === 'server' && server?.connected && !(gpuWorkers >= 0 && gpuWorkers <= workers)
+                    ? `On the GPU: 0 to ${workers} of the self-play processes.`
+                    : null
   const [tried, setTried] = useState(false)
   const shown = tried ? problem ?? error : error
 
@@ -1029,8 +1051,8 @@ function NewRun({ runs, first, secondsPerGame, onStarted, onCancel }: {
     setError(null)
     try {
       const started = await api.startRun({ name, generations, games_per_generation: games, simulations: sims,
-        eval_games: evalGames, publish: publishing, auto_report: autoReport, where,
-        ...(where === 'server' && Number.isFinite(workers) ? { workers } : {}) })
+        eval_games: evalGames, publish: publishing, auto_report: autoReport, where, ...NETWORK_SIZES[size],
+        ...(where === 'server' && Number.isFinite(workers) ? { workers, gpu_workers: gpuWorkers } : {}) })
       if (started.colab_url) window.open(started.colab_url, '_blank', 'noopener')
       onStarted(name)
     } catch (err) {
@@ -1063,7 +1085,8 @@ function NewRun({ runs, first, secondsPerGame, onStarted, onCancel }: {
         <div className="pt-3">
           {where === 'colab' && <ColabNote cloud={cloud} />}
           {where === 'kaggle' && <KaggleNote cloud={cloud} onConnected={setCloud} />}
-          {where === 'server' && <ServerNote server={server} onChange={setServer} workers={workers} onWorkers={setWorkers} />}
+          {where === 'server' && <ServerNote server={server} onChange={setServer} workers={workers} onWorkers={setWorkers}
+            gpuWorkers={gpuWorkers} onGpuWorkers={setGpuWorkers} />}
         </div>
       </Collapse>
       <div className="mt-5 grid gap-4 sm:grid-cols-3">
@@ -1086,7 +1109,16 @@ function NewRun({ runs, first, secondsPerGame, onStarted, onCancel }: {
           <NumberField label="Simulations per move" value={sims} onChange={setSims} min={2} max={2000}
             hint="More is stronger and slower." />
           <NumberField label="Test games per opponent" value={evalGames} onChange={setEvalGames} min={0} max={200}
-            hint="Against the generation before and Greedy." />
+            hint="Against the generation before, Greedy and Random." />
+          <div className="min-w-0">
+            <Segmented<NetworkSize> label="Network" value={size} onChange={setSize} size="sm" options={[
+              { value: 'standard', label: '6 × 64', title: '6 residual blocks of 64 filters (1 M parameters)' },
+              { value: 'large', label: '10 × 128', title: '10 residual blocks of 128 filters (3.5 M parameters)' },
+            ]} />
+            <p className="mt-1 text-[12px] text-ink-faint">
+              {size === 'large' ? 'Learns more; each move costs about 3.5 times as much.' : 'Residual blocks × filters. A run keeps its size.'}
+            </p>
+          </div>
         </div>
       </Collapse>
       <div className="mt-5 max-w-md space-y-4">

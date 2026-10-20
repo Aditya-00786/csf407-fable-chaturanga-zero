@@ -207,8 +207,12 @@ export interface NewRunSettings {
   auto_report: boolean
   /** Train on this Mac, on Colab (through Google Drive), on Kaggle or on your server. */
   where: Where
-  /** Self-play processes, on your server. */
+  /** Self-play processes, on your server, and how many of them run the network on its GPU. */
   workers?: number
+  gpu_workers?: number
+  /** The network's size: residual blocks and filters per convolution (a run keeps its size). */
+  blocks?: number
+  channels?: number
 }
 
 export interface CloudStatus {
@@ -224,6 +228,7 @@ export interface ServerStatus {
   folder: string
   folder_path: string | null
   workers: number | null
+  gpu_workers: number
   connected: boolean
   /** What it had when last connected. */
   facts: { hostname?: string; cores?: number; cpu?: string; memory_gb?: number; gpu?: string; python?: string } | null

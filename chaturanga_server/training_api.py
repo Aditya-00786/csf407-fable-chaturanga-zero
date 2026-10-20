@@ -297,9 +297,14 @@ class StartRequest(BaseModel):
     where: Literal["mac", "colab", "kaggle", "server"] = Field(
         "mac", description="Train on this Mac, on Colab, on Kaggle or on your server (over SSH)")
     workers: Optional[int] = Field(None, ge=1, le=1024, description="Self-play processes, on your server")
+    gpu_workers: Optional[int] = Field(None, ge=0, le=1024,
+                                       description="Of them, how many run the network on the server's GPU")
+    blocks: int = Field(TrainConfig.blocks, ge=1, le=40, description="Residual blocks in the network")
+    channels: int = Field(TrainConfig.channels, ge=8, le=512, description="Filters per convolution")
 
 
 _NEW_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$")
+GPU_CONCURRENT = 32
 
 
 def _launch_settings(path: Path) -> dict:
@@ -474,10 +479,13 @@ def start_run(req: StartRequest):
     elif req.where == "server":
         root = runs_dir()
         server = _server_ready()
-        if req.workers:  # kept for the next run too
+        if req.workers or req.gpu_workers is not None:  # kept for the next run too
             from chaturanga import remote
 
-            server = remote.save_settings(workers=req.workers)
+            changes = {"workers": req.workers} if req.workers else {}
+            if req.gpu_workers is not None:
+                changes["gpu_workers"] = req.gpu_workers
+            server = remote.save_settings(**changes)
         busy = _live_server_run()
         if busy:
             raise HTTPException(409, f"The run {busy!r} is training on the server. Pause it first: one run at a time "
@@ -489,14 +497,19 @@ def start_run(req: StartRequest):
     path = root / req.name
     if path.exists():
         raise HTTPException(409, f"There is already a run named {req.name!r}.")
+    # A process that runs its network on the GPU plays 32 games side by side: the GPU works best on
+    # large batches (measured on the lab server: 168 moves a second against 66 with 8).
+    on_gpu = req.where == "server" and bool(server.get("gpu_workers"))
     config = TrainConfig(generations=req.generations, games_per_generation=req.games_per_generation,
                          simulations=req.simulations, eval_games=req.eval_games, auto_report=req.auto_report,
-                         buffer_positions=buffer_for(req.games_per_generation))
+                         buffer_positions=buffer_for(req.games_per_generation), blocks=req.blocks,
+                         channels=req.channels, concurrent=GPU_CONCURRENT if on_gpu else TrainConfig.concurrent)
     path.mkdir(parents=True)
     (path / "config.json").write_text(json.dumps(config.to_json(), indent=2))
     launch = {"publish": req.publish, "where": req.where}
     if req.where == "server":  # the run keeps the server it trains on, even if the app's server changes later
-        launch.update(host=server["host"], folder=server["folder_abs"], workers=server["workers"])
+        launch.update(host=server["host"], folder=server["folder_abs"], workers=server["workers"],
+                      gpu_workers=min(server.get("gpu_workers") or 0, server["workers"]))
     (path / "launch.json").write_text(json.dumps(launch))
     status = {"run": req.name, "generation": 0, "generations": req.generations}
     if req.where == "colab":
@@ -583,6 +596,7 @@ def _server_status() -> dict:
     host = settings.get("host")
     return {"host": host, "folder": settings.get("folder") or remote.DEFAULT_FOLDER,
             "folder_path": settings.get("folder_abs"), "workers": settings.get("workers"),
+            "gpu_workers": settings.get("gpu_workers") or 0,
             "connected": remote.connected(host) if host else False, "facts": settings.get("facts"),
             "hosts": remote.ssh_config_hosts(), "tools": bool(remote.ssh_tool() and remote.rsync_tool())}
 

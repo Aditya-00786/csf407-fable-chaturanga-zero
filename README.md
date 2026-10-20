@@ -63,7 +63,7 @@ the same commit that completes the work.
 - **Researched ruleset.** Every rule is backed by historical sources, and contested rules are
   settled by counting references. See [docs/RULES.md](docs/RULES.md).
 - **Verified rules engine.** A cross-check against an independent reference move generator and a
-  10,000-game random-play stress test; 230 tests in all.
+  10,000-game random-play stress test; 235 tests in all.
 - **AlphaZero search.** PUCT Monte Carlo Tree Search guided by a residual policy-value network
   (6 blocks × 64 filters, about 1M parameters), with exact values for finished games, root noise,
   temperature and tree reuse for self-play. Planted bugs in the search are all caught by the tests.
@@ -652,6 +652,26 @@ The training carries on if the Mac sleeps or the connection drops; the page then
 password again, and connecting picks the run up where it is, also after the Mac has restarted.
 **Self-play processes** sets how many of the server's cores it uses (by default all but four, left
 for the training and anyone else on the machine). Deleting a run deletes the server's copy too.
+
+**CPU and GPU together.** Each self-play process runs its search on its own CPU core; its network
+runs there too, or, for the processes set **on the GPU** (`--gpu-workers`), on the server's GPU,
+which then plays 32 games side by side in each process so its batches are large. Measured on the
+lab server (Core Ultra 9 285K, RTX 5000 Ada), in moves of self-play a second:
+
+| Network, simulations | Where the network runs | Moves a second |
+|---|---|---:|
+| 6 x 64, 50 | CPU, 20 processes | 502 |
+| 10 x 128, 200 | CPU, 20 processes | 25 |
+| 10 x 128, 200 | GPU, 20 processes of 8 games | 66 |
+| 10 x 128, 200 | GPU, 20 processes of 32 games | 168 |
+| 10 x 128, 200 | GPU, 10 processes of 32 games | 182 |
+
+The GPU is the limit: fewer processes with larger batches beat more with small ones, and adding
+processes that run the network on their own core does not pay, since each adds about 1 move a
+second and holds up the end of every generation with its share of the games. For a large network,
+put about 10 processes on the GPU and none on the CPU; the free cores serve the training process
+and others on the machine. (The small network was measured on the CPU only, where it already plays
+about 500 moves a second.)
 
 **Playing the trained agent.** In the app choose **Trained** as the opponent (or for either side
 in Computers mode) and a level:
