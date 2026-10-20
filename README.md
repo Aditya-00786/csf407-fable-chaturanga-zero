@@ -518,7 +518,48 @@ at the end), and each generation scored 50 to 59% against the one before.
 Greedy still won every game, at 50, 200 and 800 simulations alike: the network loses material on
 about a dozen moves a game whatever the search size, so the limit is its judgement of loose
 pieces, not the search. Why, and the change that followed (a lower temperature after the opening),
-is under "Why self-play samples its moves" above. The run continues from generation 20.
+is under "Why self-play samples its moves" above.
+
+**Generations 21 to 40, and why it cannot beat Greedy.** Run `main-v3` went on to generation 40
+(temperature 0.5 after the opening). Against Random it kept improving: 92% in the test games of
+generations 31 to 40, from 86.5% in 11 to 20 (98% at its best, generation 29, and 18 W / 2 D in
+the strength check). Against Greedy it did not: 2 wins in 400 test games in generations 31 to 40
+(its "9%" peak was 7 draws in 40), and the value margin on new games narrowed (0.71 against 0.82
+in generations 31 to 40, from 0.61 against 0.85 in 11 to 20).
+
+The network does know what pieces are worth. Taking one piece off the board in 773 positions from
+its games moves its value, for the side that gains, by 0.37 for a Ratha, 0.15 for an Ashva, 0.10 for
+a Gaja, 0.07 for a Mantri and 0.05 for a Padati: in proportion close to Greedy's hand-set 5, 3, 1.5,
+1.5 and 1, learned from self-play alone. What it lacks is tactics. Against Greedy it lost material
+on about a dozen moves a game; in its own games, free material was taken a third of the time (a
+free Ratha 69% of the time, a free Padati 34%). A series of experiments on the lab server, each on
+generation 39 or 40, looked for the cause (the scripts are kept with their logs in the server's
+`analysis/` folder):
+
+| Experiment | Result |
+|---|---|
+| More search: 50, 200 and 800 simulations per move against Greedy | about 11 to 13 material-losing moves a game at every size; 0 to 12% |
+| Temperature after the opening, 1 / 0.5 / 0.25 / 0, in self-play | free material taken 30 / 40 / 44 / 45% (adopted 0.5; no gain showed in the run) |
+| A lower learning rate (1e-4 against 1e-3) for more training on the same games | no lower loss on new games; it only avoids drifting upward |
+| A bigger network (10 x 128 against 6 x 64), trained from scratch on the same games | value 0.682 against 0.693 on new games: slightly better, not enough to explain the gap |
+| The result alone as the value target (value_mix 0 against 0.5) | memorises again: 0.94 on new games, worse than predicting a draw; the blend stays |
+| How the search treats untried moves (a fixed 0, or the position's own value less 0, 0.25 or 0.5) | free material taken 6 to 9 of 40 cases; no change against Greedy |
+| An even share of attention for every move at the root | free material taken up to 17 of 40; still 0 to 1 wins in 40 against Greedy |
+| Flattened priors at every node (temperature 2 to 3) with 800 simulations | free material taken up to 25 of 40; still about 13 material-losing moves a game, 0 to 2 wins in 20 |
+
+In the positions where a free Ashva or Ratha was left, the network rated the position after the
+capture higher in 28 of 40, but its policy gave the capture a prior of 0.003 to 0.03, so the search
+seldom tried it; and it gives the opponent's captures the same neglect, so a move that leaves a piece
+to be taken looks safe. A policy that does not look at captures plays games where loose pieces go
+unpunished, which teaches it nothing about them: a loop that settings did not break. Greedy looks at
+every reply to every move, exactly, which no affordable number of simulations matches when the
+priors point elsewhere.
+
+So the agent learned strategy from the rules alone (material values, converting won positions:
+95 to 98% against Random) but not tactics. AlphaZero learned both with about 800 simulations a move,
+a 20 x 256 network and millions of games; this run had 50 simulations, a 6 x 64 network and 20,000
+games. Beating Greedy by self-play alone would take a run of that larger kind, many times this one's
+compute; it is a stretch goal, not a setting to change.
 
 ### The run report
 
