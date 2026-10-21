@@ -119,6 +119,7 @@ def _status(path: Path) -> dict:
     alive = _process_alive(status)
     status["name"] = path.name
     status["where"] = _where(path)
+    status["publish"] = bool(_launch_settings(path).get("publish", True))  # feeds Play's Trained opponent
     status["seconds_since_update"] = age
     if status["where"] == "server":
         # Followed from here by scripts/server_run.py: live while it follows a run training there.
@@ -567,6 +568,44 @@ def _server_connection(path: Path) -> dict:
     if not remote.connected(host):
         raise HTTPException(409, f"Not connected to {host}: connect with its password first.")
     return launch
+
+
+# ---------------------------------------------------------------------- the network in Play
+
+class PublishRequest(BaseModel):
+    publish: bool = Field(description="Use this run's best network as the Trained opponent in Play")
+
+
+def _set_launch(path: Path, **changes) -> None:
+    launch = _launch_settings(path) or {"where": _where(path)}
+    launch.update(changes)
+    (path / "launch.json").write_text(json.dumps(launch))
+
+
+def _copy_to_play(best: Path) -> None:
+    target = trained_checkpoint()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_suffix(".tmp")
+    shutil.copyfile(best, tmp)
+    tmp.replace(target)  # Play picks it up at its next move, without a restart
+
+
+@router.post("/runs/{name}/publish")
+def publish_run(name: str, req: PublishRequest):
+    """Use this run's best network as Play's Trained opponent, now and as the run improves (and
+    stop the other runs from replacing it); or stop it updating Play, which keeps the network it has.
+    One run feeds Play at a time. A run training on this Mac reads the setting when it (re)starts."""
+    path = _run_dir(name)
+    best = path / "checkpoints" / "best.pt"
+    if req.publish:
+        if not best.exists():
+            raise HTTPException(400, f"run {name!r} has no network yet")
+        for other in _all_runs():
+            if other != path and _launch_settings(other).get("publish", True):
+                _set_launch(other, publish=False)
+        _copy_to_play(best)
+    _set_launch(path, publish=req.publish)
+    return _status(path)
 
 
 # ---------------------------------------------------------------------- cloud accounts

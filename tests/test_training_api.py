@@ -72,6 +72,33 @@ def test_a_newly_published_network_is_picked_up(trained_network):
     assert agents.trained_evaluator()[1]["generation"] == 8
 
 
+def test_use_in_play_puts_a_runs_best_network_in_play_and_keeps_one_run_feeding_it(tmp_path, monkeypatch):
+    import json
+
+    runs, played = tmp_path / "runs", tmp_path / "play" / "best.pt"
+    monkeypatch.setenv("CHATURANGA_RUNS", str(runs))
+    monkeypatch.setenv("CHATURANGA_CHECKPOINT", str(played))
+    for name, generation, publish in (("old", 3, True), ("new", 9, False), ("empty", 0, None)):
+        (runs / name / "checkpoints").mkdir(parents=True)
+        (runs / name / "config.json").write_text(json.dumps(TrainConfig().to_json()))
+        if publish is not None:
+            (runs / name / "launch.json").write_text(json.dumps({"publish": publish, "where": "server"}))
+        if generation:
+            save_checkpoint(str(runs / name / "checkpoints" / "best.pt"), new_network(TINY, seed=generation),
+                            generation=generation, run=name)
+    assert client.post("/api/training/runs/empty/publish", json={"publish": True}).status_code == 400
+
+    on = client.post("/api/training/runs/new/publish", json={"publish": True})
+    assert on.status_code == 200 and on.json()["publish"] is True
+    assert client.get("/api/meta").json()["trained"] == {"run": "new", "generation": 9}  # in Play at once
+    publishing = {r["name"]: r["publish"] for r in client.get("/api/training/runs").json()["runs"]}
+    assert publishing == {"old": False, "new": True, "empty": False}  # one run feeds Play
+
+    # Off: Play keeps the network it has; the run just stops replacing it.
+    assert client.post("/api/training/runs/new/publish", json={"publish": False}).json()["publish"] is False
+    assert client.get("/api/meta").json()["trained"] == {"run": "new", "generation": 9}
+
+
 @pytest.fixture(scope="module")
 def run_root(tmp_path_factory):
     root = tmp_path_factory.mktemp("runs")

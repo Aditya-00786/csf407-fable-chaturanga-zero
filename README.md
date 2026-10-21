@@ -63,7 +63,7 @@ the same commit that completes the work.
 - **Researched ruleset.** Every rule is backed by historical sources, and contested rules are
   settled by counting references. See [docs/RULES.md](docs/RULES.md).
 - **Verified rules engine.** A cross-check against an independent reference move generator and a
-  10,000-game random-play stress test; 235 tests in all.
+  10,000-game random-play stress test; 236 tests in all.
 - **AlphaZero search.** PUCT Monte Carlo Tree Search guided by a residual policy-value network
   (6 blocks × 64 filters, about 1M parameters), with exact values for finished games, root noise,
   temperature and tree reuse for self-play. Planted bugs in the search are all caught by the tests.
@@ -374,7 +374,10 @@ accident. One run trains at a time: starting or resuming a second one asks you t
 Self-play always uses the newest network, as AlphaZero does. The **best** network is the one with
 the highest average score against Greedy and Random (40 games, so a few lucky draws do not decide
 it; later generations win ties). It is copied to `checkpoints/best.pt`, where the app's Trained
-opponent picks it up without a restart.
+opponent picks it up without a restart. One run feeds Play at a time: **Use in Play** on a run's
+panel (or "Use its best network as the Trained opponent in Play" when starting one) puts its best
+network in Play at once and keeps it updated as the run improves, and stops the other runs from
+replacing it. Turned off, Play keeps the network it has.
 
 **What a run keeps** (in `runs/<run>/`, git-ignored)
 

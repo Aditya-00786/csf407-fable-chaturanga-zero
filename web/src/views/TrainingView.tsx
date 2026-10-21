@@ -561,8 +561,44 @@ function StatusPanel({ status, detail, onChange }: { status: RunStatus; detail: 
           </div>
         ))}
       </dl>
+      {status.best_generation !== undefined && <UseInPlay status={status} onChange={onChange} />}
       <RunControls status={{ ...status, state }} total={total} done={done} lostTrack={lostTrack} onChange={onChange} />
     </section>
+  )
+}
+
+/** Whether the run's best network is Play's Trained opponent, and keeps it as the run improves. */
+function UseInPlay({ status, onChange }: { status: RunStatus; onChange: (s?: RunStatus) => void }) {
+  const trained = useGame((s) => s.trained)
+  const refreshTrained = useGame((s) => s.refreshTrained)
+  const [on, setOn] = useState(status.publish)
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => setOn(status.publish), [status.publish])
+  const inPlay = !!trained && trained.run === status.name
+  const set = async (value: boolean) => {
+    setOn(value)
+    setError(null)
+    try {
+      onChange(await api.publishRun(status.name, value))
+      refreshTrained()
+    } catch (err) {
+      setOn(!value)
+      setError(err instanceof Error ? err.message : 'Something went wrong.')
+    }
+  }
+  const note = on
+    ? inPlay && trained?.generation != null
+      ? `Play’s Trained opponent uses this run’s best network (generation ${trained.generation}) and follows it as the run improves.`
+      : 'Play’s Trained opponent uses this run’s best network and follows it as the run improves.'
+    : trained?.run
+      ? `Play keeps the network from “${trained.run}”${trained.generation != null ? `, generation ${trained.generation}` : ''}.`
+      : 'Play has no trained network yet.'
+  return (
+    <div className="mt-5 max-w-md border-t border-line pt-4">
+      <Switch label="Use in Play" checked={on} onChange={(v) => void set(v)} />
+      <p key={note} className="cz-swap mt-1 text-[12.5px] leading-snug text-ink-faint">{note}</p>
+      {error && <p className="cz-swap mt-1 text-[12.5px] text-danger">{error}</p>}
+    </div>
   )
 }
 
