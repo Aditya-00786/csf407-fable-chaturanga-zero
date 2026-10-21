@@ -207,6 +207,23 @@ def test_a_server_run_with_gpu_processes_plays_more_games_per_process(server, mo
     assert (config["gpu"]["blocks"], config["gpu"]["channels"], config["gpu"]["simulations"]) == (10, 128, 200)
 
 
+def test_the_apps_settings_for_a_run_never_travel_to_or_from_the_server(server):
+    """Which network Play uses is chosen here; copying the run back must not undo the choice."""
+    assert _connect().status_code == 200
+    there, here = server["folder"] / "runs" / "s9", server["runs"] / "s9"
+    there.mkdir(parents=True)
+    here.mkdir(parents=True)
+    (there / "launch.json").write_text(json.dumps({"play": "latest"}))  # stale, from an earlier start
+    (there / "metrics.jsonl").write_text("{}\n")
+    (here / "launch.json").write_text(json.dumps({"play": "best"}))
+    (here / "config.json").write_text("{}")
+    remote.pull_run("lab", str(server["folder"]), "s9", here)
+    assert json.loads((here / "launch.json").read_text()) == {"play": "best"} and (here / "metrics.jsonl").exists()
+    remote.push_run("lab", str(server["folder"]), "s9", here, everything=False)
+    remote.push_run("lab", str(server["folder"]), "s9", here, everything=True)
+    assert json.loads((there / "launch.json").read_text()) == {"play": "latest"}  # not sent either
+
+
 def test_a_server_run_needs_a_connection(server):
     started = client.post("/api/training/runs", json={"name": "s1", "where": "server"})
     assert started.status_code == 409 and "Connect" in started.json()["detail"]

@@ -228,6 +228,7 @@ def test_a_kaggle_run_goes_up_trains_and_comes_home(places, fake_kaggle):
     with tarfile.open(fake_kaggle / "bundle.tar.gz") as tar:
         names = tar.getnames()
     assert "code/chaturanga/training.py" in names and "run/config.json" in names
+    assert "run/launch.json" not in names  # the app's settings stay here
 
     # 2. "Kaggle" runs the script on the data, unpacked as Kaggle unpacks an uploaded archive.
     base = places["tmp"] / "kaggle-machine"
@@ -239,6 +240,10 @@ def test_a_kaggle_run_goes_up_trains_and_comes_home(places, fake_kaggle):
                           env={**os.environ, "KAGGLE_BASE": str(base), "KAGGLE_WORKERS": "0"})
     assert done.returncode == 0, done.stdout + done.stderr
     (fake_kaggle / "working").symlink_to(base / "working")
+    # Meanwhile Play is given one of the run's networks here; the session's output must not undo it.
+    (base / "working" / "runs" / "k2" / "launch.json").write_text(json.dumps({"play": "latest", "where": "kaggle"}))
+    chosen = {"play": 1, "where": "kaggle"}
+    (run / "launch.json").write_text(json.dumps(chosen))
 
     # 3. Following again picks up the same session (no second upload) and brings the run home.
     done = subprocess.run([sys.executable, str(ROOT / "scripts" / "kaggle_run.py"), "--run", "k2", "--runs-dir",
@@ -250,6 +255,7 @@ def test_a_kaggle_run_goes_up_trains_and_comes_home(places, fake_kaggle):
     assert status["state"] == "finished" and status["where"] == "kaggle"
     assert (run / "checkpoints" / "gen_0001.pt").exists() and (run / "kaggle.log").exists()
     assert json.loads((run / "cloud.json").read_text())["fetched"] is True
+    assert json.loads((run / "launch.json").read_text()) == chosen
     assert places["published"].exists()
     detail = client.get("/api/training/runs/k2").json()
     assert detail["status"]["where"] == "kaggle" and [g["generation"] for g in detail["generations"]] == [1]

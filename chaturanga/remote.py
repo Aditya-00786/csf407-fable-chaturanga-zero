@@ -462,8 +462,9 @@ def push_code(host: str, folder: str) -> None:
 
 
 # Files that belong to one side only: the run's live status and pause requests (passed on by the
-# follower), and the follower's own notes and log here.
-LOCAL_ONLY = ("/status.json", "/control.json", "/server.json", "/server_run.log", "*.tmp")
+# follower), the follower's own notes and log here, and the app's settings for the run (launch.json:
+# where it trains, and which of its networks Play uses), which the server neither needs nor changes.
+LOCAL_ONLY = ("/status.json", "/control.json", "/server.json", "/server_run.log", "/launch.json", "*.tmp")
 
 
 def run_path(folder: str, name: str) -> str:
@@ -478,15 +479,14 @@ def run_exists(host: str, folder: str, name: str) -> bool:
 
 def push_run(host: str, folder: str, name: str, local: Path, everything: bool) -> None:
     """Copy the run to the server: all of it (a new run, or one that trained elsewhere so far), or
-    just its settings (the server has the rest, and may have changed it since)."""
+    just its training settings (the server has the rest, and may have changed it since)."""
     remote = run_path(folder, name)
     run(host, f"mkdir -p {shlex.quote(remote)}")
     if everything:
         rsync(host, [f"{local}/"], f"{host}:{remote}/", *(f"--exclude={p}" for p in LOCAL_ONLY))
     else:
-        files = [str(local / f) for f in ("config.json", "launch.json") if (local / f).exists()]
-        if files:
-            rsync(host, files, f"{host}:{remote}/")
+        if (local / "config.json").exists():
+            rsync(host, [str(local / "config.json")], f"{host}:{remote}/")
 
 
 def pull_run(host: str, folder: str, name: str, local: Path) -> None:

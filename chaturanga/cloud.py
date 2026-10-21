@@ -230,7 +230,7 @@ def bundle_run(run_dir: Path, out: Path) -> Path:
     archive = out / "bundle.tar.gz"
     with tarfile.open(archive, "w:gz") as tar:
         tar.add(ROOT / "chaturanga", "code/chaturanga", filter=lambda t: None if "__pycache__" in t.name else t)
-        for item in ("config.json", "metrics.jsonl", "checkpoints", "games", "launch.json"):
+        for item in ("config.json", "metrics.jsonl", "checkpoints", "games"):
             if (run_dir / item).exists():
                 tar.add(run_dir / item, f"run/{item}")
     return archive
@@ -277,6 +277,12 @@ def kernel_state(kid: str) -> str:
     return word.rsplit(".", 1)[-1].strip('"').lower().replace("_", "")
 
 
+# Files of a run that only the app here writes: where the run trains and which network Play uses
+# (launch.json), and how the Kaggle session is followed (cloud.json). A session's output never
+# replaces them.
+THIS_MAC_ONLY = {"launch.json", "cloud.json"}
+
+
 def fetch_output(kid: str, run_dir: Path) -> tuple[Optional[Path], bool]:
     """Download the script's output and put the run back in run_dir. Returns the session's log file,
     and whether the run came back (Kaggle keeps no files from a session stopped on its page)."""
@@ -286,6 +292,8 @@ def fetch_output(kid: str, run_dir: Path) -> tuple[Optional[Path], bool]:
         came = got.is_dir()
         if came:
             for item in got.iterdir():
+                if item.name in THIS_MAC_ONLY:
+                    continue  # the app's settings for the run, which may have changed here since
                 target = run_dir / item.name
                 if item.is_dir():
                     shutil.copytree(item, target, dirs_exist_ok=True)
