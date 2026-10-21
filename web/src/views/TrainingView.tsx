@@ -561,42 +561,144 @@ function StatusPanel({ status, detail, onChange }: { status: RunStatus; detail: 
           </div>
         ))}
       </dl>
-      {status.best_generation !== undefined && <UseInPlay status={status} onChange={onChange} />}
+      <PlayMenu status={status} detail={detail} onChange={onChange} />
       <RunControls status={{ ...status, state }} total={total} done={done} lostTrack={lostTrack} onChange={onChange} />
     </section>
   )
 }
 
-/** Whether the run's best network is Play's Trained opponent, and keeps it as the run improves. */
-function UseInPlay({ status, onChange }: { status: RunStatus; onChange: (s?: RunStatus) => void }) {
+type PlayChoice = RunStatus['play']
+
+interface PlayOption {
+  choice: PlayChoice
+  generation: number | null
+  tags: ('best' | 'latest')[]
+  greedy: number | null
+}
+
+/** The run's networks to choose from for Play: its best, then its latest (both followed as the run
+ * trains), then every other generation by its score against Greedy in its tests, then none. */
+function playOptions(detail: RunDetail): PlayOption[] {
+  const rows = detail.generations.filter((g) => g.best !== undefined)
+  if (!rows.length) return []
+  const greedy = (g: number) => rows.find((r) => r.generation === g)?.eval.greedy?.score ?? null
+  const latest = Math.max(...rows.map((r) => r.generation))
+  const best = detail.status.best_generation ?? latest
+  const options: PlayOption[] = [{ choice: 'best', generation: best, tags: best === latest ? ['best', 'latest'] : ['best'], greedy: greedy(best) }]
+  if (latest !== best) options.push({ choice: 'latest', generation: latest, tags: ['latest'], greedy: greedy(latest) })
+  const rest = rows.filter((r) => r.generation !== best && r.generation !== latest)
+    .sort((a, b) => (b.eval.greedy?.score ?? -1) - (a.eval.greedy?.score ?? -1) || b.generation - a.generation)
+  for (const r of rest) options.push({ choice: r.generation, generation: r.generation, tags: [], greedy: greedy(r.generation) })
+  options.push({ choice: null, generation: null, tags: [], greedy: null })
+  return options
+}
+
+function Tag({ kind }: { kind: 'best' | 'latest' }) {
+  return (
+    <span className={`rounded px-1.5 py-px text-[11px] font-medium ${kind === 'best' ? 'bg-accent-soft text-accent' : 'bg-surface-2 text-ink-muted'}`}>
+      {kind}
+    </span>
+  )
+}
+
+function PlayOptionLabel({ option }: { option: PlayOption }) {
+  if (option.generation === null) return <span className="text-ink-muted">Not in Play</span>
+  return (
+    <span className="flex min-w-0 items-center gap-2">
+      <span className="text-ink tabular-nums">Generation {option.generation}</span>
+      {option.tags.map((t) => <Tag key={t} kind={t} />)}
+    </span>
+  )
+}
+
+/** Which of the run's networks is Play's Trained opponent: a dropdown designed here, listing the
+ * best and latest generations first, then the rest by their score against Greedy. */
+function PlayMenu({ status, detail, onChange }: { status: RunStatus; detail: RunDetail; onChange: (s?: RunStatus) => void }) {
   const trained = useGame((s) => s.trained)
   const refreshTrained = useGame((s) => s.refreshTrained)
-  const [on, setOn] = useState(status.publish)
+  const options = useMemo(() => playOptions(detail), [detail])
   const [error, setError] = useState<string | null>(null)
-  useEffect(() => setOn(status.publish), [status.publish])
-  const inPlay = !!trained && trained.run === status.name
-  const set = async (value: boolean) => {
-    setOn(value)
+  const [sending, setSending] = useState(false)
+  // A generation kept in Play that is also the best or latest shows on that row.
+  const exact = options.findIndex((o) => o.choice === status.play)
+  const selected = exact >= 0 ? exact
+    : Math.max(0, options.findIndex((o) => typeof status.play === 'number' && o.generation === status.play))
+  const choose = async (choice: PlayChoice) => {
+    if (choice === status.play || sending) return
+    setSending(true)
     setError(null)
     try {
-      onChange(await api.publishRun(status.name, value))
+      onChange(await api.choosePlay(status.name, choice))
       refreshTrained()
     } catch (err) {
-      setOn(!value)
       setError(err instanceof Error ? err.message : 'Something went wrong.')
+    } finally {
+      setSending(false)
     }
   }
-  const note = on
-    ? inPlay && trained?.generation != null
-      ? `Play’s Trained opponent uses this run’s best network (generation ${trained.generation}) and follows it as the run improves.`
-      : 'Play’s Trained opponent uses this run’s best network and follows it as the run improves.'
-    : trained?.run
-      ? `Play keeps the network from “${trained.run}”${trained.generation != null ? `, generation ${trained.generation}` : ''}.`
-      : 'Play has no trained network yet.'
+  const { open, active, setActive, show, close, pick, root, button, list, id, onListKey, onButtonKey } = useListbox(
+    options.length, selected, (i) => void choose(options[i].choice),
+    (i) => (options[i].generation === null ? 'not' : String(options[i].generation)))
+  if (!options.length) return null
+  const current = options[selected]
+  const pctOf = (o: PlayOption) => (o.greedy === null ? '–' : pct(o.greedy))
+  const note = status.play === 'best' ? 'Follows the run’s best network as it trains.'
+    : status.play === 'latest' ? 'Follows the newest generation as it trains.'
+      : typeof status.play === 'number' ? 'Stays on this generation until you choose another.'
+        : trained?.run
+          ? `Play uses “${trained.run}”${trained.generation != null ? `, generation ${trained.generation}` : ''}.`
+          : 'Play has no trained network yet.'
   return (
-    <div className="mt-5 max-w-md border-t border-line pt-4">
-      <Switch label="Use in Play" checked={on} onChange={(v) => void set(v)} />
-      <p key={note} className="cz-swap mt-1 text-[12.5px] leading-snug text-ink-faint">{note}</p>
+    <div className="mt-5 border-t border-line pt-4">
+      <div className="flex max-w-md items-center gap-3">
+        <span id={`${id}-label`} className="shrink-0 text-[13px] font-medium text-ink-muted">In Play</span>
+        <div ref={root} className="relative flex min-w-0 flex-1">
+          <button ref={button} type="button" aria-haspopup="listbox" aria-expanded={open} aria-controls={`${id}-list`}
+            aria-labelledby={`${id}-label ${id}-value`} aria-busy={sending}
+            onClick={() => (open ? close() : show())} onKeyDown={onButtonKey}
+            className={`flex h-[34px] min-w-0 flex-1 items-center gap-2.5 rounded-lg border bg-bg pr-2.5 pl-3 text-left text-[13.5px] transition-colors duration-150 ${
+              open ? 'border-accent' : 'border-line-strong hover:border-ink-faint'
+            }`}>
+            <span id={`${id}-value`} className="flex min-w-0 flex-1 items-center justify-between gap-3 truncate">
+              <PlayOptionLabel option={current} />
+              {current.generation !== null && (
+                <span className="shrink-0 text-[12.5px] text-ink-faint tabular-nums">{pctOf(current)} vs Greedy</span>
+              )}
+            </span>
+            {sending ? <Spinner /> : (
+              <ChevronDown size={15} aria-hidden
+                className={`shrink-0 text-ink-muted transition-transform duration-200 ease-out-quart ${open ? 'rotate-180' : ''}`} />
+            )}
+          </button>
+          {open && (
+            <ul ref={list} id={`${id}-list`} role="listbox" tabIndex={-1} aria-labelledby={`${id}-label`}
+              aria-activedescendant={`${id}-opt-${active}`} onKeyDown={onListKey}
+              className="cz-menu absolute top-full left-0 z-[var(--z-popover)] mt-1.5 w-full min-w-[17rem] max-h-80 overflow-y-auto rounded-xl border border-line-strong bg-surface p-1 shadow-[0_18px_44px_-18px_rgb(0_0_0/0.6)] outline-none">
+              <li role="presentation" className="flex items-center justify-between px-2.5 pt-1.5 pb-1 text-[11.5px] text-ink-faint">
+                <span>Generation</span>
+                <span className="pr-6">vs Greedy in its tests</span>
+              </li>
+              {options.map((o, i) => {
+                const isSelected = i === selected
+                return (
+                  <li key={String(o.choice)} id={`${id}-opt-${i}`} data-index={i} role="option" aria-selected={isSelected}
+                    onPointerMove={() => setActive(i)} onClick={() => pick(i)}
+                    className={`flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13.5px] ${
+                      i === active ? 'bg-surface-2' : ''
+                    } ${o.generation === null ? 'mt-1 border-t border-line pt-2.5' : ''}`}>
+                    <span className={`min-w-0 flex-1 ${isSelected ? 'font-medium' : ''}`}><PlayOptionLabel option={o} /></span>
+                    {o.generation !== null && <span className="shrink-0 text-[12.5px] text-ink-muted tabular-nums">{pctOf(o)}</span>}
+                    <span className="grid w-4 shrink-0 place-items-center">
+                      {isSelected && <Check size={14} aria-hidden className="text-accent" strokeWidth={2.5} />}
+                    </span>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </div>
+      </div>
+      <p key={note} className="cz-swap mt-1.5 text-[12.5px] leading-snug text-ink-faint">{note}</p>
       {error && <p className="cz-swap mt-1 text-[12.5px] text-danger">{error}</p>}
     </div>
   )
@@ -1252,18 +1354,21 @@ function RunMark({ kind }: { kind: RunKind }) {
  * arrow keys, Home and End move, Enter or Space picks, Escape or a click elsewhere closes, and
  * typing a letter jumps to the next run whose name starts with it.
  */
-function RunMenu({ runs, value, onChange }: { runs: RunStatus[]; value: string; onChange: (v: string) => void }) {
+/**
+ * The behaviour of a dropdown list designed here (not the system's): the button opens it on a click
+ * or an arrow key; arrow keys, Home and End move, Enter or Space picks, a typed letter jumps to the
+ * next option starting with it, and Escape, Tab or a click elsewhere closes it.
+ */
+function useListbox(count: number, selected: number, onPick: (i: number) => void, labelOf: (i: number) => string) {
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(0)
   const root = useRef<HTMLDivElement>(null)
   const button = useRef<HTMLButtonElement>(null)
   const list = useRef<HTMLUListElement>(null)
   const id = useId()
-  const current = runs.find((r) => r.name === value) ?? runs[0]
-  const index = Math.max(0, runs.findIndex((r) => r.name === value))
 
   const show = () => {
-    setActive(index)
+    setActive(selected)
     setOpen(true)
   }
   const close = (refocus = true) => {
@@ -1271,8 +1376,7 @@ function RunMenu({ runs, value, onChange }: { runs: RunStatus[]; value: string; 
     if (refocus) button.current?.focus({ preventScroll: true })
   }
   const pick = (i: number) => {
-    const run = runs[i]
-    if (run && run.name !== value) onChange(run.name)
+    onPick(i)
     close()
   }
 
@@ -1291,7 +1395,7 @@ function RunMenu({ runs, value, onChange }: { runs: RunStatus[]; value: string; 
   }, [open, active])
 
   const onListKey = (e: React.KeyboardEvent) => {
-    const last = runs.length - 1
+    const last = count - 1
     const keys: Record<string, () => void> = {
       ArrowDown: () => setActive((a) => Math.min(last, a + 1)),
       ArrowUp: () => setActive((a) => Math.max(0, a - 1)),
@@ -1307,15 +1411,32 @@ function RunMenu({ runs, value, onChange }: { runs: RunStatus[]; value: string; 
       keys[e.key]()
     } else if (e.key.length === 1 && /\S/.test(e.key)) {
       const k = e.key.toLowerCase()
-      for (let step = 1; step <= runs.length; step++) {
-        const i = (active + step) % runs.length
-        if (runs[i].name.toLowerCase().startsWith(k)) {
+      for (let step = 1; step <= count; step++) {
+        const i = (active + step) % count
+        if (labelOf(i).toLowerCase().startsWith(k)) {
           setActive(i)
           break
         }
       }
     }
   }
+  const onButtonKey = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      show()
+    }
+  }
+  return { open, active, setActive, show, close, pick, root, button, list, id, onListKey, onButtonKey }
+}
+
+function RunMenu({ runs, value, onChange }: { runs: RunStatus[]; value: string; onChange: (v: string) => void }) {
+  const index = Math.max(0, runs.findIndex((r) => r.name === value))
+  const current = runs[index] ?? runs[0]
+  const { open, active, setActive, show, close, pick, root, button, list, id, onListKey, onButtonKey } = useListbox(
+    runs.length, index, (i) => {
+      const run = runs[i]
+      if (run && run.name !== value) onChange(run.name)
+    }, (i) => runs[i].name)
 
   // The state, and where it trains when that is not this Mac.
   const label = (r: RunStatus) =>
@@ -1326,13 +1447,7 @@ function RunMenu({ runs, value, onChange }: { runs: RunStatus[]; value: string; 
       <div ref={root} className="relative flex min-w-0 flex-1">
         <button ref={button} type="button" aria-haspopup="listbox" aria-expanded={open} aria-controls={`${id}-list`}
           aria-labelledby={`${id}-label ${id}-value`}
-          onClick={() => (open ? close() : show())}
-          onKeyDown={(e) => {
-            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-              e.preventDefault()
-              show()
-            }
-          }}
+          onClick={() => (open ? close() : show())} onKeyDown={onButtonKey}
           className={`flex h-[34px] min-w-0 flex-1 items-center gap-2.5 rounded-lg border bg-bg pr-2.5 pl-3 text-left text-[13.5px] transition-colors duration-150 ${
             open ? 'border-accent' : 'border-line-strong hover:border-ink-faint'
           }`}>

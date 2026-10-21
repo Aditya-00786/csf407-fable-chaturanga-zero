@@ -20,7 +20,7 @@ import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal, Optional, Union
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, SecretStr
@@ -119,7 +119,7 @@ def _status(path: Path) -> dict:
     alive = _process_alive(status)
     status["name"] = path.name
     status["where"] = _where(path)
-    status["publish"] = bool(_launch_settings(path).get("publish", True))  # feeds Play's Trained opponent
+    status["play"] = _play_choice(path)  # which of its networks Play's Trained opponent uses, if any
     status["seconds_since_update"] = age
     if status["where"] == "server":
         # Followed from here by scripts/server_run.py: live while it follows a run training there.
@@ -173,33 +173,92 @@ def _downsample(points: list[dict], keys: tuple, limit: int = MAX_LOSS_POINTS) -
 
 @router.get("/runs")
 def list_runs():
-    sync_published()
+    sync_play()
     runs = [_status(p) for p in _all_runs()]
     runs.sort(key=lambda r: r.get("updated") or "", reverse=True)
     return {"runs": runs}
 
 
-def sync_published() -> None:
-    """A cloud run that publishes its best network does so in its own folder (Colab's in Drive,
-    Kaggle's when it comes home); copy the newest such network to where the app plays it."""
-    target = trained_checkpoint()
-    newest = None
-    for path in _all_runs():
-        if _where(path) == "mac":
-            continue
+# ---------------------------------------------------------------------- the network in Play
+#
+# One run gives Play's Trained opponent its network: the run's best (as it improves), its latest
+# generation (as it trains), or one generation chosen and kept. The choice is kept in the run's
+# launch.json ("play"), and the network copied to checkpoints/best.pt, where Play loads it; a note
+# beside it (best.pt.source.json) says which run, generation and file it came from.
+
+PlayChoice = Union[Literal["best", "latest"], int, None]
+
+
+def _play_choice(path: Path) -> PlayChoice:
+    launch = _launch_settings(path)
+    if "play" in launch:
+        return launch["play"]
+    # Runs from before the choice: "publish" meant the best; one started from a terminal publishes
+    # its best through train.py, as train.py does by default.
+    return "best" if launch.get("publish", True) else None
+
+
+def _play_source(path: Path, choice: PlayChoice) -> Optional[tuple[Path, Optional[int]]]:
+    """The checkpoint file a choice stands for, and its generation (None if unknown)."""
+    checkpoints = path / "checkpoints"
+    if choice == "best":
+        best = checkpoints / "best.pt"
         try:
-            if not json.loads((path / "launch.json").read_text()).get("publish"):
-                continue
+            generation = json.loads((path / "status.json").read_text()).get("best_generation")
         except (OSError, ValueError):
-            continue
-        best = path / "checkpoints" / "best.pt"
-        if best.exists() and (newest is None or best.stat().st_mtime > newest.stat().st_mtime):
-            newest = best
-    if newest is not None and (not target.exists() or newest.stat().st_mtime > target.stat().st_mtime):
-        target.parent.mkdir(parents=True, exist_ok=True)
-        tmp = target.with_suffix(".tmp")
-        shutil.copyfile(newest, tmp)
-        tmp.replace(target)
+            generation = None
+        return (best, generation) if best.exists() else None
+    if choice == "latest":
+        generations = sorted(int(p.stem[4:]) for p in checkpoints.glob("gen_*.pt"))
+        return (checkpoints / f"gen_{generations[-1]:04d}.pt", generations[-1]) if generations else None
+    if isinstance(choice, int):
+        file = checkpoints / f"gen_{choice:04d}.pt"
+        return (file, choice) if file.exists() else None
+    return None
+
+
+def _play_note() -> Path:
+    target = trained_checkpoint()
+    return target.with_name(target.name + ".source.json")
+
+
+def _put_in_play(path: Path, choice: PlayChoice) -> None:
+    """Copy the network the run's choice stands for to where Play loads it, unless it is there."""
+    source = _play_source(path, choice)
+    if source is None:
+        return
+    file, generation = source
+    note = {"run": path.name, "choice": choice, "generation": generation, "file": str(file),
+            "modified": file.stat().st_mtime}
+    try:
+        if json.loads(_play_note().read_text()) == note and trained_checkpoint().exists():
+            return
+    except (OSError, ValueError):
+        pass
+    target = trained_checkpoint()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_suffix(".tmp")
+    shutil.copyfile(file, tmp)
+    tmp.replace(target)  # Play picks it up at its next move, without a restart
+    _play_note().write_text(json.dumps(note))
+
+
+def sync_play() -> None:
+    """Keep Play's network the one its run asks for, as the run trains: a run in the cloud or on the
+    server trains in its own folder, so its new networks are copied from there. A run training on
+    this Mac with "best" chosen publishes its best itself, the moment it finds one."""
+    chosen = [(p, c) for p in _all_runs() if (p / "launch.json").exists() and (c := _play_choice(p)) is not None]
+    if not chosen:
+        return
+    # One run feeds Play; should older settings name several, the one with the newest network wins.
+    def newest(item):
+        source = _play_source(*item)
+        return source[0].stat().st_mtime if source else 0.0
+
+    path, choice = max(chosen, key=newest)
+    if choice == "best" and _where(path) == "mac":
+        return
+    _put_in_play(path, choice)
 
 
 @router.get("/runs/{name}")
@@ -309,8 +368,8 @@ GPU_CONCURRENT = 32
 
 
 def _launch_settings(path: Path) -> dict:
-    """How the app started this run: whether it publishes, and where it trains. Runs started
-    from a terminal have none, and publish as train.py does by default, on this Mac."""
+    """How the app started this run: which of its networks Play uses ("play"), and where it trains.
+    Runs started from a terminal have none, and publish their best as train.py does by default."""
     try:
         return json.loads((path / "launch.json").read_text())
     except (OSError, ValueError):
@@ -507,7 +566,7 @@ def start_run(req: StartRequest):
                          channels=req.channels, concurrent=GPU_CONCURRENT if on_gpu else TrainConfig.concurrent)
     path.mkdir(parents=True)
     (path / "config.json").write_text(json.dumps(config.to_json(), indent=2))
-    launch = {"publish": req.publish, "where": req.where}
+    launch = {"play": "best" if req.publish else None, "where": req.where}
     if req.where == "server":  # the run keeps the server it trains on, even if the app's server changes later
         launch.update(host=server["host"], folder=server["folder_abs"], workers=server["workers"],
                       gpu_workers=min(server.get("gpu_workers") or 0, server["workers"]))
@@ -547,7 +606,7 @@ def resume_run(name: str, req: ResumeRequest):
     if req.generations:  # train further: the run reads its target from its config
         config["generations"] = req.generations
         (path / "config.json").write_text(json.dumps(config, indent=2))
-    publish = _launch_settings(path).get("publish", True)
+    publish = _play_choice(path) == "best"  # the run publishes its own best; other choices are synced
     if where == "colab":
         return _wait_for_colab(path, status)
     if where == "kaggle":
@@ -570,41 +629,38 @@ def _server_connection(path: Path) -> dict:
     return launch
 
 
-# ---------------------------------------------------------------------- the network in Play
+# ---------------------------------------------------------------------- choosing the network in Play
 
-class PublishRequest(BaseModel):
-    publish: bool = Field(description="Use this run's best network as the Trained opponent in Play")
+class PlayRequest(BaseModel):
+    network: PlayChoice = Field(description='"best" or "latest" (followed as the run trains), a generation '
+                                            '(kept), or null: this run stops giving Play its network')
 
 
 def _set_launch(path: Path, **changes) -> None:
     launch = _launch_settings(path) or {"where": _where(path)}
     launch.update(changes)
+    launch.pop("publish", None)  # replaced by "play"
     (path / "launch.json").write_text(json.dumps(launch))
 
 
-def _copy_to_play(best: Path) -> None:
-    target = trained_checkpoint()
-    target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_suffix(".tmp")
-    shutil.copyfile(best, tmp)
-    tmp.replace(target)  # Play picks it up at its next move, without a restart
-
-
-@router.post("/runs/{name}/publish")
-def publish_run(name: str, req: PublishRequest):
-    """Use this run's best network as Play's Trained opponent, now and as the run improves (and
-    stop the other runs from replacing it); or stop it updating Play, which keeps the network it has.
-    One run feeds Play at a time. A run training on this Mac reads the setting when it (re)starts."""
+@router.post("/runs/{name}/play")
+def choose_play(name: str, req: PlayRequest):
+    """Give Play's Trained opponent one of this run's networks (now, and as the run trains for
+    "best" and "latest"), and stop the other runs from replacing it; null stops this run giving Play
+    its network (Play keeps the one it has). One run feeds Play at a time."""
     path = _run_dir(name)
-    best = path / "checkpoints" / "best.pt"
-    if req.publish:
-        if not best.exists():
-            raise HTTPException(400, f"run {name!r} has no network yet")
+    status = _status(path)
+    if status["live"] and _where(path) == "mac" and req.network != status["play"]:
+        raise HTTPException(409, f"“{name}” is training on this Mac: pause it to change the network Play uses.")
+    if req.network is not None:
+        if _play_source(path, req.network) is None:
+            raise HTTPException(400, f"run {name!r} has no network {req.network!r} yet")
         for other in _all_runs():
-            if other != path and _launch_settings(other).get("publish", True):
-                _set_launch(other, publish=False)
-        _copy_to_play(best)
-    _set_launch(path, publish=req.publish)
+            if other != path and _play_choice(other) is not None:
+                _set_launch(other, play=None)
+    _set_launch(path, play=req.network)
+    if req.network is not None:
+        _put_in_play(path, req.network)
     return _status(path)
 
 

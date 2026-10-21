@@ -125,9 +125,10 @@ export const api = {
     request<StrengthCheck>(`/api/training/runs/${encodeURIComponent(name)}/report/strength`, { games }),
   /** The run's six-panel chart image, for download. */
   chartsUrl: (name: string) => `/api/training/runs/${encodeURIComponent(name)}/charts.png`,
-  /** Use the run's best network as Play's Trained opponent (and follow it), or stop it updating Play. */
-  publishRun: (name: string, publish: boolean) =>
-    request<RunStatus>(`/api/training/runs/${encodeURIComponent(name)}/publish`, { publish }),
+  /** Give Play's Trained opponent one of the run's networks: its best or latest (followed as it trains),
+   * a generation (kept), or null (this run stops giving Play its network). */
+  choosePlay: (name: string, network: RunStatus['play']) =>
+    request<RunStatus>(`/api/training/runs/${encodeURIComponent(name)}/play`, { network }),
   /** Delete a run that is not training, with everything it saved. */
   deleteRun: (name: string) =>
     request<{ deleted: string }>(`/api/training/runs/${encodeURIComponent(name)}`, undefined, 'DELETE'),
@@ -175,8 +176,9 @@ export interface RunStatus {
   seconds_since_update: number | null
   /** Where the run trains. */
   where: Where
-  /** Its best network is (and stays) the Trained opponent in Play. */
-  publish: boolean
+  /** Which of its networks is the Trained opponent in Play: its best or latest (followed as it
+   * trains), one generation (kept), or null (none). One run feeds Play at a time. */
+  play: 'best' | 'latest' | number | null
   /** A Kaggle run: its page on Kaggle, when it was started there and last checked. */
   kernel_url?: string
   cloud_started?: string

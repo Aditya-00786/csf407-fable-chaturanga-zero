@@ -243,7 +243,7 @@ def test_a_server_run_trains_there_and_comes_back_live(server):
     assert started.status_code == 202, started.text
     assert started.json()["state"] == "preparing" and started.json()["live"] is True
     launch = json.loads((server["runs"] / "s1" / "launch.json").read_text())
-    assert launch == {"publish": True, "where": "server", "host": "lab", "folder": str(server["folder"]), "workers": 1,
+    assert launch == {"play": "best", "where": "server", "host": "lab", "folder": str(server["folder"]), "workers": 1,
                       "gpu_workers": 0}
 
     done = _wait("s1", lambda r: not r["live"])

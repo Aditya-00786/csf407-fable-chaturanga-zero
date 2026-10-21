@@ -72,31 +72,64 @@ def test_a_newly_published_network_is_picked_up(trained_network):
     assert agents.trained_evaluator()[1]["generation"] == 8
 
 
-def test_use_in_play_puts_a_runs_best_network_in_play_and_keeps_one_run_feeding_it(tmp_path, monkeypatch):
+def _run_with_networks(runs, name, generations, best, where="server", play=None):
     import json
 
-    runs, played = tmp_path / "runs", tmp_path / "play" / "best.pt"
+    (runs / name / "checkpoints").mkdir(parents=True)
+    (runs / name / "config.json").write_text(json.dumps(TrainConfig().to_json()))
+    (runs / name / "launch.json").write_text(json.dumps({"play": play, "where": where}))
+    (runs / name / "status.json").write_text(json.dumps({"state": "finished", "best_generation": best}))
+    for g in generations:
+        save_checkpoint(str(runs / name / "checkpoints" / f"gen_{g:04d}.pt"), new_network(TINY, seed=g),
+                        generation=g, run=name)
+    if best is not None:
+        import shutil
+
+        shutil.copyfile(runs / name / "checkpoints" / f"gen_{best:04d}.pt", runs / name / "checkpoints" / "best.pt")
+
+
+def test_play_uses_the_chosen_network_of_one_run(tmp_path, monkeypatch):
+    runs = tmp_path / "runs"
     monkeypatch.setenv("CHATURANGA_RUNS", str(runs))
-    monkeypatch.setenv("CHATURANGA_CHECKPOINT", str(played))
-    for name, generation, publish in (("old", 3, True), ("new", 9, False), ("empty", 0, None)):
-        (runs / name / "checkpoints").mkdir(parents=True)
-        (runs / name / "config.json").write_text(json.dumps(TrainConfig().to_json()))
-        if publish is not None:
-            (runs / name / "launch.json").write_text(json.dumps({"publish": publish, "where": "server"}))
-        if generation:
-            save_checkpoint(str(runs / name / "checkpoints" / "best.pt"), new_network(TINY, seed=generation),
-                            generation=generation, run=name)
-    assert client.post("/api/training/runs/empty/publish", json={"publish": True}).status_code == 400
+    monkeypatch.setenv("CHATURANGA_CHECKPOINT", str(tmp_path / "play" / "best.pt"))
+    _run_with_networks(runs, "old", [1, 2, 3], best=3, play="best")
+    _run_with_networks(runs, "new", [1, 2, 3, 4], best=2)
+    _run_with_networks(runs, "empty", [], best=None)
+    in_play = lambda: client.get("/api/meta").json()["trained"]  # noqa: E731
+    choices = lambda: {r["name"]: r["play"] for r in client.get("/api/training/runs").json()["runs"]}  # noqa: E731
 
-    on = client.post("/api/training/runs/new/publish", json={"publish": True})
-    assert on.status_code == 200 and on.json()["publish"] is True
-    assert client.get("/api/meta").json()["trained"] == {"run": "new", "generation": 9}  # in Play at once
-    publishing = {r["name"]: r["publish"] for r in client.get("/api/training/runs").json()["runs"]}
-    assert publishing == {"old": False, "new": True, "empty": False}  # one run feeds Play
+    assert client.post("/api/training/runs/empty/play", json={"network": "best"}).status_code == 400
+    assert client.post("/api/training/runs/new/play", json={"network": 9}).status_code == 400
 
-    # Off: Play keeps the network it has; the run just stops replacing it.
-    assert client.post("/api/training/runs/new/publish", json={"publish": False}).json()["publish"] is False
-    assert client.get("/api/meta").json()["trained"] == {"run": "new", "generation": 9}
+    for network, generation in (("best", 2), ("latest", 4), (3, 3)):
+        r = client.post("/api/training/runs/new/play", json={"network": network})
+        assert r.status_code == 200 and r.json()["play"] == network
+        assert in_play() == {"run": "new", "generation": generation}  # in Play at once
+    assert choices() == {"old": None, "new": 3, "empty": None}  # one run feeds Play
+
+    # null: this run stops giving Play its network, and Play keeps the one it has.
+    assert client.post("/api/training/runs/new/play", json={"network": None}).json()["play"] is None
+    assert in_play() == {"run": "new", "generation": 3}
+
+
+def test_play_follows_the_latest_or_best_as_a_run_trains_but_keeps_a_chosen_generation(tmp_path, monkeypatch):
+    runs = tmp_path / "runs"
+    monkeypatch.setenv("CHATURANGA_RUNS", str(runs))
+    monkeypatch.setenv("CHATURANGA_CHECKPOINT", str(tmp_path / "play" / "best.pt"))
+    _run_with_networks(runs, "far", [1, 2], best=1)  # a server run: its folder here is copied from the server
+    in_play = lambda: client.get("/api/meta").json()["trained"]  # noqa: E731
+
+    def trains_on(generation):
+        save_checkpoint(str(runs / "far" / "checkpoints" / f"gen_{generation:04d}.pt"), new_network(TINY, seed=generation),
+                        generation=generation, run="far")
+        client.get("/api/training/runs")  # the Training page's poll keeps Play in step
+
+    client.post("/api/training/runs/far/play", json={"network": "latest"})
+    trains_on(3)
+    assert in_play() == {"run": "far", "generation": 3}
+    client.post("/api/training/runs/far/play", json={"network": 2})
+    trains_on(4)
+    assert in_play() == {"run": "far", "generation": 2}
 
 
 @pytest.fixture(scope="module")

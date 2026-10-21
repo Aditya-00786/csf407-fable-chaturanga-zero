@@ -217,7 +217,7 @@ def test_a_kaggle_run_goes_up_trains_and_comes_home(places, fake_kaggle):
                              str(places["runs"]), "--publish", str(places["published"])], env=env,
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     for _ in range(1200):  # up to a minute: the upload is slow on a busy machine
-        if (fake_kaggle / "run.py").exists():
+        if '"kernel"' in ((run / "cloud.json").read_text() if (run / "cloud.json").exists() else ""):
             break
         import time
         time.sleep(0.05)
@@ -268,8 +268,8 @@ def test_a_session_stopped_on_kaggle_comes_home_and_is_not_started_again(places,
 
     # Pushed, then the follower stops (the Mac restarted) while the session runs...
     proc = subprocess.Popen(follow, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    for _ in range(1200):
-        if (fake_kaggle / "run.py").exists():
+    for _ in range(1200):  # until the session's id is saved: following it again must not upload again
+        if '"kernel"' in ((run / "cloud.json").read_text() if (run / "cloud.json").exists() else ""):
             break
         time.sleep(0.05)
     proc.kill()
