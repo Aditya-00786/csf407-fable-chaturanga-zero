@@ -4,12 +4,12 @@
  * learn screens stay the primary experience.
  */
 
-import { Check, ChevronDown, Clock, ExternalLink, LoaderCircle, Pause, Play, Plus, RefreshCw, Trash2, X } from 'lucide-react'
+import { Check, ChevronDown, Clock, ExternalLink, LoaderCircle, Pause, Play, Plus, RefreshCw, SlidersHorizontal, Trash2, X } from 'lucide-react'
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Legend, LineChart, type Series } from '../components/LineChart'
 import { RunReport } from '../components/RunReport'
 import { Button, Collapse, Segmented, Switch } from '../components/ui'
-import { api, ApiError, type CloudStatus, type GenerationRow, type PauseWhen, type RunDetail, type RunStatus, type ServerStatus, type Where } from '../lib/api'
+import { api, ApiError, type CloudStatus, type GenerationRow, type PauseWhen, type RunDetail, type RunSettings, type RunStatus, type ServerStatus, type Where } from '../lib/api'
 import { href } from '../lib/route'
 import { useGame } from '../state/game'
 
@@ -261,8 +261,94 @@ function ServerReconnect({ host, label, note, onConnected }: {
   )
 }
 
-function RunControls({ status, total, done, lostTrack, onChange }: {
-  status: RunStatus; total: number; done: number; lostTrack: boolean; onChange: (s?: RunStatus) => void
+/** The settings a run can change when it resumes or trains further, as edited in its panel. */
+interface NextSettings {
+  games: number
+  sims: number
+  lr: number
+  temp: number
+  evalGames: number
+  autoReport: boolean
+  workers: number
+  gpuWorkers: number
+}
+
+function currentSettings(config: RunDetail['config'], status: RunStatus): NextSettings {
+  const num = (k: string, fallback: number) => (typeof config[k] === 'number' ? (config[k] as number) : fallback)
+  return {
+    games: config.games_per_generation, sims: config.simulations, lr: num('learning_rate', 0.001),
+    temp: num('late_temperature', 0.5), evalGames: num('eval_games', 20), autoReport: config.auto_report === true,
+    workers: status.server_workers ?? 1, gpuWorkers: status.server_gpu_workers ?? 0,
+  }
+}
+
+/** What differs from the run's current settings, as the API takes it. */
+function settingChanges(next: NextSettings, now: NextSettings, server: boolean): RunSettings {
+  const out: RunSettings = {}
+  if (next.games !== now.games) out.games_per_generation = next.games
+  if (next.sims !== now.sims) out.simulations = next.sims
+  if (next.lr !== now.lr) out.learning_rate = next.lr
+  if (next.temp !== now.temp) out.late_temperature = next.temp
+  if (next.evalGames !== now.evalGames) out.eval_games = next.evalGames
+  if (next.autoReport !== now.autoReport) out.auto_report = next.autoReport
+  if (server && next.workers !== now.workers) out.workers = next.workers
+  if (server && next.gpuWorkers !== now.gpuWorkers) out.gpu_workers = next.gpuWorkers
+  return out
+}
+
+function settingsProblem(s: NextSettings, server: boolean): string | null {
+  if (!(s.games >= 2 && s.games <= 5000)) return 'Games per generation: 2 to 5,000.'
+  if (!(s.sims >= 2 && s.sims <= 4000)) return 'Simulations per move: 2 to 4,000.'
+  if (!(s.lr > 0 && s.lr <= 0.1)) return 'Learning rate: above 0, at most 0.1.'
+  if (!(s.temp >= 0 && s.temp <= 2)) return 'Temperature after the opening: 0 to 2.'
+  if (!(s.evalGames >= 0 && s.evalGames <= 400)) return 'Test games per opponent: 0 to 400.'
+  if (server && !(s.workers >= 1 && s.workers <= 1024)) return 'Self-play processes: at least 1.'
+  if (server && !(s.gpuWorkers >= 0 && s.gpuWorkers <= s.workers)) return `On the GPU: 0 to ${s.workers} of the self-play processes.`
+  return null
+}
+
+/** The settings for the generations to come, shown under Resume or Train further. */
+function NextSettingsPanel({ value, now, onChange, server, network }: {
+  value: NextSettings; now: NextSettings; onChange: (s: NextSettings) => void; server: boolean; network: string
+}) {
+  const set = <K extends keyof NextSettings>(k: K) => (v: NextSettings[K]) => onChange({ ...value, [k]: v })
+  const was = (k: keyof NextSettings, show: (v: never) => string = String) =>
+    value[k] !== now[k] ? `Was ${(show as (v: unknown) => string)(now[k])}. ` : ''
+  return (
+    <div className="mt-3 rounded-xl border border-line bg-bg px-4 py-4">
+      <p className="text-[12.5px] leading-snug text-ink-faint">
+        For the generations to come; what is done stays as it is. The network’s size ({network}) stays the same.
+      </p>
+      <div className="mt-3 grid gap-4 sm:grid-cols-3">
+        <NumberField label="Games per generation" value={value.games} onChange={set('games')} min={2} max={5000}
+          hint={`${was('games')}More games each generation; the buffer grows to match.`} />
+        <NumberField label="Simulations per move" value={value.sims} onChange={set('sims')} min={2} max={4000}
+          hint={`${was('sims')}Deeper search: stronger targets, slower in proportion.`} />
+        <NumberField label="Test games per opponent" value={value.evalGames} onChange={set('evalGames')} min={0} max={400}
+          hint={`${was('evalGames')}Steadier test scores, at more time.`} />
+        <NumberField label="Learning rate" value={value.lr} onChange={set('lr')} min={0.00001} max={0.1} step={0.0001}
+          hint={`${was('lr')}Lower it in steps (0.0003, then 0.0001) once it stops beating the generation before.`} />
+        <NumberField label="Temperature after the opening" value={value.temp} onChange={set('temp')} min={0} max={2} step={0.1}
+          hint={`${was('temp')}Lower plays its favourite move more often; higher explores more.`} />
+        {server && (
+          <>
+            <NumberField label="Self-play processes" value={value.workers} onChange={set('workers')} min={1} max={1024}
+              hint={`${was('workers')}One core each.`} />
+            <NumberField label="Of them on the GPU" value={value.gpuWorkers} onChange={set('gpuWorkers')} min={0} max={1024}
+              hint={`${was('gpuWorkers')}Their network on the GPU, 32 games at a time.`} />
+          </>
+        )}
+      </div>
+      <div className="mt-4 max-w-md">
+        <Switch label="Make the run report when it finishes" checked={value.autoReport} onChange={set('autoReport')} />
+      </div>
+    </div>
+  )
+}
+
+function RunControls({ status, total, done, lostTrack, config, onChange }: {
+  status: RunStatus; total: number; done: number; lostTrack: boolean; config: RunDetail['config']
+  onChange: (s?: RunStatus) => void
 }) {
   const [choosing, setChoosing] = useState(false)
   const [sending, setSending] = useState<string | null>(null) // which control is waiting for the server
@@ -303,6 +389,13 @@ function RunControls({ status, total, done, lostTrack, onChange }: {
     if (mode === 'waiting') void api.cloudStatus().then((c) => setColabUrl(c.colab.url), () => {})
   }, [mode])
   const target = Math.max(done + 1, total + more)
+  // Settings for the generations to come, edited under Resume or Train further.
+  const onServerRun = status.where === 'server'
+  const now = currentSettings(config, status)
+  const [next, setNext] = useState<NextSettings | null>(null)
+  const changes = next ? settingChanges(next, now, onServerRun) : {}
+  const changed = Object.keys(changes).length
+  const nextProblem = next ? settingsProblem(next, onServerRun) : null
 
   let body: ReactNode
   if (mode === 'starting') {
@@ -418,14 +511,27 @@ function RunControls({ status, total, done, lostTrack, onChange }: {
             </label>
           )}
           <Button size="sm" variant="primary" aria-busy={starting} icon={starting ? <Spinner /> : <Play size={14} />}
+            disabled={!!nextProblem}
             onClick={() => act('resume', async () => {
-              const resumed = await api.resumeRun(name, mode === 'finished' ? target : undefined)
+              const resumed = await api.resumeRun(name, mode === 'finished' ? target : undefined, changes)
               if (resumed.colab_url) window.open(resumed.colab_url, '_blank', 'noopener')
+              setNext(null)
               return resumed
             })}>
             {starting ? 'Starting' : mode === 'finished' ? 'Train further' : 'Resume'}
           </Button>
+          <Button size="sm" variant="ghost" aria-expanded={next !== null} icon={<SlidersHorizontal size={14} />}
+            onClick={() => setNext((n) => (n === null ? currentSettings(config, status) : null))}>
+            {changed ? `Settings · ${changed} changed` : 'Settings'}
+          </Button>
         </div>
+        <Collapse open={next !== null}>
+          {next && (
+            <NextSettingsPanel value={next} now={now} onChange={setNext} server={onServerRun}
+              network={`${config.blocks} × ${config.channels}`} />
+          )}
+          {nextProblem && <p className="cz-swap mt-2 text-[12.5px] text-danger">{nextProblem}</p>}
+        </Collapse>
       </div>
     )
   }
@@ -562,7 +668,8 @@ function StatusPanel({ status, detail, onChange }: { status: RunStatus; detail: 
         ))}
       </dl>
       <PlayMenu status={status} detail={detail} onChange={onChange} />
-      <RunControls status={{ ...status, state }} total={total} done={done} lostTrack={lostTrack} onChange={onChange} />
+      <RunControls status={{ ...status, state }} total={total} done={done} lostTrack={lostTrack} config={detail.config}
+        onChange={onChange} />
     </section>
   )
 }
@@ -870,14 +977,15 @@ function duration(seconds: number) {
   return m ? `${h} h ${m} min` : `${h} h`
 }
 
-function NumberField({ label, value, onChange, min, max, hint }: {
-  label: string; value: number; onChange: (v: number) => void; min: number; max: number; hint?: string
+function NumberField({ label, value, onChange, min, max, hint, step = 1 }: {
+  label: string; value: number; onChange: (v: number) => void; min: number; max: number; hint?: string; step?: number
 }) {
   const id = useId()
   return (
     <div className="min-w-0">
       <label htmlFor={id} className="mb-1.5 block text-[13px] font-medium text-ink-muted">{label}</label>
-      <input id={id} type="number" inputMode="numeric" min={min} max={max} value={Number.isFinite(value) ? value : ''}
+      <input id={id} type="number" inputMode={step < 1 ? 'decimal' : 'numeric'} min={min} max={max} step={step}
+        value={Number.isFinite(value) ? value : ''}
         onChange={(e) => onChange(e.target.value === '' ? NaN : Number(e.target.value))}
         className="h-9 w-full rounded-lg border border-line bg-bg px-3 text-[14px] text-ink tabular-nums transition-colors duration-150 hover:border-line-strong focus-visible:border-accent" />
       {hint && <p className="mt-1 text-[12px] text-ink-faint">{hint}</p>}

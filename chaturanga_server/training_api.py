@@ -130,6 +130,8 @@ def _status(path: Path) -> dict:
         status["server_connected"] = bool(notes.get("connected")) if status["live"] else None
         status["server_host"] = notes.get("host") or _launch_settings(path).get("host")
         status["server_checked"] = notes.get("checked")
+        status["server_workers"] = _launch_settings(path).get("workers")
+        status["server_gpu_workers"] = _launch_settings(path).get("gpu_workers", 0)
     else:
         status["live"] = status.get("state") in ACTIVE and (
             alive if alive is not None else age is not None and age < LIVE_WITHIN_SECONDS)
@@ -332,7 +334,21 @@ class PauseRequest(BaseModel):
 
 
 class ResumeRequest(BaseModel):
+    """Resume a run, or train it further; any setting given applies from its next generation (the
+    network's size cannot change)."""
     generations: Optional[int] = Field(None, ge=1, le=10_000, description="Train up to this many generations")
+    games_per_generation: Optional[int] = Field(None, ge=2, le=5_000)
+    simulations: Optional[int] = Field(None, ge=2, le=4_000, description="Per move, in self-play and the tests")
+    learning_rate: Optional[float] = Field(None, gt=0, le=0.1)
+    late_temperature: Optional[float] = Field(None, ge=0, le=2, description="Self-play's temperature after ply 30")
+    eval_games: Optional[int] = Field(None, ge=0, le=400, description="Test games per opponent")
+    auto_report: Optional[bool] = None
+    workers: Optional[int] = Field(None, ge=1, le=1024, description="Self-play processes (a run on your server)")
+    gpu_workers: Optional[int] = Field(None, ge=0, le=1024, description="Of them, how many use the GPU")
+
+
+_TRAINING_SETTINGS = ("games_per_generation", "simulations", "learning_rate", "late_temperature", "eval_games",
+                      "auto_report")
 
 
 @router.post("/runs/{name}/pause")
@@ -603,9 +619,25 @@ def resume_run(name: str, req: ResumeRequest):
     done = max((int(p.stem[4:]) for p in (path / "checkpoints").glob("gen_*.pt")), default=0)
     if status.get("state") == "finished" and target <= done:
         raise HTTPException(400, f"run {name!r} has finished its {done} generations; ask for more to train further")
+    machine = {k: v for k, v in (("workers", req.workers), ("gpu_workers", req.gpu_workers)) if v is not None}
+    if machine and where != "server":
+        raise HTTPException(400, "Self-play processes can be set for a run on your server only.")
+    if machine:
+        launch = _launch_settings(path)
+        workers, gpu = machine.get("workers", launch.get("workers", 1)), machine.get("gpu_workers", launch.get("gpu_workers", 0))
+        if gpu > workers:
+            raise HTTPException(400, f"Only {workers} self-play processes: no more than that can use the GPU.")
+        _set_launch(path, workers=workers, gpu_workers=gpu)
+        config["concurrent"] = GPU_CONCURRENT if gpu else TrainConfig.concurrent
     if req.generations:  # train further: the run reads its target from its config
         config["generations"] = req.generations
-        (path / "config.json").write_text(json.dumps(config, indent=2))
+    for key in _TRAINING_SETTINGS:  # the run reads its settings from config.json as it starts
+        value = getattr(req, key)
+        if value is not None:
+            config[key] = value
+    if req.games_per_generation is not None:
+        config["buffer_positions"] = buffer_for(req.games_per_generation)
+    (path / "config.json").write_text(json.dumps(config, indent=2))
     publish = _play_choice(path) == "best"  # the run publishes its own best; other choices are synced
     if where == "colab":
         return _wait_for_colab(path, status)

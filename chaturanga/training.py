@@ -492,6 +492,10 @@ class TrainingRun:
             state = torch.load(state_file, map_location="cpu", weights_only=True)
             if state.get("generation") == last:
                 self.optimizer.load_state_dict(state["optimizer"])
+                # The saved state carries the rate it was saved with: the settings decide, so a run
+                # resumed with a new learning rate (or weight decay) trains with it.
+                for group in self.optimizer.param_groups:
+                    group.update(lr=self.config.learning_rate, weight_decay=self.config.weight_decay)
                 self.step = state["step"]
                 if not state.get("evaluated", True):
                     self._pending_eval = {"steps": state.get("steps"), "losses": state.get("losses", {})}
@@ -786,6 +790,9 @@ class TrainingRun:
         threading.Thread(target=tick, name="progress", daemon=True).start()
         try:
             last = self._load_or_create()
+            # The settings each start or resume trains with, so changes between generations are on record.
+            self.record("start", after_generation=last, config=cfg.to_json(), workers=self.workers,
+                        gpu_workers=self.gpu_workers)
             self.log(f"Run {self.name}: generation {last} of {cfg.generations}, {self.buffer.games} games "
                      f"({len(self.buffer):,} positions) in the buffer; training on {self.device}, "
                      f"self-play on {self.workers or 1} {'processes' if self.workers else 'process'}"

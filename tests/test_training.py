@@ -188,6 +188,19 @@ def test_worker_processes_take_their_devices_in_turn(monkeypatch):
     assert seen == ["cuda", "cpu", "cpu", "cuda"]  # a process restarted later takes the next turn
 
 
+def test_a_resumed_run_trains_with_the_learning_rate_now_set(tmp_path):
+    """The optimiser's saved state carries its old rate; the settings win when a run resumes."""
+    cfg = TrainConfig(generations=1, games_per_generation=2, simulations=4, concurrent=2, steps_per_generation=3,
+                      endgame_fraction=0, batch_size=16, eval_games=0, blocks=1, channels=16)
+    TrainingRun(str(tmp_path / "r"), cfg, device=torch.device("cpu"), log=lambda *_: None).run()
+    lower = replace(cfg, generations=2, learning_rate=1e-4, weight_decay=1e-3)
+    run = TrainingRun(str(tmp_path / "r"), lower, device=torch.device("cpu"), log=lambda *_: None)
+    run._load_or_create()
+    assert {(g["lr"], g["weight_decay"]) for g in run.optimizer.param_groups} == {(1e-4, 1e-3)}
+    starts = [json.loads(l) for l in open(tmp_path / "r" / "metrics.jsonl") if '"start"' in l]
+    assert starts and starts[0]["after_generation"] == 0 and starts[0]["config"]["learning_rate"] == cfg.learning_rate
+
+
 def test_gpu_workers_need_a_gpu(tmp_path):
     run = TrainingRun(str(tmp_path / "r"), TrainConfig(), workers=4, gpu_workers=6, log=lambda *_: None)
     assert run.gpu_workers == (4 if torch.cuda.is_available() else 0)

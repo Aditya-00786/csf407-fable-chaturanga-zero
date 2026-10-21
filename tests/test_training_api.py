@@ -342,6 +342,35 @@ def test_a_new_run_can_have_a_larger_network(tmp_path, monkeypatch):
     assert client.post("/api/training/runs", json={"name": "huge", "channels": 4096}).status_code == 422
 
 
+def test_training_further_can_change_the_settings(tmp_path, monkeypatch):
+    """Settings given with Train further apply from the next generation; the network's size stays."""
+    import json
+
+    monkeypatch.setenv("CHATURANGA_RUNS", str(tmp_path))
+    started = _capture_popen(monkeypatch)
+    run = tmp_path / "far"
+    (run / "checkpoints").mkdir(parents=True)
+    (run / "config.json").write_text(json.dumps(TrainConfig(generations=2, blocks=10, channels=128).to_json()))
+    (run / "status.json").write_text(json.dumps({"state": "finished", "generation": 2}))
+    for g in (1, 2):
+        (run / "checkpoints" / f"gen_{g:04d}.pt").write_bytes(b"")
+    r = client.post("/api/training/runs/far/resume", json={
+        "generations": 4, "games_per_generation": 500, "simulations": 400, "learning_rate": 1e-4,
+        "late_temperature": 0.3, "eval_games": 60, "auto_report": True})
+    assert r.status_code == 202, r.text
+    config = json.loads((run / "config.json").read_text())
+    assert {k: config[k] for k in ("generations", "games_per_generation", "simulations", "learning_rate",
+                                   "late_temperature", "eval_games", "auto_report", "buffer_positions")} == {
+        "generations": 4, "games_per_generation": 500, "simulations": 400, "learning_rate": 1e-4,
+        "late_temperature": 0.3, "eval_games": 60, "auto_report": True, "buffer_positions": 300_000}
+    assert (config["blocks"], config["channels"]) == (10, 128)
+    assert started["cmd"][started["cmd"].index("--generations") + 1] == "4"
+    # Self-play processes are for a run on a server; out-of-range values are refused.
+    (run / "status.json").write_text(json.dumps({"state": "paused", "generation": 2}))
+    assert client.post("/api/training/runs/far/resume", json={"workers": 4}).status_code == 400
+    assert client.post("/api/training/runs/far/resume", json={"learning_rate": 0}).status_code == 422
+
+
 def test_a_new_run_needs_a_fresh_valid_name(tmp_path, monkeypatch):
     monkeypatch.setenv("CHATURANGA_RUNS", str(tmp_path))
     _capture_popen(monkeypatch)

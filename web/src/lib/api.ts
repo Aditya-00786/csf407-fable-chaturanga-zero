@@ -144,9 +144,9 @@ export const api = {
   /** Close it; training there carries on. */
   disconnectServer: () => request<CloudStatus>('/api/training/server/disconnect', {}),
   /** Start a run that is not running, carrying on where it stopped (optionally to more generations). */
-  resumeRun: (name: string, generations?: number) =>
+  resumeRun: (name: string, generations?: number, settings: RunSettings = {}) =>
     request<RunStatus & { colab_url?: string }>(`/api/training/runs/${encodeURIComponent(name)}/resume`,
-      generations ? { generations } : {}),
+      { ...(generations ? { generations } : {}), ...settings }),
 }
 
 // ------------------------------------------------------------------ training (Watch training)
@@ -189,6 +189,8 @@ export interface RunStatus {
   server_connected?: boolean | null
   server_host?: string | null
   server_checked?: string | null
+  server_workers?: number | null
+  server_gpu_workers?: number | null
   /** Why a run failed, when it says. */
   error?: string
   /** Live progress of the current phase: when it began, moves played so far and moves expected. */
@@ -200,6 +202,19 @@ export interface RunStatus {
   /** Where a paused run stopped: in the middle of a phase, or just after one. */
   paused_in?: Phase | null
   paused_after?: Phase | 'generation' | null
+}
+
+/** Settings a run can change when it resumes or trains further (from its next generation). */
+export interface RunSettings {
+  games_per_generation?: number
+  simulations?: number
+  learning_rate?: number
+  late_temperature?: number
+  eval_games?: number
+  auto_report?: boolean
+  /** A run on your server: self-play processes, and how many of them use its GPU. */
+  workers?: number
+  gpu_workers?: number
 }
 
 export interface NewRunSettings {

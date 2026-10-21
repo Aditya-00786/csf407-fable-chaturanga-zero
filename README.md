@@ -417,6 +417,14 @@ or tests one that was trained. A run that ended without pausing (the terminal cl
 restarted) resumes the same way. To train beyond the planned generations, add `--generations`
 with the new total (or use **Train further** on a finished run); nothing caps it.
 
+**Changing settings as it goes.** **Settings**, beside Resume and Train further, changes what the
+coming generations do: games per generation (the buffer grows to match), simulations per move,
+test games per opponent, the learning rate (lowered in steps late in a run, as AlphaZero did), the
+temperature after the opening, the report at the end, and for a run on the server its self-play
+processes and how many use the GPU. The network's size stays. Each start or resume records the
+settings it trains with in `metrics.jsonl` (`"event": "start"`), so a change is on record from the
+generation it applies to.
+
 **Why self-play samples its moves.** AlphaZero sampled only its opening moves and then
 played the most visited move. Our first attempt did the same,
 and by generation 3 both sides had learned to shuffle pieces until a position repeated: 34 of 50
