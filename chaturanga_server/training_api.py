@@ -128,6 +128,7 @@ def _status(path: Path) -> dict:
         alive = _process_alive({"pid": notes.get("follower_pid"), "host": notes.get("follower_host")})
         status["live"] = status.get("state") in ACTIVE and bool(alive)
         status["server_connected"] = bool(notes.get("connected")) if status["live"] else None
+        status["server_syncing"] = bool(notes.get("syncing")) if status["live"] else False
         status["server_host"] = notes.get("host") or _launch_settings(path).get("host")
         status["server_checked"] = notes.get("checked")
         status["server_workers"] = _launch_settings(path).get("workers")

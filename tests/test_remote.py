@@ -74,6 +74,10 @@ if "M" in flags:
     sys.exit(0)
 if not os.path.exists(marker):
     sys.stderr.write("tester@" + host + ": Permission denied (publickey,password).\n"); sys.exit(255)
+slow = os.path.join(state, "slow-pull")
+if "--sender" in command and os.path.exists(slow):  # copying a run back, made slow by a test
+    import time
+    time.sleep(float(open(slow).read()))
 os.chdir(home)
 os.environ["HOME"] = home
 os.execv("/bin/sh", ["sh", "-c", command])
@@ -317,6 +321,24 @@ def test_losing_the_connection_leaves_the_run_training_and_connect_follows_it_ag
     assert _connect().status_code == 200
     done = _wait("s3", lambda r: not r["live"])
     assert done["state"] == "finished" and done["generation"] == 2
+
+
+def test_after_reconnecting_the_run_shows_connected_and_syncing_before_the_copy_is_done(server):
+    assert _connect().status_code == 200
+    _ready_env(server["folder"])
+    client.post("/api/training/runs", json={"name": "s6", "where": "server", "generations": 2,
+                                            "games_per_generation": 4, "simulations": 8, "eval_games": 0})
+    _wait("s6", lambda r: r["state"] == "selfplay")
+    for marker in server["state"].glob("open-*"):
+        marker.unlink()
+    _wait("s6", lambda r: r["server_connected"] is False)
+    (server["state"] / "slow-pull").write_text("4")  # what the run made meanwhile takes a while to copy
+    assert _connect().status_code == 200
+    syncing = _wait("s6", lambda r: r["server_connected"] is True and r["server_syncing"] is True, timeout=30)
+    assert syncing["live"] is True  # connected at once, still copying
+    (server["state"] / "slow-pull").unlink()
+    done = _wait("s6", lambda r: not r["live"])
+    assert done["state"] == "finished" and done["server_syncing"] is False
 
 
 def test_a_run_whose_follower_stopped_is_followed_again_on_connect(server):

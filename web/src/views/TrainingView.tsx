@@ -261,6 +261,31 @@ function ServerReconnect({ host, label, note, onConnected }: {
   )
 }
 
+/** A message that shows for a few seconds, then goes (null: none). */
+function useFlash(ms = 5000) {
+  const [text, setText] = useState<string | null>(null)
+  useEffect(() => {
+    if (!text) return
+    const id = setTimeout(() => setText(null), ms)
+    return () => clearTimeout(id)
+  }, [text, ms])
+  return [text, setText] as const
+}
+
+/** A confirmation in green that folds away when its text goes (it keeps the text while it does). */
+function Flash({ text }: { text: string | null }) {
+  const [last, setLast] = useState(text)
+  if (text && text !== last) setLast(text)
+  return (
+    <Collapse open={!!text}>
+      <p role="status" className="flex items-center gap-2 pt-2 text-[13px] font-medium text-success">
+        <Check size={15} strokeWidth={2.5} aria-hidden className="shrink-0" />
+        {last}
+      </p>
+    </Collapse>
+  )
+}
+
 /** The settings a run can change when it resumes or trains further, as edited in its panel. */
 interface NextSettings {
   games: number
@@ -359,6 +384,7 @@ function RunControls({ status, total, done, lostTrack, config, onChange }: {
   const { server, refresh: refreshServer } = useServer(onServer)
   const host = status.server_host ?? server?.host ?? null
   const disconnected = onServer && server !== null && !!host && !(server.connected && server.host === host)
+  const [flash, setFlash] = useFlash()
   useEffect(() => {
     if (!disconnected) return
     setError(null) // the form below says it better
@@ -495,10 +521,12 @@ function RunControls({ status, total, done, lostTrack, config, onChange }: {
             note={<>This run trains on <span className="font-medium">{serverLabel(server, host)}</span>. Connect to it to{' '}
               {lostTrack ? 'follow the run again' : mode === 'finished' ? 'train further' : 'resume'}.</>}
             onConnected={() => {
+              setFlash(`Connected to ${serverLabel(server, host)}.`)
               refreshServer()
               onChange()
             }} />
         )}
+        <Flash text={flash} />
         <div className={`flex flex-wrap items-center gap-3 transition-opacity duration-200 ${disconnected ? 'pointer-events-none opacity-40' : ''}`}
           aria-disabled={disconnected || undefined}>
           {mode === 'finished' && (
@@ -552,13 +580,21 @@ function StatusPanel({ status, detail, onChange }: { status: RunStatus; detail: 
   const state = !live && !['finished', 'failed', 'paused', 'waiting'].includes(status.state) ? 'stopped' : status.state
   // A run on your server that this Mac stopped following mid-run: it may be training there still.
   const lostTrack = status.where === 'server' && !live && !['finished', 'failed', 'paused', 'stopped'].includes(status.state)
-  const lostConnection = status.where === 'server' && live && status.server_connected === false
   const pausing = live && !!status.pause_requested
   const total = status.generations || detail.config.generations
   const done = detail.generations.filter((g) => g.best !== undefined).length
   // This phase: what is happening, how far along (smoothly, by moves played against the moves
   // expected, as well as by finished games), how long it has taken and roughly how long is left.
   const now = useNow(live)
+  // A run on your server: connected or not, and catching up after a gap. Right after the password
+  // is accepted the follower may take a few seconds to notice; until it does, it is catching up.
+  const [reconnectedAt, setReconnectedAt] = useState<number | null>(null)
+  const [flash, setFlash] = useFlash()
+  const justReconnected = reconnectedAt !== null && now - reconnectedAt < 60_000
+  const onServerLive = status.where === 'server' && live
+  const lostConnection = onServerLive && status.server_connected === false && !justReconnected
+  const syncing = onServerLive && !lostConnection
+    && (!!status.server_syncing || (justReconnected && status.server_connected !== true))
   const started = status.phase_started ? Date.parse(status.phase_started) : NaN
   const elapsed = Number.isNaN(started) ? null : Math.max(0, Math.round((now - started) / 1000))
   const gamesDone = status.games_done ?? 0
@@ -629,15 +665,29 @@ function StatusPanel({ status, detail, onChange }: { status: RunStatus; detail: 
         </p>
         <p className="text-[13px] text-ink-faint">
           {live ? lostConnection ? 'Not connected' : 'Live' : 'Not running'}
-          {status.where === 'server' && status.server_host && ` · on ${status.server_host}`} · last update {ago(status.seconds_since_update)}
+          {syncing ? (
+            <>
+              {' · '}
+              <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                catching up with {status.server_host ?? 'the server'}
+                <LoaderCircle size={12} aria-hidden className="animate-spin" />
+              </span>
+            </>
+          ) : status.where === 'server' && status.server_host && ` · on ${status.server_host}`}
+          {' · last update '}{ago(status.seconds_since_update)}
         </p>
       </div>
+      <Flash text={flash} />
       <Collapse open={lostConnection}>
         <div className="pt-4">
           {status.server_host && (
             <ServerReconnect host={status.server_host} label={status.server_host}
               note="Lost the connection to the server. The run carries on there; connect again to follow it."
-              onConnected={() => onChange()} />
+              onConnected={() => {
+                setReconnectedAt(Date.now())
+                setFlash(`Connected to ${status.server_host}. Bringing the run up to date.`)
+                onChange()
+              }} />
           )}
         </div>
       </Collapse>

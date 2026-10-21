@@ -189,6 +189,8 @@ export interface RunStatus {
   server_connected?: boolean | null
   server_host?: string | null
   server_checked?: string | null
+  /** Copying what the run made back from the server (after a gap, this can take a while). */
+  server_syncing?: boolean
   server_workers?: number | null
   server_gpu_workers?: number | null
   /** Why a run failed, when it says. */

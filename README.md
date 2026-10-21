@@ -63,7 +63,7 @@ the same commit that completes the work.
 - **Researched ruleset.** Every rule is backed by historical sources, and contested rules are
   settled by counting references. See [docs/RULES.md](docs/RULES.md).
 - **Verified rules engine.** A cross-check against an independent reference move generator and a
-  10,000-game random-play stress test; 238 tests in all.
+  10,000-game random-play stress test; 245 tests in all.
 - **AlphaZero search.** PUCT Monte Carlo Tree Search guided by a residual policy-value network
   (6 blocks × 64 filters, about 1M parameters), with exact values for finished games, root noise,
   temperature and tree reuse for self-play. Planted bugs in the search are all caught by the tests.
@@ -662,7 +662,9 @@ stays in the folder:
 ```
 
 The training carries on if the Mac sleeps or the connection drops; the page then asks for the
-password again, and connecting picks the run up where it is, also after the Mac has restarted.
+password again, and connecting picks the run up where it is, also after the Mac has restarted. A
+right password closes the prompt at once with a green "Connected", and while the app copies back
+what the run made in the meantime (a while, after a long gap) the run shows as "catching up".
 **Self-play processes** sets how many of the server's cores it uses (by default all but four, left
 for the training and anyone else on the machine). Deleting a run deletes the server's copy too.
 

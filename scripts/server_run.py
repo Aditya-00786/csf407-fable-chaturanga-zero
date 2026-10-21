@@ -138,7 +138,20 @@ def main():
         fail(f"On the server: {exc}")
 
     # Follow: the status every few seconds, everything else every PULL_EVERY or when the run moves on.
+    # The connection counts as back the moment the server answers; copying what the run made in the
+    # meantime (minutes of it, after a long gap) is shown as syncing, not as still disconnected.
     pushed, last_pull, moved_on = None, 0.0, None
+
+    def lost() -> None:
+        if notes.get("connected"):
+            print(f"Lost the connection to {host}; the run carries on there.", flush=True)
+        note(connected=False, syncing=False)
+        # Until the app connects again (a quick check here: nothing is sent), or a while has passed.
+        waited = 0.0
+        while waited < RETRY_EVERY and not remote.connected(host):
+            time.sleep(1.0)
+            waited += 1.0
+
     while True:
         time.sleep(CHECK_EVERY)
         try:
@@ -154,19 +167,8 @@ def main():
                 _, theirs = remote.poll(host, folder, args.run, there["pid"])
                 if theirs:
                     pid, alive = there["pid"], True
-            mark = (there or {}).get("state"), (there or {}).get("generation")
-            if not alive or mark != moved_on or time.time() - last_pull > PULL_EVERY:
-                remote.pull_run(host, folder, args.run, run_dir)
-                last_pull, moved_on = time.time(), mark
         except remote.NotConnected:
-            if notes.get("connected"):
-                print(f"Lost the connection to {host}; the run carries on there.", flush=True)
-            note(connected=False)
-            # Until the app connects again (a quick check here: nothing is sent), or a while has passed.
-            waited = 0.0
-            while waited < RETRY_EVERY and not remote.connected(host):
-                time.sleep(1.0)
-                waited += 1.0
+            lost()
             continue
         except remote.RemoteError as exc:  # a passing problem: try again
             print(f"Could not check the server: {exc}", flush=True)
@@ -179,6 +181,20 @@ def main():
             if there.get("state") not in ACTIVE:  # it has paused or ended, and cleared its own request there
                 (run_dir / "control.json").unlink(missing_ok=True)
             write_status(there)
+        mark = (there or {}).get("state"), (there or {}).get("generation")
+        if not alive or mark != moved_on or time.time() - last_pull > PULL_EVERY:
+            note(syncing=True)
+            try:
+                remote.pull_run(host, folder, args.run, run_dir)
+                last_pull, moved_on = time.time(), mark
+                note(syncing=False, synced=_now())
+            except remote.NotConnected:
+                lost()
+                continue
+            except remote.RemoteError as exc:
+                print(f"Could not copy the run back: {exc}", flush=True)
+                note(syncing=False)
+                continue
         if not alive:
             break
 
