@@ -369,7 +369,11 @@ accident. One run trains at a time: starting or resuming a second one asks you t
    which game a position came from.
 4. **Evaluation.** The new network plays 20 games each against the previous generation, Greedy and
    Random, without noise; it samples its first 16 plies in proportion to visits so the games
-   differ.
+   differ. Each worker plays several of these games side by side, sending the positions waiting
+   for the same network to it in one batch; every game is played exactly as it would be alone.
+   Replaying `main-v4`'s generation 40 tests both ways on the lab server gave the same 120 games,
+   move for move, in 37 minutes instead of 53 (with a run training on the same GPU). The run
+   report's strength check plays its games the same way, on the run's GPU workers.
 
 Self-play always uses the newest network, as AlphaZero does. The **best** network is the one with
 the highest average score against Greedy and Random (40 games, so a few lucky draws do not decide

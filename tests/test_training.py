@@ -206,6 +206,61 @@ def test_gpu_workers_need_a_gpu(tmp_path):
     assert run.gpu_workers == (4 if torch.cuda.is_available() else 0)
 
 
+class _StandIn:
+    """A deterministic stand-in for a network: priors from a hash of each move, a value from the
+    material on the board. Batched or not, it gives the same numbers, so any difference between
+    playing games side by side and one at a time would be in the procedure."""
+
+    def __init__(self, salt: int):
+        self.salt = salt
+
+    def evaluate(self, state):
+        from chaturanga.agents import material_balance
+
+        moves = state.legal_moves()
+        weights = {m: 1 + (m * 2_654_435_761 + self.salt) % 997 for m in moves}
+        total = sum(weights.values())
+        return {m: w / total for m, w in weights.items()}, float(np.tanh(material_balance(state, state.side) / 8))
+
+    def evaluate_many(self, states):
+        return [self.evaluate(s) for s in states]
+
+
+@pytest.mark.parametrize("opponent", ["greedy", "random", "previous"])
+def test_test_games_side_by_side_are_the_games_played_one_at_a_time(monkeypatch, opponent):
+    from chaturanga import WHITE
+    from chaturanga import training
+
+    mine, theirs = _StandIn(1), _StandIn(2)
+    monkeypatch.setattr(training, "_evaluator_for", lambda checkpoint: mine)
+    monkeypatch.setattr(training, "_load_evaluator", lambda checkpoint: theirs)
+    sims, seed, opening, games = 6, 1234, 4, list(range(5))
+    spec = "prev.pt" if opponent == "previous" else opponent
+
+    alone = []
+    for i in games:  # the way test games were played before: one game, one position at a time
+        player = training.SearchPlayer(mine, sims, seed + i, opening)
+        other = (training.SearchPlayer(theirs, sims, seed + 7919 * (i + 1), opening) if opponent == "previous"
+                 else training._opponent(opponent, seed + 7919 * (i + 1), sims, opening))
+        colour, state, moves = (WHITE if i % 2 == 0 else -WHITE), GameState.initial(), []
+        while not state.is_terminal():
+            move = (player if state.side == colour else other).select_move(state)
+            moves.append(move_to_str(move))
+            state = state.apply(move)
+        alone.append((moves, (state.outcome().value_for(colour) + 1) / 2))
+
+    together = training.match_task("me.pt", spec, games, sims, seed, opening, keep_moves=True)
+    assert [(g["moves"], g["score"]) for g in together] == alone
+
+
+def test_test_games_are_shared_out_to_keep_every_worker_busy():
+    from chaturanga.training import match_chunks
+
+    assert match_chunks(40, 10) == [list(range(i, i + 4)) for i in range(0, 40, 4)]
+    assert match_chunks(40, 1) == [list(range(i, i + 8)) for i in range(0, 40, 8)]  # at most 8 at once
+    assert sum(match_chunks(7, 3), []) == list(range(7))
+
+
 def test_a_run_trains_on_the_blend_it_is_set_to(tmp_path):
     run = TrainingRun(str(tmp_path / "r"), TrainConfig(value_mix=0.25), log=lambda *_: None)
     assert run.buffer.value_mix == 0.25

@@ -216,11 +216,14 @@ def _write_strength(run_dir: Path, data: dict) -> None:
 
 
 def measure_strength(run_dir, games: int = 20, workers: int = 0, simulations: Optional[int] = None,
-                     log: Callable[[str], None] = print) -> dict:
+                     log: Callable[[str], None] = print, gpu_workers: int = 0) -> dict:
     """The untrained, best and final networks each play `games` games against Random and against
-    Greedy from the opening, colours alternating. Progress and results are kept in
+    Greedy from the opening, colours alternating, several side by side in each worker process
+    (`gpu_workers` of which run the network on the GPU). Progress and results are kept in
     report/strength.json as they come in."""
-    from .training import _init_worker, match_task
+    import torch
+
+    from .training import _init_worker, match_chunks, match_task
 
     run_dir = Path(run_dir)
     config = json.loads((run_dir / "config.json").read_text())
@@ -247,9 +250,12 @@ def measure_strength(run_dir, games: int = 20, workers: int = 0, simulations: Op
 
     try:
         workers = workers or max(1, (os.cpu_count() or 2) - 2)
-        with mp.get_context("spawn").Pool(workers, initializer=_init_worker) as pool:
-            pending = [((label, opponent), pool.apply_async(match_task, (str(nets[label][1]), opponent, [i], sims, seed, 8)))
-                       for label, opponent in jobs for i in range(games)]
+        on_gpu = min(gpu_workers, workers) if torch.cuda.is_available() else 0
+        ctx = mp.get_context("spawn")
+        devices = ["cuda"] * on_gpu + ["cpu"] * (workers - on_gpu)
+        with ctx.Pool(workers, initializer=_init_worker, initargs=(None, None, devices, ctx.Value("i", 0))) as pool:
+            pending = [((label, opponent), pool.apply_async(match_task, (str(nets[label][1]), opponent, chunk, sims, seed, 8)))
+                       for label, opponent in jobs for chunk in match_chunks(games, -(-workers // len(jobs)))]
             while pending:
                 still = []
                 for key, task in pending:

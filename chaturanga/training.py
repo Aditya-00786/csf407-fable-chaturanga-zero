@@ -50,7 +50,7 @@ import torch.nn.functional as F
 from .agents import GreedyAgent, RandomAgent
 from .config import DEFAULT_RULES
 from .constants import WHITE
-from .game import GameState
+from .game import GameState, move_to_str
 from .mcts import MCTS, MCTSConfig
 from .net import NetConfig, NetworkEvaluator, PolicyValueNet, load_checkpoint, new_network, save_checkpoint
 from .replay_buffer import ReplayBuffer
@@ -231,11 +231,15 @@ def _init_worker(moves=None, games=None, devices=None, started=None) -> None:
         _worker_device = torch.device(devices[index % len(devices)])
 
 
+def _load_evaluator(checkpoint: str) -> NetworkEvaluator:
+    net, _ = load_checkpoint(checkpoint)
+    return NetworkEvaluator(net, _worker_device)
+
+
 def _evaluator_for(checkpoint: str) -> NetworkEvaluator:
     key = (checkpoint, os.path.getmtime(checkpoint))
     if _worker_cache.get("key") != key:
-        net, _ = load_checkpoint(checkpoint)
-        _worker_cache.update(key=key, evaluator=NetworkEvaluator(net, _worker_device))
+        _worker_cache.update(key=key, evaluator=_load_evaluator(checkpoint))
     return _worker_cache["evaluator"]
 
 
@@ -280,23 +284,71 @@ def _opponent(spec: str, seed: int, simulations: int, opening_plies: int):
 
 
 def match_task(checkpoint: str, opponent: str, game_indices: list[int], simulations: int, seed: int,
-               opening_plies: int = 8) -> list[dict]:
-    """Games between a checkpoint and an opponent; the checkpoint plays White in even-numbered games."""
-    out = []
+               opening_plies: int = 8, keep_moves: bool = False) -> list[dict]:
+    """Games between a checkpoint and an opponent; the checkpoint plays White in even-numbered games.
+
+    The games are played side by side. At each step of the searches under way, the positions waiting
+    for the same network, from all the games, are evaluated in one batch, which a GPU does far faster
+    than one at a time. Each game is played exactly as if alone: the same searches, simulation by
+    simulation, the same seeds and the same sampled opening moves. Only a batch's arithmetic can
+    differ from one position's, in the last digits, which very rarely tips a close choice."""
+    mine = _evaluator_for(checkpoint)
+    theirs = None if opponent in ("greedy", "random") else _load_evaluator(opponent)
+    games = []
     for i in game_indices:
-        player = SearchPlayer(_evaluator_for(checkpoint), simulations, seed + i, opening_plies)
-        other = _opponent(opponent, seed + 7919 * (i + 1), simulations, opening_plies)
-        colour = WHITE if i % 2 == 0 else -WHITE
-        state = GameState.initial()
-        while not state.is_terminal():
-            mover = player if state.side == colour else other
-            state = state.apply(mover.select_move(state))
-            _count(moves=1)
-        _count(games=1)
-        result = state.outcome()
-        out.append({"score": (result.value_for(colour) + 1) / 2, "reason": result.reason, "plies": state.ply,
-                    "colour": colour})
+        other_seed = seed + 7919 * (i + 1)
+        other = (SearchPlayer(theirs, simulations, other_seed, opening_plies) if theirs is not None
+                 else _opponent(opponent, other_seed, simulations, opening_plies))
+        games.append({"index": i, "colour": WHITE if i % 2 == 0 else -WHITE, "state": GameState.initial(), "moves": [],
+                      "player": SearchPlayer(mine, simulations, seed + i, opening_plies), "other": other})
+
+    def play(game: dict, move: int) -> None:
+        game["state"] = game["state"].apply(move)
+        if keep_moves:
+            game["moves"].append(move_to_str(move))
+        _count(moves=1)
+
+    active = list(games)
+    while active:
+        searching = []
+        for g in active:
+            mover = g["player"] if g["state"].side == g["colour"] else g["other"]
+            if isinstance(mover, SearchPlayer):
+                searching.append((g, mover, mover.mcts.prepare(g["state"])))
+            else:
+                play(g, mover.select_move(g["state"]))  # Greedy and Random need no search
+        for _ in range(simulations):
+            waiting: dict = {}
+            for _, searcher, root in searching:
+                path = searcher.mcts.descend(root)
+                if path is not None:  # (None: a finished game, scored exactly)
+                    waiting.setdefault(id(searcher.mcts.evaluator), (searcher.mcts.evaluator, []))[1].append((searcher, path))
+            for evaluator, items in waiting.values():
+                for (searcher, path), (priors, value) in zip(items, evaluator.evaluate_many([p[-1].state for _, p in items])):
+                    searcher.mcts.expand_and_backup(path, priors, value)
+        for g, searcher, root in searching:
+            play(g, searcher.mcts.choose_move(root, 1.0 if g["state"].ply < searcher.opening_plies else 0.0))
+        for g in active:
+            if g["state"].is_terminal():
+                _count(games=1)
+        active = [g for g in active if not g["state"].is_terminal()]
+
+    out = []
+    for g in games:
+        result = g["state"].outcome()
+        row = {"index": g["index"], "score": (result.value_for(g["colour"]) + 1) / 2, "reason": result.reason,
+               "plies": g["state"].ply, "colour": g["colour"]}
+        if keep_moves:
+            row["moves"] = g["moves"]
+        out.append(row)
     return out
+
+
+def match_chunks(n: int, workers: int, most: int = 8) -> list[list[int]]:
+    """Game indices 0..n-1 in tasks of games played side by side: enough tasks to keep every worker
+    busy, and at most `most` games each (so a pause is not kept waiting long)."""
+    size = max(1, min(most, math.ceil(n / max(1, workers))))
+    return [list(range(i, min(n, i + size))) for i in range(0, n, size)]
 
 
 # ---------------------------------------------------------------------- training steps
@@ -699,14 +751,15 @@ class TrainingRun:
                 games.extend(result)
                 self.set_status(games_done=len(games))
 
+            # Several games per task, played side by side (see match_task).
             if pool is None:
-                for i in range(n):
+                for chunk in match_chunks(n, 1):
                     self._check_pause("now")
-                    keep(match_task(me, opponent, [i], self.config.simulations, seed, self.config.eval_opening_plies))
+                    keep(match_task(me, opponent, chunk, self.config.simulations, seed, self.config.eval_opening_plies))
             else:
-                self._gather([pool.apply_async(match_task, (me, opponent, [i], self.config.simulations, seed,
+                self._gather([pool.apply_async(match_task, (me, opponent, chunk, self.config.simulations, seed,
                                                             self.config.eval_opening_plies))
-                              for i in range(n)], keep)
+                              for chunk in match_chunks(n, self.workers)], keep)
             self._live = None
             self._eval_plies[spec] = sum(g["plies"] for g in games) / len(games)
             wins = sum(g["score"] == 1 for g in games)
@@ -765,6 +818,7 @@ class TrainingRun:
         make_report(self.dir)
         if self.config.report_games > 0:
             data = measure_strength(self.dir, games=self.config.report_games, workers=self.workers,
+                                    gpu_workers=self.gpu_workers,
                                     log=lambda *_: None)
             self.log(format_strength(data))
 
