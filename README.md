@@ -578,6 +578,85 @@ a 20 x 256 network and millions of games; this run had 50 simulations, a 6 x 64 
 games. Beating Greedy by self-play alone would take a run of that larger kind, many times this one's
 compute; it is a stretch goal, not a setting to change.
 
+**The fourth run: a larger network and a deeper search.** Run `main-v4` took that route: a
+10 x 128 network (3.5 million parameters), 200 simulations a move, 500 games a generation, on the
+lab server with self-play's network on the GPU (see "CPU and GPU together" below). Its 60
+generations, 30,000 self-play games, took about 42 hours of server time over three sessions. It
+learned tactics, which `main-v3` never did:
+
+| Generations | vs Greedy | vs Random | vs the generation before | Self-play draws (at the 300-ply cap) |
+|---|:-:|:-:|:-:|:-:|
+| 1 to 10 | 2% | 92% | 68% | 18% (12%) |
+| 11 to 20 | 20% | 96% | 58% | 12% (5%) |
+| 21 to 30 | 53% | 98% | 55% | 20% (13%) |
+| 31 to 40 | 69% | 98% | 53% | 26% (17%) |
+| 41 to 50 | 82% | 98% | 53% | 25% (16%) |
+| 51 to 60 | 89% | 99% | 51% | 29% (19%) |
+
+| Strength check, 20 games each at 200 simulations | vs Random | vs Greedy |
+|---|:-:|:-:|
+| Untrained | 6 W / 14 D / 0 L | 0 W / 3 D / 17 L |
+| Generation 20 | 18 W / 2 D / 0 L | 7 W / 7 D / 6 L |
+| Generation 40 | 20 W / 0 D / 0 L | 16 W / 3 D / 1 L |
+| Generation 60 | 20 W / 0 D / 0 L | 18 W / 2 D / 0 L |
+
+The deeper search gave the policy targets that take loose pieces. Where its search's favourite move
+could win material outright, generation 20 took a free Ashva 76% of the time and a free Ratha 82%
+(`main-v3`'s generation 40: 49% and 69%), and fewer pieces were left loose to take. Its value
+beat predicting a draw in 59 of 60 generations, and rates a side missing both Rathas at 0.4 to
+0.8 in the other's favour and one missing its Ashvas and Rathas at about 0.99. By generation 60 it had levelled off: each
+generation scored only 51% against the one before, its policy loss on new games had hardly moved
+since generation 40 (2.32 to 2.28), and more self-play games ran to the 300-ply cap as both sides
+defended better (24% in generation 60). The next step for a longer run is a lower learning rate,
+1e-3 to 3e-4, as AlphaZero did late in training (**Settings**, below Resume).
+
+### What the trained agent plays
+
+These measurements were made on the lab server with `main-v4`'s networks; the scripts are kept with
+their logs in the server's `analysis/` folder.
+
+**Openings.** No opening was given to it, and it formed and changed its own preferences, as
+AlphaZero's chess openings shifted during its training:
+
+| Generation | Its favourite first moves (its policy at the start) | Self-play's commonest first move |
+|---|---|:-:|
+| 1 | b1a3 8%, b1c3 8% (no preference) | 9% of games |
+| 20 | g2g3 22%, Gaja c1-e3 12% | 26% |
+| 40 | f2f3 37%, e2e3 11% | 32% |
+| 50 | h2h3 40%, f2f3 13% | 30% |
+| 60 | g2g3 16%, h2h3 13%, a2a3 13%, Ashva g1-f3 12%, Gaja f1-h3 9% | 19% |
+
+Its preferences sharpened until about generation 47 (48% of games opened with its favourite), then
+spread again: generation 60 rates several setups about equally, with a value near 0 for the
+starting position. They are quiet ones (edge Padati moves such as 1. h3 a6 2. a3 h6, and Ashva and
+Gaja development) and, around generation 40, they gave the Raja room (f3 and e3 free f2 and e2
+for White's Raja; ...c6 frees c7 for Black's). Against itself at Hard, generation 60 plays 1. Nf3
+b6 2. g3 g6 3. e3 Ge6 and builds Padati walls; it also moves an Ashva and its Raja out and back,
+a sign that it has no long plan in quiet positions. Modern chess openings do not apply here (no
+queen, no long-range bishops, no castling, no double step); the nearest historical idea is the
+shatranj *tabiya*, a set-up both sides built before contact.
+
+**Chaturanga's fool's mate.** Scholar's and fool's mate need a queen and bishops, but a Raja
+walled in by its own pieces can be smothered by an Ashva in four moves: 1. Nc3, 2. Na4, 3. Nc5
+and 4. Nxb7 mate (for Black, ...Nf6-h5-f4xg2). A scripted attacker that plays straight for it
+mated none of the networks tried, from the untrained one to generation 60, as either colour; the
+trained ones punish it. Generation 60 as White takes the raiding Ashva the moment it lands on f4
+(g3xf4); as Black it plays ...d6 and takes it on c5 (...dxc5).
+
+**Raja safety.** In positions from its games where some moves lose at once (mate, or its last
+piece taken) and others do not, the search at 200 simulations picks a safe move 87% of the time
+with generation 60, up from 81% with generation 36.
+
+**Finishing a won game.** A win counts the same however long it takes, so the agent has no reason
+to prefer the quick finish, and it often plays on, taking more pieces first; AlphaZero is known
+for the same. In generation 40's self-play there were 872 positions where a move would win at
+once; its search's favourite move took the win 51% of the time, and when it did not, that side
+still won 92% of the games, a median of 16 plies later. Searching again as Play's levels do, it
+took the immediate win 55% of the time at Hard (200 simulations) and 65% at Impossible (800):
+the winning move often has a prior near 0, so the search seldom tries it, or another move that
+also wins on gets more visits. A rule that plays a move winning at once, as Leela Chess Zero does
+with proven wins, would fix this without retraining; it is not in the code yet.
+
 ### The run report
 
 A report sums up what a run learned. It is made only when asked: **Make report** in the Training
