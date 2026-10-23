@@ -180,7 +180,8 @@ def main():
         if reported:
             if there.get("state") not in ACTIVE:  # it has paused or ended, and cleared its own request there
                 (run_dir / "control.json").unlink(missing_ok=True)
-            write_status(there)
+            if alive and there.get("state") in ACTIVE:  # how it ended, once what it made is here (below)
+                write_status(there)
         mark = (there or {}).get("state"), (there or {}).get("generation")
         if not alive or mark != moved_on or time.time() - last_pull > PULL_EVERY:
             note(syncing=True)
@@ -196,6 +197,8 @@ def main():
                 note(syncing=False)
                 continue
         if not alive:
+            if reported:
+                write_status(there)
             break
 
     # The training process is gone: it paused, finished or failed (or was stopped some other way).
