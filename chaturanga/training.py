@@ -77,6 +77,14 @@ class TrainConfig:
     # worth. From the opening alone, the value head of the first run learned nothing in 1,000 games.
     endgame_fraction: float = 0.3
     endgame_max_pieces: int = 5
+    # Self-play takes a win in one whenever there is one (see mcts.py); without it, main-v4's
+    # generation 60 took one 46% of the time and played on for a median of 12 plies. In 160 games
+    # of that network, it decided more games from the opening (75 of 106 against 69) in fewer plies
+    # (median 199 against 219). Test games also turn down a move that allows the opponent a win in
+    # one, as Play's Hard and Impossible do, but self-play does not: with both sides parrying every
+    # mate in one, fewer games were decided (63 of 106) and mates fell from 28 to 8, and the network
+    # would no longer see the blunders its search still favours punished.
+    take_wins: bool = True
     concurrent: int = 8               # self-play games per process, sharing batched evaluations
     buffer_positions: int = 60_000    # about the last six generations of 50 games; see buffer_for
     batch_size: int = 256
@@ -113,7 +121,8 @@ class TrainConfig:
     def selfplay_config(self) -> SelfPlayConfig:
         return SelfPlayConfig(simulations=self.simulations, temperature_plies=self.temperature_plies,
                               concurrent=self.concurrent, late_temperature=self.late_temperature,
-                              endgame_fraction=self.endgame_fraction, endgame_max_pieces=self.endgame_max_pieces)
+                              endgame_fraction=self.endgame_fraction, endgame_max_pieces=self.endgame_max_pieces,
+                              take_wins=self.take_wins)
 
     def to_json(self) -> dict:
         d = asdict(self)
@@ -267,11 +276,12 @@ def chunks(items: list, size: int) -> list[list]:
 
 
 class SearchPlayer:
-    """MCTS with no noise. It samples its first `opening_plies` moves in proportion to visits,
-    so that evaluation games between deterministic players still differ."""
+    """MCTS with no noise, following the search's rules as Play's Hard level does (it takes a win in
+    one, and does not allow one that can be avoided). It samples its first `opening_plies` moves in
+    proportion to visits, so that evaluation games between deterministic players still differ."""
 
     def __init__(self, evaluator, simulations: int, seed: int, opening_plies: int = 8):
-        self.mcts = MCTS(evaluator, MCTSConfig(simulations=simulations), seed=seed)
+        self.mcts = MCTS(evaluator, MCTSConfig(simulations=simulations, take_wins=True, avoid_losses=True), seed=seed)
         self.opening_plies = opening_plies
 
     def select_move(self, state: GameState) -> int:

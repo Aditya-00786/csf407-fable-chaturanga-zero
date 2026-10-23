@@ -18,7 +18,7 @@ from chaturanga.net import NetConfig, NetworkEvaluator, load_checkpoint, new_net
 from chaturanga.replay_buffer import ReplayBuffer
 from chaturanga.selfplay import (GameRecord, SelfPlayConfig, dense_policy, examples, play_games, policy_target,
                                  read_games, write_games)
-from chaturanga.training import TrainConfig, TrainingRun, held_out_loss, train_steps
+from chaturanga.training import SearchPlayer, TrainConfig, TrainingRun, held_out_loss, train_steps
 
 SHORT = RulesConfig(max_plies=40)
 FAST = SelfPlayConfig(simulations=8, temperature_plies=10, concurrent=3)
@@ -186,6 +186,15 @@ def test_worker_processes_take_their_devices_in_turn(monkeypatch):
         torch.set_num_threads(threads)
         signal.signal(signal.SIGINT, handler)
     assert seen == ["cuda", "cpu", "cpu", "cuda"]  # a process restarted later takes the next turn
+
+
+def test_the_search_rules_in_self_play_and_test_games():
+    # A run made before the rules existed takes wins in self-play from its next generation on.
+    old = TrainConfig.from_json({"games_per_generation": 500, "simulations": 200})
+    assert old.take_wins and old.selfplay_config.take_wins
+    # Test games follow both rules, as Play's Hard level does.
+    config = SearchPlayer(UniformEvaluator(), 10, seed=0).mcts.config
+    assert config.take_wins and config.avoid_losses
 
 
 def test_a_resumed_run_trains_with_the_learning_rate_now_set(tmp_path):

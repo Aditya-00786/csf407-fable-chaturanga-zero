@@ -25,9 +25,9 @@ const AGENTS = [
 
 const LEVELS: { value: Level; label: string; note: string }[] = [
   { value: 'easy', label: 'Easy', note: 'A 10-simulation search, and it often plays a move other than its favourite.' },
-  { value: 'medium', label: 'Medium', note: 'The 50-simulation search it trained with; it usually plays its favourite move.' },
-  { value: 'hard', label: 'Hard', note: '200 simulations per move, always its best move.' },
-  { value: 'impossible', label: 'Impossible', note: '800 simulations per move, always its best move; about a second to think.' },
+  { value: 'medium', label: 'Medium', note: 'A 50-simulation search; it usually plays its favourite move.' },
+  { value: 'hard', label: 'Hard', note: '200 simulations per move, always its best move. It takes any win in one, and never lets you win in one if it can help it.' },
+  { value: 'impossible', label: 'Impossible', note: '800 simulations per move, always its best move; about a second to think. It takes any win in one, and never lets you win in one if it can help it.' },
 ]
 
 /** One to four dots under a level's name: how strong it plays. */

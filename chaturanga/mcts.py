@@ -14,6 +14,13 @@ The evaluator is any object with `evaluate(state) -> (priors, value)`, where pri
 legal move to a probability and value is the expected result for the side to move, in [-1, 1],
 and `evaluate_many(states)`, the same for a batch.
 `net.NetworkEvaluator` is the real one; `UniformEvaluator` knows only the rules.
+
+Two rules can be laid over the visit counts when a move is chosen, as Leela Chess Zero lays proven
+wins and losses over its search (`MCTSConfig.take_wins` and `avoid_losses`): play a move that wins
+at once whenever there is one, and do not play a move after which the opponent can win at once when
+another move leaves them no such reply. Searches score finished games exactly, but a winning move
+whose prior is near 0 is seldom tried, and among moves that all look won (0.997 against 1.0) the
+visits follow the priors, so main-v4's generation 60 took a win in one only about half the time.
 """
 
 import math
@@ -52,6 +59,8 @@ class MCTSConfig:
     dirichlet_alpha: float = 0.3   # root noise for self-play (AlphaZero used 0.3 for chess)
     dirichlet_fraction: float = 0.25  # share of the root prior replaced by noise when enabled
     fpu: float = 0.0               # value assumed for a move that has not been tried yet
+    take_wins: bool = False        # choose a move that wins at once whenever there is one
+    avoid_losses: bool = False     # choose no move after which the opponent can win at once, if another avoids it
 
 
 class Node:
@@ -198,7 +207,24 @@ class MCTS:
 
     def choose_move(self, root: Node, temperature: float = 0.0) -> int:
         """Pick a move from the visit counts: the most visited one at temperature 0 (ties broken
-        at random), otherwise with probability proportional to visits^(1/temperature)."""
+        at random), otherwise with probability proportional to visits^(1/temperature).
+
+        With `take_wins`, a move that wins at once comes first (the most visited of them). With
+        `avoid_losses`, a move after which the opponent can win at once gives way to the most
+        visited move after which they cannot, if there is one. The visit counts, and so self-play's
+        policy targets, stay as the search left them."""
+        state = root.state
+        if self.config.take_wins:
+            wins = [m for m in root.children if wins_at_once(state, m)]
+            if wins:
+                return max(wins, key=lambda m: root.children[m].visits)
+        move = self._from_visits(root, temperature)
+        if self.config.avoid_losses and loses_at_once(state.apply(move), state.side):
+            ranked = sorted(root.children, key=lambda m: (root.children[m].visits, root.children[m].prior), reverse=True)
+            move = next((m for m in ranked if m != move and not loses_at_once(state.apply(m), state.side)), move)
+        return move
+
+    def _from_visits(self, root: Node, temperature: float) -> int:
         counts = self.visit_counts(root)
         moves = list(counts)
         if temperature <= 0:
@@ -223,6 +249,21 @@ class MCTS:
     def root_value(root: Node) -> float:
         """The search's estimate of the result for the side to move at the root."""
         return -root.mean_value
+
+
+def wins_at_once(state: GameState, move: int) -> bool:
+    """Whether `move` ends the game in a win for the side playing it (checkmate, bare Raja, or a
+    stalemate that wins under the rules)."""
+    outcome = state.apply(move).outcome()
+    return outcome is not None and outcome.winner == state.side
+
+
+def loses_at_once(after: GameState, me: int) -> bool:
+    """Whether `me`, whose move led to `after`, has lost by it or can lose to the opponent's reply."""
+    outcome = after.outcome()
+    if outcome is not None:
+        return outcome.winner == -me
+    return any(wins_at_once(after, reply) for reply in after.legal_moves())
 
 
 def _same_position(a: GameState, b: GameState) -> bool:

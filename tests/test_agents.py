@@ -49,3 +49,15 @@ def test_make_agent():
         pass
     else:
         raise AssertionError("unknown agents must be rejected")
+
+
+def test_the_levels_that_play_their_best_move_follow_the_search_rules():
+    from chaturanga.agents import LEVELS, MCTSAgent
+    from chaturanga.mcts import UniformEvaluator
+
+    assert {lv.id for lv in LEVELS.values() if lv.sure} == {"hard", "impossible"}
+    assert all(lv.temperature == 0 for lv in LEVELS.values() if lv.sure)
+    for sure in (False, True):
+        config = MCTSAgent(evaluator=UniformEvaluator(), sure=sure).mcts.config
+        assert config.take_wins == config.avoid_losses == sure
+    assert not MCTSAgent(evaluator=UniformEvaluator()).mcts.config.take_wins  # Milestone 2's baseline as it was

@@ -34,6 +34,8 @@ class SelfPlayConfig:
     late_temperature: float = 0.0  # ...and after them at this temperature (0: always the most visited move)
     endgame_fraction: float = 0.0  # share of games started from a random reduced-material position
     endgame_max_pieces: int = 5    # pieces per side besides the Raja in those positions (at least 1)
+    take_wins: bool = False        # play a win in one whenever there is one (see mcts.py); the visit
+                                   # counts recorded, the policy targets, stay as the search left them
 
 
 @dataclass
@@ -105,7 +107,7 @@ def play_games(evaluator: Evaluator, n_games: int, config: SelfPlayConfig = Self
     same game. `should_stop` is asked after every move; when it says yes, the finished games are
     returned and the unfinished ones dropped. `on_move(n)` hears of each round of n moves played,
     for live progress."""
-    mcts_config = MCTSConfig(simulations=config.simulations)
+    mcts_config = MCTSConfig(simulations=config.simulations, take_wins=config.take_wins)
     waiting = list(seeds) if seeds is not None else [seed + i for i in range(n_games)]
     active: list[_Game] = []
     done: list[GameRecord] = []

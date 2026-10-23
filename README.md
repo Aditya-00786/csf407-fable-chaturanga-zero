@@ -69,10 +69,12 @@ the same commit that completes the work.
 - **Researched ruleset.** Every rule is backed by historical sources, and contested rules are
   settled by counting references. See [docs/RULES.md](docs/RULES.md).
 - **Verified rules engine.** A cross-check against an independent reference move generator and a
-  10,000-game random-play stress test; 246 tests in all.
+  10,000-game random-play stress test; 261 tests in all.
 - **AlphaZero search.** PUCT Monte Carlo Tree Search guided by a residual policy-value network
   (6 blocks × 64 filters, about 1M parameters), with exact values for finished games, root noise,
   temperature and tree reuse for self-play. Planted bugs in the search are all caught by the tests.
+  Two rules in the style of Leela Chess Zero's proven wins make the trained agent take every win in
+  one and never allow one it can avoid.
 - **Self-play training.** Parallel self-play, a replay buffer and AlphaZero's loss, with every
   generation evaluated, checkpointed and logged. Runs resume after any interruption, on a laptop
   or on Colab, and teammates can contribute self-play games from their own machines.
@@ -311,6 +313,11 @@ pi = MCTS.policy_target(root)                            # 4,096-long training t
 - **Self-play controls:** Dirichlet noise at the root (`add_noise=True`), temperature for choosing
   moves (`choose_move(root, temperature)`), and tree reuse: searching the position after the
   opponent's reply keeps the work already done on it.
+- **Search rules** (`MCTSConfig(take_wins=True, avoid_losses=True)`): when a move is chosen, one that
+  wins at once comes first, and one after which the opponent can win at once gives way to the most
+  visited move that leaves them no such reply, if there is one. The visit counts, and so the policy
+  targets, stay as the search left them. Off by default; the trained agent uses them as described
+  under [The search's rules](#the-searchs-rules).
 - **Agent:** `make_agent("mcts")` plays with 50 simulations per move and no noise. It is the
   "MCTS" computer opponent in the web app. The API server loads PyTorch and the network in the
   background as it starts, so the first MCTS move is as quick as the rest. The trained agent,
@@ -320,7 +327,10 @@ pi = MCTS.policy_target(root)                            # 4,096-long training t
     priors and with the untrained network;
   - values have the right sign, visits add up, and only legal moves are searched;
   - root noise, temperature, tree reuse, policy targets, network shapes, seeding and
-    checkpoints behave as intended.
+    checkpoints behave as intended;
+  - the search rules take a win the search passed over (mate, bare Raja, the stalemate trap) and
+    turn down a move that loses at once (a Ratha left to be taken, a stalemate given), for both
+    colours, keep the search's choice when every move loses, and leave the visits alone.
 
   Nine bugs planted in the search, one at a time, each made the tests fail.
 
@@ -660,17 +670,82 @@ trained ones punish it. Generation 60 as White takes the raiding Ashva the momen
 
 **Raja safety.** In positions from its games where some moves lose at once (mate, or its last
 piece taken) and others do not, the search at 200 simulations picks a safe move 87% of the time
-with generation 60, up from 81% with generation 36.
+with generation 60, up from 81% with generation 36. In Play and test games the search's rules
+(below) now pick a safe move whenever there is one.
 
 **Finishing a won game.** A win counts the same however long it takes, so the agent has no reason
 to prefer the quick finish, and it often plays on, taking more pieces first; AlphaZero is known
-for the same. In generation 40's self-play there were 872 positions where a move would win at
-once; its search's favourite move took the win 51% of the time, and when it did not, that side
-still won 92% of the games, a median of 16 plies later. Searching again as Play's levels do, it
-took the immediate win 55% of the time at Hard (200 simulations) and 65% at Impossible (800):
-the winning move often has a prior near 0, so the search seldom tries it, or another move that
-also wins on gets more visits. A rule that plays a move winning at once, as Leela Chess Zero does
-with proven wins, would fix this without retraining; it is not in the code yet.
+for the same. In generation 60's self-play there were 781 positions where a move would win at
+once; the move played took the win 46% of the time, and when it did not, that side still won 93%
+of the games, a median of 12 plies later. Searching again as Play's levels do, it took the
+immediate win 48% of the time at Hard (200 simulations) and 50% at Impossible (800), down from 55%
+and 65% with generation 36. The search is not blind to the win: in generation 36 the winning move
+often had a prior near 0, so it was seldom tried, but in generation 60 it gets nearly as many
+visits as another move that wins later (48 against 50, say). That move's value, 0.997, is too
+close to the win's 1.0 to matter, so the visits follow the priors. The search's rules now settle it.
+
+### The search's rules
+
+Leela Chess Zero lays proven results over its search: a move that ends the game is known exactly,
+whatever the visits say. ChaturangZero now applies two rules when it chooses a move
+(`chaturanga/mcts.py`):
+
+1. **Take a win in one.** If a move wins at once (checkmate, a bare Raja, or a stalemate, which the
+   stalemated side wins), play it (the most visited, if there are several).
+2. **Don't allow one.** If the chosen move lets the opponent win at once, or loses by itself (it
+   stalemates the opponent), play instead the most visited move that does neither, if one exists.
+
+They need no retraining and cost about half a millisecond a move each (a 200-simulation move takes
+about 55 ms of a process's time). The visit counts, and so self-play's policy targets, stay as the
+search left them.
+
+| Where | Take a win in one | Don't allow one |
+|---|:-:|:-:|
+| Play, Hard and Impossible | Yes | Yes |
+| Play, Easy and Medium (they stray from their best move on purpose) | No | No |
+| Play, MCTS (Milestone 2's untrained agent, a benchmark baseline) | No | No |
+| Test games and the strength check (in `main-v4`, from generation 61) | Yes | Yes |
+| Self-play (in `main-v4`, from generation 61; `take_wins` in a run's config) | Yes | No |
+
+Measured on the lab server with generation 60. It played 100 test games against each opponent and
+160 self-play games (106 from the opening, 54 from endgame positions), each set three ways with
+the same seeds:
+
+| Test games | No rules | Take wins | Both rules |
+|---|:-:|:-:|:-:|
+| vs Random (W / D / L) | 99 / 1 / 0 | 99 / 1 / 0 | 99 / 1 / 0 |
+| Plies to win against Random (median, mean) | 103, 116 | 87, 94 | 87, 94 |
+| vs Greedy (W / D / L) | 82 / 11 / 7 | 82 / 11 / 7 | 83 / 12 / 5 |
+| Plies to win against Greedy (median, mean) | 190.5, 189 | 182.5, 179 | 182, 178 |
+| vs generation 59, under the same rules (W / D / L) | 25 / 61 / 14 | 27 / 55 / 18 | 23 / 66 / 11 |
+| Moves the rules changed (either player's) | | 116 wins | 105 wins, 69 losses avoided |
+| Time for the 300 games | 6.8 min | 6.7 min | 6.8 min |
+
+| Self-play | No rules | Take wins | Both rules |
+|---|:-:|:-:|:-:|
+| Games from the opening decided | 69 of 106 | 75 of 106 | 63 of 106 |
+| Their median length | 219 plies | 199 | 236 |
+| Their mates | 15 | 28 | 8 |
+| Endgame games, median length | 38 plies | 28 | 39 |
+| Moves a second | 123 | 117 | 125 |
+| Moves the rules changed | | 54 wins | 33 wins, 116 losses avoided |
+
+- **Won games end sooner.** Against Random, wins came 16 plies sooner at the median (23 on
+  average) and four times as often by mate (40 of 99 against 10); against Greedy, 8 to 10 plies
+  sooner. The scores hardly moved: those games were won already. Not allowing a win in one cut
+  Greedy's wins from 7 to 5, which 100 games cannot tell from chance.
+- **No cost in time.** Each setting took the same time; moves a second in self-play varied with
+  the mix of positions, not with the rules.
+- **Self-play takes wins only.** Taking them gives more decided games with more mates, so more
+  positions carry a result, and a little less time per generation. Not allowing them does the
+  opposite. Both sides parry every mate in one, so fewer games are decided (63 against 75), mates
+  fall from 28 to 8, and more games end at the ply cap or by repetition (43 against 31). The
+  network would also stop seeing its search's blunders punished, and that is how it learned to
+  avoid them (from 81% to 87% safe).
+- **Test scores from generation 61 include the rules**, so a run's charts may step at that point.
+  Against Greedy, 100 games put generation 60 at 87.5% (82 / 11 / 7), below the 95% of its
+  20-game strength check (18 / 2 / 0). With 20 games a match, scores move by several points from
+  chance alone.
 
 ### The run report
 
@@ -793,8 +868,8 @@ in Computers mode) and a level:
 |---|:-:|---|
 | Easy | 10 | Sampled in proportion to visits: it often strays from its favourite |
 | Medium | 50 | Visits sharpened (temperature 0.5): usually its favourite |
-| Hard | 200 | Always the most visited move |
-| Impossible | 800 | Always the most visited move; about a second per move |
+| Hard | 200 | Always the most visited move; takes any win in one and never allows one it can avoid |
+| Impossible | 800 | As Hard; about a second per move |
 
 From Python: `make_agent("zero", level="hard")`. The server reads the network from
 `checkpoints/best.pt`, or from the file named by `CHATURANGA_CHECKPOINT`; the Training page reads
