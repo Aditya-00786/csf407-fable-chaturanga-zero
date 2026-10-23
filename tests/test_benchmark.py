@@ -98,8 +98,11 @@ def tiny_run(tmp_path, monkeypatch):
 
 
 def test_the_ladder_rates_every_entry_and_later_plays_only_what_is_new(tiny_run):
-    data = run_benchmark(tiny_run, games=2, every=1, workers=1, log=lambda *_: None)
+    progress = []
+    data = run_benchmark(tiny_run, games=2, every=1, workers=1, log=lambda *_: None,
+                         on_progress=lambda done, total: progress.append((done, total)))
     entries = ["random", "greedy", "gen_0000", "gen_0001"]
+    assert progress[0] == (0, 21) and progress[-1] == (21, 21) and progress == sorted(progress)
     assert data["state"] == "done" and data["entries"] == entries
     assert len(data["pairs"]) == 6 and all(p["games"] == 2 for p in data["pairs"].values())
     assert data["done"] == data["total"] == 6 * 2 + 3 * 3  # the pairs, and three networks (Greedy too) converting

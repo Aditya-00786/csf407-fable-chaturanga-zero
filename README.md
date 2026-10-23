@@ -76,7 +76,7 @@ the same commit that completes the work.
 - **Researched ruleset.** Every rule is backed by historical sources, and contested rules are
   settled by counting references. See [docs/RULES.md](docs/RULES.md).
 - **Verified rules engine.** A cross-check against an independent reference move generator and a
-  10,000-game random-play stress test; 271 tests in all.
+  10,000-game random-play stress test; 273 tests in all.
 - **AlphaZero search.** PUCT Monte Carlo Tree Search guided by a residual policy-value network
   (6 blocks × 64 filters, about 1M parameters), with exact values for finished games, root noise,
   temperature and tree reuse for self-play. Planted bugs in the search are all caught by the tests.
@@ -409,7 +409,8 @@ accident. One run trains at a time: starting or resuming a second one asks you t
    | Every opponent together, 12 per worker, 10 workers | 8.3 |
    | Every opponent together, 24 per worker, 5 workers (the way now) | 5.8 |
 
-   The run report's strength check plays its games the same way, on the run's GPU workers.
+   The run report's strength check plays its games the same way, on the run's GPU workers, but
+   one network to a task (see the strength check, under [The run report](#the-run-report)).
 
 Self-play always uses the newest network, as AlphaZero does. The **best** network is the one with
 the highest average score against Greedy and Random (40 games, so a few lucky draws do not decide
@@ -764,9 +765,10 @@ A report sums up what a run learned. It is made only when asked: **Make report**
 page's Run report section (for a run that is not training), or `python scripts/report.py --run
 <name>` in a terminal. A run started with **Make the run report when it finishes** (off by default
 in New run; `auto_report` in its config) makes its report, strength check included, as soon as its
-last generation is done; a run already on the rating ladder rates its new generations there too. The
-report is saved in `runs/<run>/report/report.json`; if the run trains further, **Update report**
-brings it up to date.
+last generation is done; a run already on the rating ladder rates its new generations there too.
+Meanwhile the run's status shows which part is under way and, for the strength check and the
+ladder, their games as they finish, as when they are started by hand. The report is saved in
+`runs/<run>/report/report.json`; if the run trains further, **Update report** brings it up to date.
 
 - **Findings**, from the run's metrics: whether the policy learned to predict the search (its loss
   on unseen games, against the lowest it can reach), whether the value beat predicting a draw on
@@ -779,12 +781,23 @@ brings it up to date.
   run trains): the untrained, best and final networks each play Random and Greedy from the
   opening. This is what showed that the first run's final network was weaker than its untrained
   one. Results are kept in `runs/<run>/report/strength.json`.
+  - **Kept results.** A network the last check measured with the same settings (the same file,
+    by its contents) keeps its results instead of playing again: its games would come out the
+    same. After training further, that is the untrained network, whose games are the longest
+    (most are drawn at the 300-ply cap), and often the best one.
+  - **Faster on a GPU.** Games are dealt one network to a task, at most 20 games a task.
+    `main-v4`'s check (3 networks, 120 games) took 2.9 minutes this way on the lab server, against
+    7.4 with the networks mixed in 5 tasks, and played the same 120 games move for move. Tasks of
+    40 were faster still (2.2 minutes) but changed 19 games, because the GPU's arithmetic shifts
+    slightly with the batch size, so tasks stay at 20.
 - **Rating ladder and conversion test**, on request (see [Benchmarking](#benchmarking)):
   Elo ratings for the run's generations, and how surely and quickly each finishes a won game.
   Results are kept in `runs/<run>/report/benchmark.json`.
-- A server run's strength check and ladder play on its server, as its training did, and the page
-  follows them; if the connection drops they play on, and connecting again picks them up. Training
-  waits while one plays on the same machine.
+- **Where they play.** The strength check and the ladder play where the run trained: a server
+  run's on its server, which the page follows (if the connection drops they play on, and
+  connecting again picks them up), and a run trained on this Mac on this Mac. Training waits while
+  one plays on the same machine. A Kaggle or Colab run's report at the end of its training is made
+  there, but a check started later plays on this Mac, since those sessions end with the run.
 - **Self-play over the run**: how games from the opening ended, generation by generation (decided
   endings in colour, draws in grey), and their average length. These charts live in the report;
   the page's other charts follow the run live.

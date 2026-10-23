@@ -240,6 +240,13 @@ function Strength({ run, check, server, reconnect, onStarted }: {
           </table>
         </div>
       )}
+      {check && check.kept && check.kept.length > 0 && (
+        <p className="mt-2 text-[12.5px] text-ink-faint">
+          Kept from the last check, which played the same {check.kept.length > 1 ? 'networks' : 'network'} the same games:{' '}
+          {check.networks.filter((n) => check.kept!.includes(n.label))
+            .map((n) => `${NETWORK[n.label] ?? n.label} (gen ${n.generation})`).join(', ')}.
+        </p>
+      )}
       {running ? (
         <JobProgress job={check} server={server} reconnect={reconnect} />
       ) : (

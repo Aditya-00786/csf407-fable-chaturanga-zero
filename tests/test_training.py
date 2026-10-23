@@ -564,12 +564,29 @@ def test_endgame_games_record_and_replay_their_start():
 def test_a_run_started_with_auto_report_reports_as_it_finishes(tmp_path):
     from chaturanga.analysis import read_report, read_strength
 
+    seen = []
+
+    class Watching(TrainingRun):
+        def set_status(self, **changes):
+            super().set_status(**changes)
+            if self.status.get("state") == "reporting":
+                seen.append((self.status.get("report_part"), self.status.get("games_done"), self.status.get("games_total")))
+
     d = tmp_path / "r"
     cfg = replace(PAUSE_CFG, games_per_generation=2, auto_report=True, report_games=2)
-    assert _run(d, cfg)["state"] == "finished"
+    Watching(str(d), cfg, workers=0, device=torch.device("cpu"), log=lambda *_: None).run()
+    status = json.loads((d / "status.json").read_text())
+    assert status["state"] == "finished" and status.get("report_part") is None
     report = read_report(d)
     assert report and report["generations"] == 1 and report["probe"]["networks"]
-    assert read_strength(d)["state"] == "done"
+    strength = read_strength(d)
+    assert strength["state"] == "done"
+    # The strength check's games show on the run's status as they finish, as a manual check's do.
+    parts = [part for part, _, _ in seen if part]
+    assert parts.index("report") < parts.index("strength")
+    played = [(done, total) for part, done, total in seen if part == "strength" and total]
+    assert played[0] == (0, strength["total"]) and played[-1] == (strength["total"], strength["total"])
+    assert [done for done, _ in played] == sorted(done for done, _ in played)
 
 
 def test_without_auto_report_a_finished_run_has_no_report(tmp_path):

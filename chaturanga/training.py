@@ -848,20 +848,27 @@ class TrainingRun:
         from .analysis import format_strength, make_report, measure_strength
         from .benchmark import format_benchmark, read_benchmark, run_benchmark
 
+        def part(name: str) -> Callable[[int, int], None]:
+            """Show the report's part under way, and its games as they finish (as test games do)."""
+            self.set_status(report_part=name, games_done=None, games_total=None, phase_started=_now())
+            return lambda done, total: self.set_status(games_done=done, games_total=total)
+
         self.set_status(state="reporting")
         self._phase()
         self.log("Making the run report...")
+        part("report")
         make_report(self.dir)
         if self.config.report_games > 0:
             data = measure_strength(self.dir, games=self.config.report_games, workers=self.workers,
-                                    gpu_workers=self.gpu_workers,
-                                    log=lambda *_: None)
+                                    gpu_workers=self.gpu_workers, log=lambda *_: None, on_progress=part("strength"))
             self.log(format_strength(data))
         ladder = read_benchmark(self.dir)
         if ladder:
             data = run_benchmark(self.dir, games=ladder.get("games", 40), every=ladder.get("every", 10),
-                                 workers=self.workers, gpu_workers=self.gpu_workers, log=lambda *_: None)
+                                 workers=self.workers, gpu_workers=self.gpu_workers, log=lambda *_: None,
+                                 on_progress=part("ladder"))
             self.log(format_benchmark(data))
+        self.set_status(report_part=None)
 
     # -- the loop
 

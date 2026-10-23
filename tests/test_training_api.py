@@ -465,6 +465,27 @@ def test_strength_check_plays_every_network_against_both_baselines(run_root):
     assert read_strength(run_root / "demo")["state"] == "done"
 
 
+def test_a_strength_check_keeps_what_the_last_one_measured(tmp_path, run_root):
+    import shutil
+
+    from chaturanga.analysis import measure_strength
+    from chaturanga.net import NetConfig, new_network, save_checkpoint
+
+    run = tmp_path / "demo"
+    shutil.copytree(run_root / "demo", run, ignore=shutil.ignore_patterns("report"))  # no earlier check
+    check = lambda games=2: measure_strength(run, games=games, workers=1, simulations=4, log=lambda *_: None)  # noqa: E731
+    first = check()
+    assert first["kept"] == [] and first["total"] == 2 * 2 * 2
+    again = check()  # the same networks, settings and seeds: the same games, so nothing is replayed
+    assert again["kept"] == ["final", "untrained"] and again["total"] == 0 and again["results"] == first["results"]
+    # A different final network is played; the untrained one is kept.
+    save_checkpoint(str(run / "checkpoints" / "gen_0001.pt"), new_network(NetConfig(blocks=1, channels=16), seed=99))
+    third = check()
+    assert third["kept"] == ["untrained"] and third["total"] == 2 * 2
+    assert third["results"]["untrained"] == first["results"]["untrained"]
+    assert check(games=4)["kept"] == []  # other settings: everything again
+
+
 def test_strength_check_starts_in_the_background_and_waits_for_training(tmp_path, monkeypatch, run_root):
     import shutil
 
@@ -506,3 +527,13 @@ def test_run_charts_are_drawn_as_an_image(run_root, monkeypatch):
     monkeypatch.setenv("CHATURANGA_RUNS", str(run_root))
     r = client.get("/api/training/runs/demo/charts.png")
     assert r.status_code == 200 and r.headers["content-type"] == "image/png" and r.content[:4] == b"\x89PNG"
+
+
+def test_on_a_gpu_the_strength_check_plays_one_network_to_a_task():
+    from chaturanga.analysis import _strength_plan
+
+    everything = [((f"{net}.pt", o, i, 1), (net, o)) for i in range(20) for net in ("u", "b", "f") for o in ("random", "greedy")]
+    tasks = _strength_plan(everything, 10, on_gpu=True)
+    assert len(tasks) == 6 and all(len(t) == 20 and len({g[0][0] for g in t}) == 1 for t in tasks)
+    assert sorted(g for t in tasks for g in t) == sorted(everything)
+    assert len(_strength_plan(everything, 8, on_gpu=False)) == 8  # CPUs: one task per worker, as before

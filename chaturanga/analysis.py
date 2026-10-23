@@ -200,6 +200,37 @@ def make_report(run_dir) -> dict:
 
 # ---------------------------------------------------------------------- the strength check
 
+def _strength_plan(everything: list, workers: int, on_gpu: bool) -> list[list]:
+    """The strength check's games dealt into tasks. On a GPU, each network's games in tasks of at
+    most 20: one network to a batch, and batches no larger than the mixed ones played the same
+    games. On the lab server, main-v4's check (3 networks, 120 games) took 2.9 minutes this way
+    against 7.4 with every network mixed in 5 tasks, the same 120 games move for move. One task of
+    40 per network took 2.2 minutes but changed 19 games (the GPU's arithmetic shifts slightly
+    with the batch size). On CPUs, one task per worker keeps every core busy (see match_plan)."""
+    from .training import match_plan
+
+    if not on_gpu:
+        return match_plan(everything, workers, False)
+    by_network: dict = {}
+    for game in everything:
+        by_network.setdefault(game[0][0], []).append(game)
+    tasks = []
+    for games in by_network.values():
+        n = math.ceil(len(games) / 20)
+        tasks += [games[k::n] for k in range(n)]
+    return tasks
+
+
+def _fingerprint(path: Path) -> Optional[str]:
+    """A network's identity by its file's contents (a generation's checkpoint never changes)."""
+    import hashlib
+
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()[:16]
+    except OSError:
+        return None
+
+
 def read_strength(run_dir) -> Optional[dict]:
     try:
         return json.loads((Path(run_dir) / STRENGTH_FILE).read_text())
@@ -216,26 +247,43 @@ def _write_strength(run_dir: Path, data: dict) -> None:
 
 
 def measure_strength(run_dir, games: int = 20, workers: int = 0, simulations: Optional[int] = None,
-                     log: Callable[[str], None] = print, gpu_workers: int = 0) -> dict:
+                     log: Callable[[str], None] = print, gpu_workers: int = 0,
+                     on_progress: Optional[Callable[[int, int], None]] = None) -> dict:
     """The untrained, best and final networks each play `games` games against Random and against
     Greedy from the opening, colours alternating: all of them side by side, several networks and
     opponents to a worker process (`gpu_workers` of which run the networks on the GPU; see
-    training.play_matches). Progress and results are kept in report/strength.json as they come in."""
+    training.play_matches). Progress (games finished, as they finish; also told to `on_progress`)
+    and results are kept in report/strength.json as they come in.
+
+    A network the last check measured with the same settings (the same file, by its contents) keeps
+    its results instead of playing again: its games, the same seeds and moves, would come out the
+    same. After training further, that is the untrained network (whose games, mostly drawn at the
+    ply cap, are the longest) and often the best."""
     import torch
 
-    from .training import _init_worker, match_plan, play_matches
+    from .training import _init_worker, play_matches
 
     run_dir = Path(run_dir)
     config = json.loads((run_dir / "config.json").read_text())
     sims = simulations or config.get("simulations", 50)
     nets = _checkpoints(run_dir)
-    jobs = [(label, opponent) for label in nets for opponent in ("random", "greedy")]
-    data = {"state": "running", "games": games, "simulations": sims, "pid": os.getpid(), "host": socket.gethostname(),
-            "networks": [{"label": k, "generation": g} for k, (g, _) in nets.items()],
-            "results": {}, "done": 0, "total": len(jobs) * games}
-    _write_strength(run_dir, data)
-    seed = 424_242
+    seed, opening = 424_242, 8
+    prints = {label: _fingerprint(path) for label, (_, path) in nets.items()}
+    old = read_strength(run_dir) or {}
     tally: dict = {}
+    if (old.get("games"), old.get("simulations"), old.get("seed"), old.get("opening_plies")) == (games, sims, seed, opening):
+        measured = {n.get("fingerprint"): old.get("results", {}).get(n["label"]) for n in old.get("networks", [])}
+        for label, fp in prints.items():
+            kept = measured.get(fp)
+            if fp and kept and all(sum(kept.get(o, {}).get(k, 0) for k in ("wins", "draws", "losses")) == games
+                                   for o in ("random", "greedy")):
+                tally[label] = kept
+    jobs = [(label, opponent) for label in nets if label not in tally for opponent in ("random", "greedy")]
+    data = {"state": "running", "games": games, "simulations": sims, "seed": seed, "opening_plies": opening,
+            "pid": os.getpid(), "host": socket.gethostname(), "started": _now(),
+            "networks": [{"label": k, "generation": g, "fingerprint": prints[k]} for k, (g, _) in nets.items()],
+            "results": dict(tally), "kept": sorted(tally), "done": 0, "total": len(jobs) * games}
+    _write_strength(run_dir, data)
 
     def add(keys: list, result: list[dict]) -> None:
         for (label, opponent), r in zip(keys, result):
@@ -244,7 +292,6 @@ def measure_strength(run_dir, games: int = 20, workers: int = 0, simulations: Op
             t["reasons"][r["reason"]] = t["reasons"].get(r["reason"], 0) + 1
             n = t["wins"] + t["draws"] + t["losses"]
             t["score"] = (t["wins"] + 0.5 * t["draws"]) / n
-            data["done"] += 1
         data["results"] = tally
         _write_strength(run_dir, data)
 
@@ -256,20 +303,29 @@ def measure_strength(run_dir, games: int = 20, workers: int = 0, simulations: Op
         # Every network's games against both baselines, dealt into tasks played side by side.
         everything = [((str(nets[label][1]), opponent, i, seed), (label, opponent))
                       for i in range(games) for label, opponent in jobs]
-        with ctx.Pool(workers, initializer=_init_worker, initargs=(None, None, devices, ctx.Value("i", 0))) as pool:
-            pending = [([k for _, k in task], pool.apply_async(play_matches, ([g for g, _ in task], sims, 8)))
-                       for task in match_plan(everything, workers, on_gpu > 0)]
-            while pending:
-                still = []
-                for keys, task in pending:
-                    if task.ready():
-                        add(keys, task.get())
-                    else:
-                        still.append((keys, task))
-                pending = still
-                if pending:
-                    time.sleep(0.25)
-        data["state"] = "done"
+        moves, finished = ctx.Value("q", 0), ctx.Value("q", 0)  # counted by the players as they go
+        if on_progress:
+            on_progress(0, data["total"])
+        if everything:  # (none when every network's results are kept)
+            with ctx.Pool(workers, initializer=_init_worker, initargs=(moves, finished, devices, ctx.Value("i", 0))) as pool:
+                pending = [([k for _, k in task], pool.apply_async(play_matches, ([g for g, _ in task], sims, opening)))
+                           for task in _strength_plan(everything, workers, on_gpu > 0)]
+                while pending:
+                    still = []
+                    for keys, task in pending:
+                        if task.ready():
+                            add(keys, task.get())
+                        else:
+                            still.append((keys, task))
+                    pending = still
+                    if finished.value != data["done"]:
+                        data["done"] = finished.value
+                        _write_strength(run_dir, data)
+                        if on_progress:
+                            on_progress(data["done"], data["total"])
+                    if pending:
+                        time.sleep(0.25)
+        data.update(state="done", done=data["total"], finished=_now())
         _write_strength(run_dir, data)
         log(format_strength(data))
     except BaseException as exc:

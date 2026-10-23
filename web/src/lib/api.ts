@@ -179,6 +179,8 @@ export interface RunStatus {
   opponent?: string | null
   /** While testing: every opponent, their games played together. */
   opponents?: string[]
+  /** While the run makes its report at the end: the part under way (its games count in games_done). */
+  report_part?: 'report' | 'strength' | 'ladder' | null
   best_generation?: number
   updated?: string
   seconds_since_update: number | null
@@ -369,6 +371,8 @@ export interface StrengthCheck extends JobPlace {
   simulations?: number
   networks: { label: 'untrained' | 'best' | 'final'; generation: number }[]
   results: Partial<Record<string, Partial<Record<'random' | 'greedy', StrengthResult>>>>
+  /** Networks the last check had measured with the same settings: their results, kept, not replayed. */
+  kept?: string[]
   done: number
   total: number
   error?: string

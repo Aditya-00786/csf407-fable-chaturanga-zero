@@ -466,7 +466,7 @@ function RunControls({ status, total, done, lostTrack, config, onChange }: {
     body = (
       <p className="flex items-center gap-2.5 text-[13.5px] text-ink" role="status">
         <Spinner />
-        Training is done; making the run report, its strength check and (for a run on the rating ladder) the new generations' ratings.
+        Training is done; making the run report: its findings, then its strength check and (for a run on the rating ladder) its new generations' ratings.
       </p>
     )
   } else if (mode === 'pausing') {
@@ -627,8 +627,17 @@ function StatusPanel({ status, detail, onChange }: { status: RunStatus; detail: 
   } else if (live && status.state === 'preparing') {
     phase = status.setup ?? 'Getting the server ready'
     phaseValue = null
+  } else if (live && status.state === 'reporting' && (status.report_part === 'strength' || status.report_part === 'ladder')
+    && status.games_total) {
+    // The report's strength check and rating ladder, game by game, as a manual one shows them.
+    const what = status.report_part === 'strength' ? 'Strength check' : 'Rating ladder'
+    phase = `${what}: ${gamesDone.toLocaleString()} of ${status.games_total.toLocaleString()} games`
+    phaseValue = gamesDone >= status.games_total ? 1 : gamesDone / status.games_total
   } else if (live && (status.state === 'reporting' || status.state === 'generation_done')) {
-    phase = status.state === 'reporting' ? 'Making the run report' : 'Starting the next generation'
+    phase = status.state === 'reporting'
+      ? status.report_part === 'strength' ? 'Strength check: starting'
+        : status.report_part === 'ladder' ? 'Rating ladder: starting' : 'Making the run report'
+      : 'Starting the next generation'
     phaseValue = null
   }
   // Time left: worked out from the last update (how long the phase had taken and how far it had

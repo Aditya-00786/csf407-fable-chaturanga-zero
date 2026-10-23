@@ -242,10 +242,10 @@ def plan(run_dir, games: int = 40, every: int = 10) -> dict:
 # ---------------------------------------------------------------------- playing it
 
 def run_benchmark(run_dir, games: int = 40, every: int = 10, workers: int = 0, gpu_workers: int = 0,
-                  log: Callable[[str], None] = print) -> dict:
+                  log: Callable[[str], None] = print, on_progress: Optional[Callable[[int, int], None]] = None) -> dict:
     """Play what `plan` says is missing and refit the ratings, saving progress to
-    report/benchmark.json as games finish. Ladder games are dealt a pair at a time (two networks
-    to a batch), and the conversion test a network at a time."""
+    report/benchmark.json as games finish (and telling `on_progress`). Ladder games are dealt a
+    pair at a time (two networks to a batch), and the conversion test a network at a time."""
     import torch
 
     from .training import _init_worker, play_matches
@@ -276,6 +276,9 @@ def run_benchmark(run_dir, games: int = 40, every: int = 10, workers: int = 0, g
                                      for j, p in enumerate(todo["suite"])]))
     # The slowest first (two networks searching), so the end is not held up by one long task.
     tasks.sort(key=lambda t: -sum(s not in BASELINES for s in (t[2][0][0], t[2][0][1])))
+
+    if on_progress:
+        on_progress(0, data["total"])
 
     def keep(kind, key, rows: list[dict]) -> None:
         if kind == "pair":
@@ -323,6 +326,8 @@ def run_benchmark(run_dir, games: int = 40, every: int = 10, workers: int = 0, g
                     if finished.value != data["done"]:
                         data["done"] = finished.value
                         _write(run_dir, data)
+                        if on_progress:
+                            on_progress(data["done"], data["total"])
                     if pending:
                         time.sleep(0.5)
         data.update(state="done", done=data["total"], ratings=fit_elo(todo["entries"], pairs), finished=_now())
