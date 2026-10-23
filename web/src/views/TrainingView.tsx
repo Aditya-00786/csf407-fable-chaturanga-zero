@@ -611,8 +611,10 @@ function StatusPanel({ status, detail, onChange }: { status: RunStatus; detail: 
     phase = `step ${status.step ?? 0} of ${status.steps_total}`
     phaseValue = (status.step ?? 0) / status.steps_total
   } else if (live && status.state === 'evaluating' && status.games_total) {
-    const against = status.opponent === 'previous' ? 'the previous generation' : status.opponent === 'greedy' ? 'Greedy'
-      : status.opponent === 'random' ? 'Random' : status.opponent
+    // Every opponent's games are played together now (a run before that tested one at a time).
+    const name = (o: string) => (o === 'previous' ? 'the previous generation' : o === 'greedy' ? 'Greedy' : o === 'random' ? 'Random' : o)
+    const names = (status.opponents?.length ? status.opponents : status.opponent ? [status.opponent] : []).map(name)
+    const against = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0] ?? 'its opponents'
     phase = `against ${against}, ${gamesDone} of ${status.games_total} games · ${moves.toLocaleString()} moves played`
     phaseValue = gamesDone >= status.games_total ? 1 : Math.max(gamesDone / status.games_total, byMoves)
   } else if (live && ['uploading', 'queued', 'cloud_running', 'downloading'].includes(status.state)) {

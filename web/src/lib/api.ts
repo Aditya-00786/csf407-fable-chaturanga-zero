@@ -170,7 +170,9 @@ export interface RunStatus {
   games_total?: number
   step?: number
   steps_total?: number
-  opponent?: string
+  opponent?: string | null
+  /** While testing: every opponent, their games played together. */
+  opponents?: string[]
   best_generation?: number
   updated?: string
   seconds_since_update: number | null

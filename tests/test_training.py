@@ -232,33 +232,55 @@ def test_test_games_side_by_side_are_the_games_played_one_at_a_time(monkeypatch,
     from chaturanga import training
 
     mine, theirs = _StandIn(1), _StandIn(2)
-    monkeypatch.setattr(training, "_evaluator_for", lambda checkpoint: mine)
-    monkeypatch.setattr(training, "_load_evaluator", lambda checkpoint: theirs)
+    monkeypatch.setattr(training, "_evaluator_for", lambda checkpoint: theirs if checkpoint == "prev.pt" else mine)
     sims, seed, opening, games = 6, 1234, 4, list(range(5))
     spec = "prev.pt" if opponent == "previous" else opponent
-
-    alone = []
-    for i in games:  # the way test games were played before: one game, one position at a time
-        player = training.SearchPlayer(mine, sims, seed + i, opening)
-        other = (training.SearchPlayer(theirs, sims, seed + 7919 * (i + 1), opening) if opponent == "previous"
-                 else training._opponent(opponent, seed + 7919 * (i + 1), sims, opening))
-        colour, state, moves = (WHITE if i % 2 == 0 else -WHITE), GameState.initial(), []
-        while not state.is_terminal():
-            move = (player if state.side == colour else other).select_move(state)
-            moves.append(move_to_str(move))
-            state = state.apply(move)
-        alone.append((moves, (state.outcome().value_for(colour) + 1) / 2))
-
+    alone = [_one_at_a_time(training, mine, theirs, opponent, i, sims, seed, opening) for i in games]
     together = training.match_task("me.pt", spec, games, sims, seed, opening, keep_moves=True)
     assert [(g["moves"], g["score"]) for g in together] == alone
 
 
-def test_test_games_are_shared_out_to_keep_every_worker_busy():
-    from chaturanga.training import match_chunks
+def _one_at_a_time(training, mine, theirs, opponent, i, sims, seed, opening):
+    """A test game as they were played before batching: one game, one position at a time."""
+    from chaturanga import WHITE
 
-    assert match_chunks(40, 10) == [list(range(i, i + 4)) for i in range(0, 40, 4)]
-    assert match_chunks(40, 1) == [list(range(i, i + 8)) for i in range(0, 40, 8)]  # at most 8 at once
-    assert sum(match_chunks(7, 3), []) == list(range(7))
+    player = training.SearchPlayer(mine, sims, seed + i, opening)
+    other = (training.SearchPlayer(theirs, sims, seed + 7919 * (i + 1), opening) if opponent == "previous"
+             else training._opponent(opponent, seed + 7919 * (i + 1), sims, opening))
+    colour, state, moves = (WHITE if i % 2 == 0 else -WHITE), GameState.initial(), []
+    while not state.is_terminal():
+        move = (player if state.side == colour else other).select_move(state)
+        moves.append(move_to_str(move))
+        state = state.apply(move)
+    return moves, (state.outcome().value_for(colour) + 1) / 2
+
+
+def test_test_games_of_every_opponent_together_are_the_games_played_one_at_a_time(monkeypatch):
+    """One task mixing all three opponents (as the tests and the strength check now play them)."""
+    from chaturanga import training
+
+    mine, theirs = _StandIn(1), _StandIn(2)
+    monkeypatch.setattr(training, "_evaluator_for", lambda checkpoint: theirs if checkpoint == "prev.pt" else mine)
+    sims, seed, opening = 6, 99, 4
+    specs = {"previous": "prev.pt", "greedy": "greedy", "random": "random"}
+    games = [("me.pt", specs[o], i, seed) for i in range(3) for o in specs]
+    together = training.play_matches(games, sims, opening, keep_moves=True)
+    assert [(r["opponent"], r["index"]) for r in together] == [(g[1], g[2]) for g in games]  # in order
+    for r, (_, opponent, i, _) in zip(together, games):
+        name = next(o for o, spec in specs.items() if spec == opponent)
+        assert (r["moves"], r["score"]) == _one_at_a_time(training, mine, theirs, name, i, sims, seed, opening)
+
+
+def test_test_games_are_dealt_into_tasks_to_suit_the_device():
+    from chaturanga.training import match_plan
+
+    games = list(range(120))
+    on_gpu = match_plan(games, 10, on_gpu=True)  # larger batches over half the processes: fastest measured
+    assert len(on_gpu) == 5 and all(len(t) == 24 for t in on_gpu) and on_gpu[1][:3] == [1, 6, 11]
+    assert len(match_plan(games, 6, on_gpu=False)) == 6  # one task per CPU worker
+    assert [len(t) for t in match_plan(list(range(50)), 0, on_gpu=False)] == [17, 17, 16]  # here: at most 24
+    for plan in (on_gpu, match_plan(list(range(7)), 12, on_gpu=False)):
+        assert sorted(sum(plan, [])) == sorted(set(sum(plan, [])))  # every game once
 
 
 def test_a_run_trains_on_the_blend_it_is_set_to(tmp_path):

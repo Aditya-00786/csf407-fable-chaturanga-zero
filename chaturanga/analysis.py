@@ -218,12 +218,12 @@ def _write_strength(run_dir: Path, data: dict) -> None:
 def measure_strength(run_dir, games: int = 20, workers: int = 0, simulations: Optional[int] = None,
                      log: Callable[[str], None] = print, gpu_workers: int = 0) -> dict:
     """The untrained, best and final networks each play `games` games against Random and against
-    Greedy from the opening, colours alternating, several side by side in each worker process
-    (`gpu_workers` of which run the network on the GPU). Progress and results are kept in
-    report/strength.json as they come in."""
+    Greedy from the opening, colours alternating: all of them side by side, several networks and
+    opponents to a worker process (`gpu_workers` of which run the networks on the GPU; see
+    training.play_matches). Progress and results are kept in report/strength.json as they come in."""
     import torch
 
-    from .training import _init_worker, match_chunks, match_task
+    from .training import _init_worker, match_plan, play_matches
 
     run_dir = Path(run_dir)
     config = json.loads((run_dir / "config.json").read_text())
@@ -237,8 +237,8 @@ def measure_strength(run_dir, games: int = 20, workers: int = 0, simulations: Op
     seed = 424_242
     tally: dict = {}
 
-    def add(label: str, opponent: str, result: list[dict]) -> None:
-        for r in result:
+    def add(keys: list, result: list[dict]) -> None:
+        for (label, opponent), r in zip(keys, result):
             t = tally.setdefault(label, {}).setdefault(opponent, {"wins": 0, "draws": 0, "losses": 0, "reasons": {}})
             t["wins" if r["score"] == 1 else "draws" if r["score"] == 0.5 else "losses"] += 1
             t["reasons"][r["reason"]] = t["reasons"].get(r["reason"], 0) + 1
@@ -253,16 +253,19 @@ def measure_strength(run_dir, games: int = 20, workers: int = 0, simulations: Op
         on_gpu = min(gpu_workers, workers) if torch.cuda.is_available() else 0
         ctx = mp.get_context("spawn")
         devices = ["cuda"] * on_gpu + ["cpu"] * (workers - on_gpu)
+        # Every network's games against both baselines, dealt into tasks played side by side.
+        everything = [((str(nets[label][1]), opponent, i, seed), (label, opponent))
+                      for i in range(games) for label, opponent in jobs]
         with ctx.Pool(workers, initializer=_init_worker, initargs=(None, None, devices, ctx.Value("i", 0))) as pool:
-            pending = [((label, opponent), pool.apply_async(match_task, (str(nets[label][1]), opponent, chunk, sims, seed, 8)))
-                       for label, opponent in jobs for chunk in match_chunks(games, -(-workers // len(jobs)))]
+            pending = [([k for _, k in task], pool.apply_async(play_matches, ([g for g, _ in task], sims, 8)))
+                       for task in match_plan(everything, workers, on_gpu > 0)]
             while pending:
                 still = []
-                for key, task in pending:
+                for keys, task in pending:
                     if task.ready():
-                        add(*key, task.get())
+                        add(keys, task.get())
                     else:
-                        still.append((key, task))
+                        still.append((keys, task))
                 pending = still
                 if pending:
                     time.sleep(0.25)

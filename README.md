@@ -69,7 +69,7 @@ the same commit that completes the work.
 - **Researched ruleset.** Every rule is backed by historical sources, and contested rules are
   settled by counting references. See [docs/RULES.md](docs/RULES.md).
 - **Verified rules engine.** A cross-check against an independent reference move generator and a
-  10,000-game random-play stress test; 245 tests in all.
+  10,000-game random-play stress test; 246 tests in all.
 - **AlphaZero search.** PUCT Monte Carlo Tree Search guided by a residual policy-value network
   (6 blocks × 64 filters, about 1M parameters), with exact values for finished games, root noise,
   temperature and tree reuse for self-play. Planted bugs in the search are all caught by the tests.
@@ -375,11 +375,20 @@ accident. One run trains at a time: starting or resuming a second one asks you t
    which game a position came from.
 4. **Evaluation.** The new network plays 20 games each against the previous generation, Greedy and
    Random, without noise; it samples its first 16 plies in proportion to visits so the games
-   differ. Each worker plays several of these games side by side, sending the positions waiting
-   for the same network to it in one batch; every game is played exactly as it would be alone.
-   Replaying `main-v4`'s generation 40 tests both ways on the lab server gave the same 120 games,
-   move for move, in 37 minutes instead of 53 (with a run training on the same GPU). The run
-   report's strength check plays its games the same way, on the run's GPU workers.
+   differ. All of a generation's test games, against every opponent, are played side by side:
+   each worker plays its share together, sending the positions waiting for the same network to it
+   in one batch, and every game is played exactly as it would be alone. On a GPU the games go to
+   half the workers, in larger batches. Replaying `main-v4`'s generation 40 tests (120 games) on
+   the idle lab server, every way gave the same 120 games, move for move:
+
+   | How the test games were played | Minutes |
+   |---|:-:|
+   | One game, one position at a time (as before) | about 29 |
+   | One opponent at a time, 4 games side by side per worker, 10 workers | 17.6 |
+   | Every opponent together, 12 per worker, 10 workers | 8.3 |
+   | Every opponent together, 24 per worker, 5 workers (the way now) | 5.8 |
+
+   The run report's strength check plays its games the same way, on the run's GPU workers.
 
 Self-play always uses the newest network, as AlphaZero does. The **best** network is the one with
 the highest average score against Greedy and Random (40 games, so a few lucky draws do not decide
