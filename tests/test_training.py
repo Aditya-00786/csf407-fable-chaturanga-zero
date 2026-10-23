@@ -255,7 +255,7 @@ def _one_at_a_time(training, mine, theirs, opponent, i, sims, seed, opening):
 
     player = training.SearchPlayer(mine, sims, seed + i, opening)
     other = (training.SearchPlayer(theirs, sims, seed + 7919 * (i + 1), opening) if opponent == "previous"
-             else training._opponent(opponent, seed + 7919 * (i + 1), sims, opening))
+             else training._player(opponent, seed + 7919 * (i + 1), sims, opening))
     colour, state, moves = (WHITE if i % 2 == 0 else -WHITE), GameState.initial(), []
     while not state.is_terminal():
         move = (player if state.side == colour else other).select_move(state)

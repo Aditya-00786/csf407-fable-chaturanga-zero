@@ -1,7 +1,8 @@
 /**
  * A small SVG chart for the training view: lines (2px) and dots (8px with a surface ring) on one
  * y-axis, recessive hairline grid, and a crosshair that snaps to the nearest x and lists every
- * series there. Arrow keys move the crosshair when the chart has focus.
+ * series there. A series can carry a band (an interval at each point, shaded) and dots on its line.
+ * Arrow keys move the crosshair when the chart has focus.
  */
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
@@ -12,6 +13,10 @@ export interface Series {
   color: string // a CSS colour, e.g. var(--chart-1)
   kind: 'line' | 'dots'
   points: { x: number; y: number }[]
+  /** An interval around the line at each point (a 95% interval, say), shaded in the series' colour. */
+  band?: { x: number; lo: number; hi: number }[]
+  /** Dots on a line's points too, for lines with few of them. */
+  markers?: boolean
 }
 
 export interface ReferenceLine {
@@ -50,7 +55,8 @@ export function LineChart({
   const [width, setWidth] = useState(480)
   const [hover, setHover] = useState<number | null>(null) // index into xs
 
-  const all = series.flatMap((s) => s.points).concat(reference?.points ?? [])
+  const all = series.flatMap((s) => [...s.points, ...(s.band ?? []).flatMap((b) => [{ x: b.x, y: b.lo }, { x: b.x, y: b.hi }])])
+    .concat(reference?.points ?? [])
   const empty = all.length === 0
 
   // Re-attached when the placeholder gives way to the chart (a different element).
@@ -152,11 +158,15 @@ export function LineChart({
           </g>
         )}
 
+        {series.map((s) => s.band && s.band.length > 1 && (
+          <path key={`${s.id}-band`} fill={s.color} fillOpacity={0.14} stroke="none"
+            d={`${path(s.band.map((b) => ({ x: b.x, y: b.hi })))}L${[...s.band].reverse().map((b) => `${sx(b.x).toFixed(1)},${sy(b.lo).toFixed(1)}`).join('L')}Z`} />
+        ))}
         {series.map((s) => s.kind === 'line'
           ? <path key={s.id} d={path(s.points)} fill="none" stroke={s.color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
           : null)}
         {hx !== null && <line x1={sx(hx)} x2={sx(hx)} y1={M.top} y2={M.top + h} stroke="var(--line-strong)" strokeWidth={1} />}
-        {series.map((s) => (s.kind === 'dots' || s.points.length === 1) && (
+        {series.map((s) => (s.kind === 'dots' || s.markers || s.points.length === 1) && (
           <g key={`${s.id}-dots`}>
             {s.points.map((p) => (
               <circle key={p.x} cx={sx(p.x)} cy={sy(p.y)} r={4} fill={s.color} stroke="var(--surface)" strokeWidth={2} />
@@ -174,13 +184,18 @@ export function LineChart({
           style={{ left: flip ? undefined : tipLeft + 12, right: flip ? width - tipLeft + 12 : undefined }}
         >
           <p className="mb-1 text-ink-faint">{xLabel} {xFormat(hx)}</p>
-          {readout.map(({ s, p }) => p && (
-            <p key={s.id} className="flex items-center gap-2 whitespace-nowrap">
-              <span aria-hidden className="h-0.5 w-3 rounded-full" style={{ background: s.color }} />
-              <span className="font-semibold text-ink tabular-nums">{yFormat(p.y)}</span>
-              <span className="text-ink-muted">{s.label}</span>
-            </p>
-          ))}
+          {readout.map(({ s, p }) => {
+            if (!p) return null
+            const b = s.band?.find((q) => q.x === p.x)
+            return (
+              <p key={s.id} className="flex items-center gap-2 whitespace-nowrap">
+                <span aria-hidden className="h-0.5 w-3 rounded-full" style={{ background: s.color }} />
+                <span className="font-semibold text-ink tabular-nums">{yFormat(p.y)}</span>
+                <span className="text-ink-muted">{s.label}</span>
+                {b && <span className="text-ink-faint tabular-nums">{yFormat(b.lo)} to {yFormat(b.hi)}</span>}
+              </p>
+            )
+          })}
           {refShown && reference && (
             <p className="flex items-center gap-2 whitespace-nowrap">
               <span aria-hidden className="w-3 border-t border-dashed border-ink-faint" />

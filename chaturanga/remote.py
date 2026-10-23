@@ -523,11 +523,45 @@ echo "pid=$!"
     return int(match.group(1))
 
 
-def poll(host: str, folder: str, name: str, pid: Optional[int]) -> tuple[Optional[dict], bool]:
-    """The run's status on the server, and whether its training process is alive."""
+# Report jobs a server run plays there, as scripts/report.py does them: (progress file, flag).
+REPORT_JOBS = {"strength": ("report/strength.json", "--strength-only"),
+               "ladder": ("report/benchmark.json", "--ladder-only")}
+
+
+def start_report(host: str, folder: str, name: str, job: str, args: list[str]) -> int:
+    """Start one of the run report's jobs (the strength check or the rating ladder) on the server,
+    detached and at low priority as the training is; its process id. Its log is report/<job>.log."""
+    q = shlex.quote
+    flag, extra = REPORT_JOBS[job][1], " ".join(q(a) for a in args)
+    out = run(host, f"""F={q(folder)}
+{_env_exports()}
+cd "$F/code"
+D={q(run_path(folder, name))}
+mkdir -p "$D/report"
+S=$(command -v setsid || true)
+$S nohup nice -n 10 "$F/env/bin/python" -u scripts/report.py --run {q(name)} --runs-dir "$F/runs" {flag} \\
+  {extra} >> "$D/report/{job}.log" 2>&1 < /dev/null &
+echo "pid=$!"
+""")
+    match = re.search(r"pid=(\d+)", out)
+    if not match:
+        raise RemoteError(f"The {job} did not start on the server.")
+    return int(match.group(1))
+
+
+def report_log(host: str, folder: str, name: str, job: str, lines: int = 20) -> str:
+    d = shlex.quote(run_path(folder, name))
+    return run(host, f"tail -n {int(lines)} {d}/report/{job}.log 2>/dev/null || true")
+
+
+def poll(host: str, folder: str, name: str, pid: Optional[int], file: str = "status.json") -> tuple[Optional[dict], bool]:
+    """The run's status on the server (or another of its JSON files), and whether the process
+    `pid` (its training, or a report job) is alive."""
+    if not re.fullmatch(r"[\w/.-]+\.json", file) or ".." in file:
+        raise RemoteError(f"{file!r} is not a run's file")
     d = shlex.quote(run_path(folder, name))
     check = f"kill -0 {int(pid)} 2>/dev/null && echo alive=yes || echo alive=no" if pid else "echo alive=no"
-    out = run(host, f'cat {d}/status.json 2>/dev/null; echo; echo "--"; {check}')
+    out = run(host, f'cat {d}/{file} 2>/dev/null; echo; echo "--"; {check}')
     body, _, tail = out.rpartition("--")
     try:
         status = json.loads(body.strip()) if body.strip() else None

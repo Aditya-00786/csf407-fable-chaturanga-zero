@@ -434,7 +434,7 @@ def test_delete_stays_inside_the_runs_folder(tmp_path, monkeypatch):
 
 def test_a_report_is_made_only_when_asked(run_root, monkeypatch):
     monkeypatch.setenv("CHATURANGA_RUNS", str(run_root))
-    assert client.get("/api/training/runs/demo/report").json() == {"report": None, "strength": None}
+    assert client.get("/api/training/runs/demo/report").json() == {"report": None, "strength": None, "ladder": None}
     assert not (run_root / "demo" / "report" / "report.json").exists()
     r = client.post("/api/training/runs/demo/report").json()["report"]
     s = r["summary"]
@@ -479,6 +479,26 @@ def test_strength_check_starts_in_the_background_and_waits_for_training(tmp_path
     cmd = started["cmd"]
     assert "--strength-only" in cmd and cmd[cmd.index("--games") + 1] == "10"
     assert client.post("/api/training/runs/demo/report/strength", json={}).status_code == 409  # already running
+
+
+def test_the_rating_ladder_starts_in_the_background_one_job_at_a_time(tmp_path, monkeypatch, run_root):
+    import shutil
+
+    monkeypatch.setenv("CHATURANGA_RUNS", str(tmp_path))
+    shutil.copytree(run_root / "demo", tmp_path / "demo")
+    plan = client.get("/api/training/runs/demo/report/ladder/plan", params={"games": 10, "every": 1}).json()
+    assert plan["entries"] == ["random", "greedy", "gen_0000", "gen_0001"] and plan["new"] == plan["entries"]
+    assert plan["ladder_games"] == 6 * 10 and plan["conversion_games"] == 3 * 40 and plan["where"] == "mac"
+    started = _capture_popen(monkeypatch)
+    r = client.post("/api/training/runs/demo/report/ladder", json={"games": 10, "every": 1})
+    assert r.status_code == 202 and r.json()["state"] == "running"
+    cmd = started["cmd"]
+    assert "--ladder-only" in cmd and cmd[cmd.index("--games") + 1] == "10" and cmd[cmd.index("--every") + 1] == "1"
+    assert client.get("/api/training/runs/demo/report").json()["ladder"]["state"] == "running"
+    # One job at a time for a run, and no training here while it plays.
+    assert client.post("/api/training/runs/demo/report/strength", json={}).status_code == 409
+    r = client.post("/api/training/runs", json={"name": "next", "where": "mac", "generations": 1})
+    assert r.status_code == 409 and "rating ladder of 'demo'" in r.json()["detail"]
 
 
 def test_run_charts_are_drawn_as_an_image(run_root, monkeypatch):

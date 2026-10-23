@@ -15,7 +15,7 @@ Everything is scaled down to train on a single consumer GPU or a free Google Col
 **Current milestone: 4 of 4 — benchmarking**
 
 ```
-Overall   ██████████████████████████████░░░░░░░░░░  75%   (3 of 4 milestones done)
+Overall   ██████████████████████████████████░░░░░░  85%   (3 of 4 milestones done)
 ```
 
 | # | Milestone | Progress | Status |
@@ -23,11 +23,17 @@ Overall   ███████████████████████�
 | 1 | Rules engine, state/move encoding, unit tests | `██████████` 100% | Done |
 | 2 | MCTS integrated with an untrained network | `██████████` 100% | Done |
 | 3 | Self-play training pipeline (50–100 games, loss tracking) | `██████████` 100% | Done |
-| 4 | Benchmarking vs random, heuristic and earlier agents | `░░░░░░░░░░`   0% | Up next |
+| 4 | Benchmarking vs random, heuristic and earlier agents | `████░░░░░░`  40% | In progress |
 
 Milestone 3 went well past its 50 to 100 games: the run `main-v4` trained for 60 generations and
 30,000 self-play games, and its final network beats Random in every game and Greedy in 95% of its
 strength check (see "Training by self-play").
+
+Milestone 4 is under way. A rating ladder gives every 10th generation an Elo rating against
+Random, Greedy and the other generations. A conversion test measures how surely and quickly each
+generation finishes a won position. `main-v4`'s ratings rise from 181 for the untrained network
+to about 1,055 for generations 56 and 60, and level off after generation 56 (see
+[Benchmarking](#benchmarking)).
 
 Also shipped: the **web app**. It has a 3D board, three play modes, interactive lessons and a
 rules reference. Its computer opponents include the untrained MCTS agent from Milestone 2 and,
@@ -54,6 +60,7 @@ the same commit that completes the work.
 - [Using the engine](#using-the-engine)
 - [Search and network](#search-and-network)
 - [Training by self-play](#training-by-self-play) (and [in the cloud](#training-in-the-cloud))
+- [Benchmarking](#benchmarking)
 - [Web app](#web-app)
 - [Project structure](#project-structure)
 - [The rules in brief](#the-rules-in-brief)
@@ -69,7 +76,7 @@ the same commit that completes the work.
 - **Researched ruleset.** Every rule is backed by historical sources, and contested rules are
   settled by counting references. See [docs/RULES.md](docs/RULES.md).
 - **Verified rules engine.** A cross-check against an independent reference move generator and a
-  10,000-game random-play stress test; 261 tests in all.
+  10,000-game random-play stress test; 271 tests in all.
 - **AlphaZero search.** PUCT Monte Carlo Tree Search guided by a residual policy-value network
   (6 blocks × 64 filters, about 1M parameters), with exact values for finished games, root noise,
   temperature and tree reuse for self-play. Planted bugs in the search are all caught by the tests.
@@ -78,6 +85,9 @@ the same commit that completes the work.
 - **Self-play training.** Parallel self-play, a replay buffer and AlphaZero's loss, with every
   generation evaluated, checkpointed and logged. Runs resume after any interruption, on a laptop
   or on Colab, and teammates can contribute self-play games from their own machines.
+- **Benchmarking.** An Elo rating ladder of a run's generations with Random and Greedy, each step
+  between generations with its own interval, and a conversion test of won endgames. Both play in
+  the background, on the run's server if it has one.
 - **Browser app.** A carved rosewood-and-brass 3D board in light and dark themes, with:
   - a figural piece set after Indian court chess sets: a crowned Raja, a turbaned Mantri, a temple-car
     Ratha, a caparisoned Gaja with its howdah, a Marwari Ashva, and spear-and-shield Padatis;
@@ -178,6 +188,7 @@ The commands below assume the virtual environment is active. If it isn't, prefix
 | A quick test run | `python scripts/train.py --run quick --games 8 --generations 2 --eval-games 4` |
 | Plot a run's curves | `python scripts/plot_training.py` (needs `pip install -e ".[train]"`) |
 | A run's report (what it learned) | `python scripts/report.py --run main` (add `--strength` for the strength check) |
+| Rate a run's generations (Elo ladder, conversion test) | `python scripts/report.py --run main --ladder` (`--every 10 --games 40` by default) |
 | Self-play games for a teammate's run | `python scripts/selfplay.py --checkpoint gen_0005.pt --games 50 --name <you>` |
 | Start the API server | `python -m chaturanga_server` (add `--reload` while developing) |
 | Start the web dev server | `npm run dev --prefix web`, then open http://localhost:5173 |
@@ -753,8 +764,9 @@ A report sums up what a run learned. It is made only when asked: **Make report**
 page's Run report section (for a run that is not training), or `python scripts/report.py --run
 <name>` in a terminal. A run started with **Make the run report when it finishes** (off by default
 in New run; `auto_report` in its config) makes its report, strength check included, as soon as its
-last generation is done. The report is saved in `runs/<run>/report/report.json`; if the run trains
-further, **Update report** brings it up to date.
+last generation is done; a run already on the rating ladder rates its new generations there too. The
+report is saved in `runs/<run>/report/report.json`; if the run trains further, **Update report**
+brings it up to date.
 
 - **Findings**, from the run's metrics: whether the policy learned to predict the search (its loss
   on unseen games, against the lowest it can reach), whether the value beat predicting a draw on
@@ -767,6 +779,12 @@ further, **Update report** brings it up to date.
   run trains): the untrained, best and final networks each play Random and Greedy from the
   opening. This is what showed that the first run's final network was weaker than its untrained
   one. Results are kept in `runs/<run>/report/strength.json`.
+- **Rating ladder and conversion test**, on request (see [Benchmarking](#benchmarking)):
+  Elo ratings for the run's generations, and how surely and quickly each finishes a won game.
+  Results are kept in `runs/<run>/report/benchmark.json`.
+- A server run's strength check and ladder play on its server, as its training did, and the page
+  follows them; if the connection drops they play on, and connecting again picks them up. Training
+  waits while one plays on the same machine.
 - **Self-play over the run**: how games from the opening ended, generation by generation (decided
   endings in colour, draws in grey), and their average length. These charts live in the report;
   the page's other charts follow the run live.
@@ -889,6 +907,93 @@ live, pauses, resumes, and is followed again after the connection drops or the M
 
 ---
 
+## Benchmarking
+
+Milestone 4 measures the agent against Random, Greedy (the heuristic baseline) and its own earlier
+generations. A run's test games stop showing progress once it is strong: against the generation
+before, it scores about 50% by design, and Greedy, which it nearly always beats, has little left to
+tell. Two yardsticks take over (`chaturanga/benchmark.py`). Both are played from the Training page's
+Run report (**Rating ladder**, then **Rate generations**), or with `python scripts/report.py --run
+<name> --ladder`. A server run's ladder plays on its server.
+
+### The rating ladder
+
+- **Who plays.** Every 10th generation (a setting), with the first, the latest and the best, and
+  Random and Greedy. Each pair plays 40 games (a setting) from the opening, colours alternating.
+  The networks search as test games do: the run's 200 simulations, the first 16 plies sampled in
+  proportion to visits so games differ, and the search's rules.
+- **Ratings.** Elo, fitted to every result at once (Bradley-Terry, a draw half a win), with Random
+  at 0. One virtual draw per pair keeps a clean sweep's gap large but finite. Each rating's 95%
+  interval is against Random. Each step from one rated generation to the next has its own interval,
+  much narrower, because neighbouring ratings move together.
+- **Adding to it.** Rating later generations plays only their games against the rest. A run already
+  on the ladder adds its new generations in its end-of-run report. Results are kept in
+  `runs/<run>/report/benchmark.json`.
+
+### The conversion test
+
+Forty positions in which one side is far ahead in material, eight of each:
+
+- a Ratha against a Padati;
+- a Ratha against a Mantri;
+- a Ratha and a Padati against a Gaja;
+- an Ashva and two Padatis against a Padati;
+- a Ratha and an Ashva against an Ashva.
+
+They are placed at random once, with a fixed seed: legal, the side ahead to move (White in half of
+them), and no win in one. Each network plays the side ahead against Greedy, both playing their
+best moves from the first ply. The test counts the wins and the plies they took. The last piece
+still has to be caught (a bare Raja loses) without stalemating it (the stalemated side wins).
+Greedy playing the side ahead is the reference.
+
+### main-v4 on the ladder
+
+2,160 games (1,800 on the ladder, 360 in the conversion test) took 44 minutes on the lab server's
+GPU:
+
+| Player | Elo (95% interval) | Score | vs Greedy (W / D / L) | Conversion: won | Median plies to win |
+|---|:-:|:-:|:-:|:-:|:-:|
+| Generation 56 (the run's best) | 1,058 (936 to 1,180) | 82% | 36 / 2 / 2 | 40 of 40 | 22 |
+| Generation 60 | 1,054 (932 to 1,175) | 82% | 34 / 6 / 0 | 39 of 40 | 17 |
+| Generation 50 | 1,001 (880 to 1,121) | 77% | 30 / 8 / 2 | 40 of 40 | 18 |
+| Generation 40 | 923 (804 to 1,042) | 69% | 31 / 7 / 2 | 40 of 40 | 24 |
+| Generation 30 | 846 (728 to 964) | 61% | 23 / 6 / 11 | 39 of 40 | 15 |
+| Greedy | 699 (583 to 814) | 47% | | 28 of 40 | 53 |
+| Generation 20 | 656 (541 to 771) | 43% | 12 / 11 / 17 | 40 of 40 | 21 |
+| Generation 10 | 370 (265 to 475) | 23% | 0 / 4 / 36 | 40 of 40 | 28 |
+| Generation 0 (untrained) | 181 (84 to 279) | 12% | 0 / 4 / 36 | 24 of 40 | 33 |
+| Random | 0 | 4% | 0 / 0 / 40 | | |
+
+| Step | Elo gained (95% interval) |
+|---|:-:|
+| Generation 0 to 10 | +188 (+102 to +276) |
+| 10 to 20 | +286 (+205 to +368) |
+| 20 to 30 | +190 (+124 to +255) |
+| 30 to 40 | +77 (+16 to +138) |
+| 40 to 50 | +78 (+16 to +140) |
+| 50 to 56 | +58 (−6 to +121) |
+| 56 to 60 | −5 (−70 to +60) |
+
+- **The run levelled off.** It gained about +190 to +290 Elo every 10 generations up to
+  generation 30, about +78 from 30 to 50, and nothing measurable after 56: generation 60 is level
+  with 56. The tests against the generation before only hinted at this (51% in generations 51 to
+  60). It is the cue for the next step, a lower learning rate (AlphaZero lowered its own as
+  progress slowed).
+- **Generations 56 and 60 are equals.** Against each other generation 60 scored 59% (9 wins, 29
+  draws, 2 losses), but 56 did a little better against the earlier networks and Greedy.
+- **It passed Greedy between generations 20 and 30** (Greedy rates 699; generation 20, 656;
+  generation 30, 846). Against Greedy, generation 60 scored 92.5% in these 40 games (34 / 6 / 0),
+  close to the 95% of its 20-game strength check.
+- **Strong networks draw each other.** Of the 40 games between generations 56 and 60, 29 were
+  drawn, 14 of them by repetition and 15 at the 300-ply cap. Neither side found a way through, which
+  is where longer plans would show.
+- **The conversion test is solved from generation 10.** Every trained network won 39 or 40 of the
+  40 positions, against 24 for the untrained one and 28 for Greedy, which often ran into the
+  70-move rule. Their median plies to win (15 to 28) show no trend after generation 20. To follow
+  planning in later generations, the test needs harder positions, with a smaller material edge.
+
+---
+
 ## Project structure
 
 ```
@@ -907,6 +1012,7 @@ csf407-fable-chaturanga-zero/
 │   ├── training.py          # the generation loop: self-play, train, evaluate, checkpoint, pause, resume
 │   ├── endgames.py          # random reduced-material starting positions for self-play
 │   ├── analysis.py          # a run's report: findings, material probe, strength check
+│   ├── benchmark.py         # Milestone 4: the rating ladder (Elo) and the conversion test
 │   ├── cloud.py             # training on Colab (through Google Drive) and Kaggle (through its tool)
 │   ├── remote.py            # training on your own server over SSH: connection, folder, copies
 │   └── agents.py            # players: random, greedy (2-ply material), MCTS, trained (four levels)
@@ -930,9 +1036,10 @@ csf407-fable-chaturanga-zero/
 │   ├── train.py             # Milestone 3: self-play training
 │   ├── selfplay.py          # self-play games for a teammate's run
 │   ├── plot_training.py     # a run's loss and evaluation curves
-│   ├── report.py            # a run's report in the terminal (and the app's strength check)
+│   ├── report.py            # a run's report in the terminal (and the app's strength check and ladder)
 │   ├── kaggle_run.py        # a run on Kaggle: upload, start, follow, bring home
-│   └── server_run.py        # a run on your server: set up, start, follow live, pass pauses on
+│   ├── server_run.py        # a run on your server: set up, start, follow live, pass pauses on
+│   └── server_job.py        # a server run's strength check or ladder, played there and followed
 ├── notebooks/
 │   └── train_colab.ipynb    # the same training on Google Colab, saved to Drive
 ├── docs/

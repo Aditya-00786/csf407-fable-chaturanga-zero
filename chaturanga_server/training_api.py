@@ -508,6 +508,14 @@ def _server_ready() -> dict:
     return settings
 
 
+def _no_job_playing(on_server: bool) -> None:
+    """Training waits while a run report job plays on the same machine: each would slow the other."""
+    playing = _job_playing(on_server)
+    if playing:
+        raise HTTPException(409, f"{playing[0].upper()}{playing[1:]} is playing {'on the server' if on_server else 'here'}. "
+                                 "Let it finish first: training and it would slow each other.")
+
+
 def _live_server_run() -> Optional[str]:
     for p in _all_runs():
         if _where(p) == "server" and _status(p)["live"]:
@@ -548,6 +556,7 @@ def start_run(req: StartRequest):
         busy = _live_run()
         if busy:
             raise HTTPException(409, f"The run {busy!r} is training. Pause it first: one run at a time keeps each fast.")
+        _no_job_playing(on_server=False)
     elif req.where == "colab":
         root = drive_runs_dir()
         if root is None:
@@ -567,6 +576,7 @@ def start_run(req: StartRequest):
         if busy:
             raise HTTPException(409, f"The run {busy!r} is training on the server. Pause it first: one run at a time "
                                      "keeps each fast.")
+        _no_job_playing(on_server=True)
     else:
         root = runs_dir()
         if not kaggle_credentials():
@@ -609,12 +619,14 @@ def resume_run(name: str, req: ResumeRequest):
         busy = _live_run()
         if busy:
             raise HTTPException(409, f"The run {busy!r} is training. Pause it first: one run at a time keeps each fast.")
+        _no_job_playing(on_server=False)
     if where == "server":
         _server_connection(path)
         busy = _live_server_run()
         if busy:
             raise HTTPException(409, f"The run {busy!r} is training on the server. Pause it first: one run at a time "
                                      "keeps each fast.")
+        _no_job_playing(on_server=True)
     config = json.loads((path / "config.json").read_text())
     target = req.generations or config.get("generations", 0)
     done = max((int(p.stem[4:]) for p in (path / "checkpoints").glob("gen_*.pt")), default=0)
@@ -865,23 +877,136 @@ class StrengthRequest(BaseModel):
     games: int = Field(20, ge=2, le=200, description="Games per network and opponent")
 
 
-def _strength_status(path: Path) -> Optional[dict]:
-    from chaturanga.analysis import read_strength
+class LadderRequest(BaseModel):
+    games: int = Field(40, ge=2, le=400, description="Games a pair")
+    every: int = Field(10, ge=1, le=1000, description="Rate every n-th generation (with the first, latest and best)")
 
-    data = read_strength(path)
-    if data and data.get("state") == "running" and _process_alive(data) is False:
+
+# The run report's jobs, played in the background: where each keeps its progress, scripts/report.py's
+# flag for it, and its name. A server run plays them on its server (scripts/server_job.py follows).
+JOBS = {"strength": ("report/strength.json", "--strength-only", "strength check"),
+        "ladder": ("report/benchmark.json", "--ladder-only", "rating ladder")}
+
+
+def _job_status(path: Path, job: str) -> Optional[dict]:
+    """A report job's progress, and whether it still plays. A server run's job is followed from here;
+    one whose follower stopped (this Mac restarted, say) is followed again once the server is
+    connected, and until then shows as not connected."""
+    try:
+        data = json.loads((path / JOBS[job][0]).read_text())
+    except (OSError, ValueError):
+        return None
+    if job == "ladder" and data.get("pairs"):
+        from chaturanga.benchmark import elo_steps
+
+        data["steps"] = elo_steps(data.get("entries", []), data["pairs"])  # each step's own interval
+    if data.get("state") != "running":
+        return data
+    if data.get("where") == "server":
+        if not _process_alive({"pid": data.get("follower_pid"), "host": data.get("follower_host")}):
+            from chaturanga import remote
+
+            host = data.get("server_host")
+            if host and data.get("remote_pid") and remote.connected(host):
+                return _spawn_job(path, job, [], follow_only=True)
+            data["connected"] = False
+        return data
+    if _process_alive(data) is False:
         data["state"] = "stopped"  # the process ended without finishing (closed, crashed)
     return data
 
 
+def _job_playing(on_server: bool) -> Optional[str]:
+    """A report job playing on the server (or on this Mac), as "the <job> of <run>"."""
+    for p in _all_runs():
+        if (_where(p) == "server") == on_server:
+            for job in JOBS:
+                data = _job_status(p, job)
+                if data and data.get("state") == "running":
+                    return f"the {JOBS[job][2]} of {p.name!r}"
+    return None
+
+
+def _spawn_job(path: Path, job: str, args: list[str], follow_only: bool = False) -> dict:
+    """Start a report job, detached: scripts/report.py here, or scripts/server_job.py, which plays it
+    on the run's server and follows it."""
+    root = Path(__file__).resolve().parent.parent
+    file = path / JOBS[job][0]
+    try:
+        old = json.loads(file.read_text())
+    except (OSError, ValueError):
+        old = {}
+    on_server = _where(path) == "server"
+    if on_server:
+        cmd = [sys.executable, "-u", str(root / "scripts" / "server_job.py"), "--run", path.name,
+               "--runs-dir", str(path.parent), "--job", job, *args] + (["--follow-only"] if follow_only else [])
+        log_name = "server_job.log"
+    else:
+        cmd = [sys.executable, "-u", str(root / "scripts" / "report.py"), "--run", path.name,
+               "--runs-dir", str(path.parent), JOBS[job][1], *args]
+        if shutil.which("caffeinate"):
+            cmd = ["caffeinate", "-is", *cmd]
+        log_name = f"{job}.log"
+    (path / "report").mkdir(exist_ok=True)
+    log = open(path / "report" / log_name, "a")
+    try:
+        proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, cwd=str(root),
+                                start_new_session=True)
+    finally:
+        log.close()
+    threading.Thread(target=proc.wait, name=f"wait-{job}-{path.name}", daemon=True).start()
+    # Show it playing at once; the job (or its follower) overwrites this as soon as it starts. The
+    # ladder keeps its earlier results meanwhile (it adds to them); a strength check starts afresh.
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    kept = old if job == "ladder" or follow_only else {"networks": [], "results": {}}
+    started = {**kept, "state": "running", "updated": now, "error": None}
+    if not follow_only:
+        started.update(done=0, total=0)
+    if on_server:
+        started.update(where="server", server_host=_launch_settings(path).get("host"), follower_pid=proc.pid,
+                       follower_host=socket.gethostname(), connected=True)
+        if not follow_only:
+            started["remote_pid"] = None
+    else:
+        started.update(pid=proc.pid, host=socket.gethostname())
+        for key in ("where", "server_host", "follower_pid", "follower_host", "remote_pid", "connected"):
+            started.pop(key, None)
+    tmp = file.with_suffix(".tmp")
+    tmp.write_text(json.dumps(started))
+    tmp.replace(file)
+    return started
+
+
+def _start_job(name: str, job: str, args: list[str]) -> dict:
+    path = _run_dir(name)
+    if not list((path / "checkpoints").glob("gen_*.pt")):
+        raise HTTPException(400, f"run {name!r} has no networks yet")
+    for other in JOBS:
+        current = _job_status(path, other)
+        if current and current.get("state") == "running":
+            raise HTTPException(409, f"The {JOBS[other][2]} is playing for this run already: one at a time.")
+    if _where(path) == "server":
+        _server_connection(path)
+        busy = _live_server_run()
+        if busy:
+            raise HTTPException(409, f"The run {busy!r} is training on the server. Pause it first: the "
+                                     f"{JOBS[job][2]} needs its GPU.")
+    else:
+        busy = _live_run()
+        if busy:
+            raise HTTPException(409, f"The run {busy!r} is training. Pause it first: the {JOBS[job][2]} needs "
+                                     "the whole machine.")
+    return _spawn_job(path, job, args)
+
+
 @router.get("/runs/{name}/report")
 def run_report(name: str):
-    """The run's saved report (None until one is made) and its strength check, if one was played.
-    Reading never makes a report: that waits for a request, or the run's auto_report."""
+    """The run's saved report (None until one is made), its strength check and its rating ladder,
+    if played. Reading never makes a report: that waits for a request, or the run's auto_report."""
     from chaturanga.analysis import read_report
 
     path = _run_dir(name)
-    return {"report": read_report(path), "strength": _strength_status(path)}
+    return {"report": read_report(path), "strength": _job_status(path, "strength"), "ladder": _job_status(path, "ladder")}
 
 
 @router.post("/runs/{name}/report")
@@ -894,42 +1019,32 @@ def make_run_report(name: str):
         raise HTTPException(409, f"The run {name!r} is training. Pause it or let it finish first.")
     if not list((path / "checkpoints").glob("gen_*.pt")):
         raise HTTPException(400, f"run {name!r} has no networks yet")
-    return {"report": make_report(path), "strength": _strength_status(path)}
+    return {"report": make_report(path), "strength": _job_status(path, "strength"), "ladder": _job_status(path, "ladder")}
 
 
 @router.post("/runs/{name}/report/strength", status_code=202)
 def start_strength(name: str, req: StrengthRequest):
-    """Play the strength check in the background (scripts/report.py --strength-only)."""
-    path = _run_dir(name)
-    busy = _live_run()
-    if busy:
-        raise HTTPException(409, f"The run {busy!r} is training. Pause it first: the check needs the whole machine.")
-    current = _strength_status(path)
-    if current and current.get("state") == "running":
-        raise HTTPException(409, "A strength check is already running for this run.")
-    if not list((path / "checkpoints").glob("gen_*.pt")):
-        raise HTTPException(400, f"run {name!r} has no networks yet")
-    script = Path(__file__).resolve().parent.parent / "scripts" / "report.py"
-    cmd = [sys.executable, "-u", str(script), "--run", name, "--runs-dir", str(path.parent), "--strength-only",
-           "--games", str(req.games)]
-    if shutil.which("caffeinate"):
-        cmd = ["caffeinate", "-is", *cmd]
-    (path / "report").mkdir(exist_ok=True)
-    log = open(path / "report" / "strength.log", "a")
-    try:
-        proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                                cwd=str(Path(__file__).resolve().parent.parent), start_new_session=True)
-    finally:
-        log.close()
-    threading.Thread(target=proc.wait, name=f"wait-strength-{name}", daemon=True).start()
-    # Report it as running at once; the check overwrites this as soon as it starts.
-    from chaturanga.analysis import STRENGTH_FILE
+    """Play the strength check in the background (scripts/report.py --strength-only), on the run's
+    server for a server run."""
+    return _start_job(name, "strength", ["--games", str(req.games)])
 
-    started = {"state": "running", "games": req.games, "pid": proc.pid, "host": socket.gethostname(),
-               "networks": [], "results": {}, "done": 0, "total": 0,
-               "updated": datetime.now(timezone.utc).isoformat(timespec="seconds")}
-    (path / STRENGTH_FILE).write_text(json.dumps(started))
-    return _strength_status(path)
+
+@router.get("/runs/{name}/report/ladder/plan")
+def ladder_plan(name: str, games: int = 40, every: int = 10):
+    """What rating with these settings would do: the ladder's entries, and the games left to play."""
+    from chaturanga.benchmark import plan
+
+    path = _run_dir(name)
+    p = plan(path, max(2, min(400, games)), max(1, every))
+    return {"entries": p["entries"], "new": p["new"], "ladder_games": p["ladder_games"],
+            "conversion_games": p["conversion_games"], "where": "server" if _where(path) == "server" else "mac"}
+
+
+@router.post("/runs/{name}/report/ladder", status_code=202)
+def start_ladder(name: str, req: LadderRequest):
+    """Play the rating ladder and conversion test in the background (scripts/report.py --ladder-only),
+    on the run's server for a server run. Pairs and networks already rated are not played again."""
+    return _start_job(name, "ladder", ["--games", str(req.games), "--every", str(req.every)])
 
 
 @router.get("/runs/{name}/charts.png")

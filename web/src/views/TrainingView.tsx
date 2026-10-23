@@ -466,7 +466,7 @@ function RunControls({ status, total, done, lostTrack, config, onChange }: {
     body = (
       <p className="flex items-center gap-2.5 text-[13.5px] text-ink" role="status">
         <Spinner />
-        Training is done; making the run report and its strength check.
+        Training is done; making the run report, its strength check and (for a run on the rating ladder) the new generations' ratings.
       </p>
     )
   } else if (mode === 'pausing') {
@@ -1817,7 +1817,12 @@ export function TrainingView() {
               }} />
               {!detail.status.live && detail.generations.some((g) => g.best !== undefined) && (
                 <RunReport run={selected} finished={detail.status.state === 'finished'} gens={detail.generations}
-                  generations={detail.generations.filter((g) => g.best !== undefined).length} />
+                  generations={detail.generations.filter((g) => g.best !== undefined).length}
+                  server={detail.status.where === 'server' ? detail.status.server_host ?? 'the server' : null}
+                  reconnect={(note) => detail.status.server_host && (
+                    <ServerReconnect host={detail.status.server_host} label={detail.status.server_host} note={note}
+                      onConnected={() => setTick((t) => t + 1)} />
+                  )} />
               )}
               <Charts detail={detail} />
               <GenerationTable run={selected} detail={detail} />

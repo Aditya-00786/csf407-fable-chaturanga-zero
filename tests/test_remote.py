@@ -368,3 +368,57 @@ def test_a_run_that_cannot_start_there_says_so(server):
     failed = _wait("s5", lambda r: not r["live"])
     assert failed["state"] == "failed" and "train.log" in failed["error"]
     assert "no torch here" in (server["runs"] / "s5" / "train.log").read_text()
+
+
+# ---------------------------------------------------------------------- the run report's jobs there
+
+def _wait_job(name, job, done, timeout=300):
+    end = time.time() + timeout
+    while time.time() < end:
+        data = client.get(f"/api/training/runs/{name}/report").json()[job]
+        if data and done(data):
+            return data
+        time.sleep(0.3)
+    raise AssertionError(f"timed out; last {data}")
+
+
+def test_a_server_runs_ladder_plays_on_the_server_and_comes_back(server):
+    assert _connect().status_code == 200
+    _ready_env(server["folder"])
+    client.post("/api/training/runs", json={"name": "s7", "where": "server", "generations": 1,
+                                            "games_per_generation": 2, "simulations": 2, "eval_games": 0})
+    assert _wait("s7", lambda r: not r["live"])["state"] == "finished"
+    plan = client.get("/api/training/runs/s7/report/ladder/plan", params={"games": 2, "every": 1}).json()
+    assert plan["where"] == "server" and plan["entries"] == ["random", "greedy", "gen_0000", "gen_0001"]
+
+    r = client.post("/api/training/runs/s7/report/ladder", json={"games": 2, "every": 1})
+    assert r.status_code == 202 and r.json()["where"] == "server"
+    # Training on the server waits for it.
+    busy = client.post("/api/training/runs/s7/resume", json={"generations": 2})
+    assert busy.status_code == 409 and "rating ladder of 's7'" in busy.json()["detail"]
+    done = _wait_job("s7", "ladder", lambda d: d["state"] != "running")
+    local, there = server["runs"] / "s7", server["folder"] / "runs" / "s7"
+    assert done["state"] == "done", (local / "report" / "server_job.log").read_text()
+    assert (there / "report" / "benchmark.json").exists() and "Rating ladder" in (there / "report" / "ladder.log").read_text()
+    assert done["where"] == "server" and done["done"] == done["total"] == 6 * 2 + 3 * 40
+    assert all(done["ratings"][e] is not None for e in plan["entries"])
+
+    # The strength check of a server run plays there too.
+    assert client.post("/api/training/runs/s7/report/strength", json={"games": 2}).status_code == 202
+    strength = _wait_job("s7", "strength", lambda d: d["state"] != "running")
+    assert strength["state"] == "done" and strength["where"] == "server"
+    assert (there / "report" / "strength.json").exists()
+
+
+def test_a_server_job_whose_follower_stopped_is_followed_again(server):
+    assert _connect().status_code == 200
+    _ready_env(server["folder"])
+    client.post("/api/training/runs", json={"name": "s8", "where": "server", "generations": 1,
+                                            "games_per_generation": 2, "simulations": 2, "eval_games": 0})
+    _wait("s8", lambda r: not r["live"])
+    client.post("/api/training/runs/s8/report/strength", json={"games": 4})
+    playing = _wait_job("s8", "strength", lambda d: d.get("remote_pid") and d.get("total"))
+    os.kill(playing["follower_pid"], 9)  # this Mac restarted, say
+    time.sleep(0.5)
+    done = _wait_job("s8", "strength", lambda d: d["state"] != "running")
+    assert done["state"] == "done" and done["follower_pid"] != playing["follower_pid"]

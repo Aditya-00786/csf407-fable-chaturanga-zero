@@ -246,11 +246,11 @@ def _load_evaluator(checkpoint: str) -> NetworkEvaluator:
 
 
 def _evaluator_for(checkpoint: str) -> NetworkEvaluator:
-    """The network in a checkpoint, loaded once per process (and again when the file changes); a few
-    are kept, as test games and the strength check play several networks at once."""
+    """The network in a checkpoint, loaded once per process (and again when the file changes); up to
+    a dozen are kept, as test games, the strength check and the rating ladder play several at once."""
     key = (checkpoint, os.path.getmtime(checkpoint))
     if key not in _worker_cache:
-        while len(_worker_cache) >= 4:
+        while len(_worker_cache) >= 12:
             _worker_cache.pop(next(iter(_worker_cache)))
         _worker_cache[key] = _load_evaluator(checkpoint)
     return _worker_cache[key]
@@ -289,7 +289,7 @@ class SearchPlayer:
         return self.mcts.choose_move(root, 1.0 if state.ply < self.opening_plies else 0.0)
 
 
-def _opponent(spec: str, seed: int, simulations: int, opening_plies: int):
+def _player(spec: str, seed: int, simulations: int, opening_plies: int):
     if spec == "greedy":
         return GreedyAgent(seed)
     if spec == "random":
@@ -298,9 +298,11 @@ def _opponent(spec: str, seed: int, simulations: int, opening_plies: int):
 
 
 def play_matches(games: list, simulations: int, opening_plies: int = 8, keep_moves: bool = False) -> list[dict]:
-    """Test games, each (checkpoint, opponent, index, seed): the checkpoint plays White in
-    even-numbered games against the opponent ("greedy", "random" or another checkpoint), searching
-    with seed + index (the opponent with seed + 7919 * (index + 1)). Returns one row per game, in order.
+    """Test games, each (checkpoint, opponent, index, seed) or (checkpoint, opponent, index, seed,
+    start): the checkpoint (or "greedy" or "random") plays the opponent ("greedy", "random" or another
+    checkpoint), searching with seed + index (the opponent with seed + 7919 * (index + 1)). From the
+    opening it plays White in even-numbered games; from a start position (a FEN) it plays the side to
+    move there, and both sides play their best moves from the first. Returns one row per game, in order.
 
     The games are played side by side, whatever their networks and opponents. At each step of the
     searches under way, the positions waiting for the same network, from every game, are evaluated
@@ -308,13 +310,14 @@ def play_matches(games: list, simulations: int, opening_plies: int = 8, keep_mov
     alone: the same searches, simulation by simulation, the same seeds and the same sampled opening
     moves. (Replaying the tests of main-v4's generation 40 this way gave the same 120 games.)"""
     table = []
-    for checkpoint, opponent, i, seed in games:
-        other_seed = seed + 7919 * (i + 1)
-        other = (_opponent(opponent, other_seed, simulations, opening_plies) if opponent in ("greedy", "random")
-                 else SearchPlayer(_evaluator_for(opponent), simulations, other_seed, opening_plies))
-        table.append({"checkpoint": checkpoint, "opponent": opponent, "index": i, "colour": WHITE if i % 2 == 0 else -WHITE,
-                      "state": GameState.initial(), "moves": [], "other": other,
-                      "player": SearchPlayer(_evaluator_for(checkpoint), simulations, seed + i, opening_plies)})
+    for checkpoint, opponent, i, seed, *rest in games:
+        start = rest[0] if rest else None
+        state = GameState.from_fen(start) if start else GameState.initial()
+        sampled = 0 if start else opening_plies
+        table.append({"checkpoint": checkpoint, "opponent": opponent, "index": i, "state": state, "moves": [],
+                      "colour": state.side if start else WHITE if i % 2 == 0 else -WHITE,
+                      "player": _player(checkpoint, seed + i, simulations, sampled),
+                      "other": _player(opponent, seed + 7919 * (i + 1), simulations, sampled)})
 
     def play(game: dict, move: int) -> None:
         game["state"] = game["state"].apply(move)
@@ -840,8 +843,10 @@ class TrainingRun:
                         phase_started=None)
 
     def _report(self) -> None:
-        """The run report, made as the run finishes (auto_report)."""
+        """The run report, made as the run finishes (auto_report). A run already on the rating ladder
+        rates its new generations there too, with the ladder's own settings."""
         from .analysis import format_strength, make_report, measure_strength
+        from .benchmark import format_benchmark, read_benchmark, run_benchmark
 
         self.set_status(state="reporting")
         self._phase()
@@ -852,6 +857,11 @@ class TrainingRun:
                                     gpu_workers=self.gpu_workers,
                                     log=lambda *_: None)
             self.log(format_strength(data))
+        ladder = read_benchmark(self.dir)
+        if ladder:
+            data = run_benchmark(self.dir, games=ladder.get("games", 40), every=ladder.get("every", 10),
+                                 workers=self.workers, gpu_workers=self.gpu_workers, log=lambda *_: None)
+            self.log(format_benchmark(data))
 
     # -- the loop
 

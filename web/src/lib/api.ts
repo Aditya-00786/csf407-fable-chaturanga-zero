@@ -116,13 +116,19 @@ export const api = {
   /** Ask a running run to pause; null withdraws the request. */
   pauseRun: (name: string, when: PauseWhen | null) =>
     request<RunStatus>(`/api/training/runs/${encodeURIComponent(name)}/pause`, { when }),
-  /** The run's saved report (null until one is made) and its strength check, if played. */
+  /** The run's saved report (null until one is made), its strength check and its rating ladder, if played. */
   runReport: (name: string) => request<RunReport>(`/api/training/runs/${encodeURIComponent(name)}/report`),
   /** Make (or remake) the report: findings, material probe and charts. */
   makeReport: (name: string) => request<RunReport>(`/api/training/runs/${encodeURIComponent(name)}/report`, {}),
   /** Play the strength check in the background. */
   startStrength: (name: string, games: number) =>
     request<StrengthCheck>(`/api/training/runs/${encodeURIComponent(name)}/report/strength`, { games }),
+  /** What rating with these settings would play: the ladder's entries and the games left. */
+  ladderPlan: (name: string, games: number, every: number) =>
+    request<LadderPlan>(`/api/training/runs/${encodeURIComponent(name)}/report/ladder/plan?games=${games}&every=${every}`),
+  /** Play the rating ladder and conversion test in the background (on the run's server for a server run). */
+  startLadder: (name: string, games: number, every: number) =>
+    request<Ladder>(`/api/training/runs/${encodeURIComponent(name)}/report/ladder`, { games, every }),
   /** The run's six-panel chart image, for download. */
   chartsUrl: (name: string) => `/api/training/runs/${encodeURIComponent(name)}/charts.png`,
   /** Give Play's Trained opponent one of the run's networks: its best or latest (followed as it trains),
@@ -347,7 +353,17 @@ export interface ValueProbe {
 
 export interface StrengthResult { wins: number; draws: number; losses: number; score: number; reasons: Record<string, number> }
 
-export interface StrengthCheck {
+/** Where a report job plays: a server run's plays on its server, followed from here. */
+interface JobPlace {
+  where?: 'server'
+  server_host?: string
+  /** False while the server is not connected (the job plays on there). */
+  connected?: boolean
+  started?: string
+  updated?: string
+}
+
+export interface StrengthCheck extends JobPlace {
   state: 'running' | 'done' | 'failed' | 'stopped'
   games: number
   simulations?: number
@@ -356,6 +372,53 @@ export interface StrengthCheck {
   done: number
   total: number
   error?: string
+}
+
+/** A ladder entry: "random", "greedy" or a generation's network, "gen_0040". */
+export type LadderEntry = string
+
+export interface LadderRating {
+  elo: number
+  low: number
+  high: number
+  games: number
+  score: number | null
+}
+
+export interface Conversion {
+  games: number
+  won: number
+  lost: number
+  median_plies: number | null
+  mean_plies: number | null
+  by_recipe: Record<string, number>
+  not_won: Record<string, number>
+}
+
+export interface Ladder extends JobPlace {
+  state: 'running' | 'done' | 'failed' | 'stopped'
+  games: number
+  every: number
+  simulations?: number
+  entries?: LadderEntry[]
+  pairs?: Record<string, { a: LadderEntry; b: LadderEntry; games: number; a_wins: number; draws: number; b_wins: number }>
+  ratings?: Record<LadderEntry, LadderRating | null>
+  suite?: string[]
+  recipes?: string[]
+  conversion?: Record<LadderEntry, Conversion>
+  /** From each rated generation to the next: the change in Elo and its own 95% interval. */
+  steps?: { from: number; to: number; diff: number; low: number; high: number }[]
+  done: number
+  total: number
+  error?: string
+}
+
+export interface LadderPlan {
+  entries: LadderEntry[]
+  new: LadderEntry[]
+  ladder_games: number
+  conversion_games: number
+  where: 'server' | 'mac'
 }
 
 export interface SavedReport {
@@ -369,4 +432,5 @@ export interface SavedReport {
 export interface RunReport {
   report: SavedReport | null
   strength: StrengthCheck | null
+  ladder: Ladder | null
 }
