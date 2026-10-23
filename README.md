@@ -12,22 +12,28 @@ Everything is scaled down to train on a single consumer GPU or a free Google Col
 
 ## Progress
 
-**Current milestone: 3 of 4 — self-play training pipeline**
+**Current milestone: 4 of 4 — benchmarking**
 
 ```
-Overall   ████████████████████░░░░░░░░░░░░░░░░░░░░  50%   (2 of 4 milestones done)
+Overall   ██████████████████████████████░░░░░░░░░░  75%   (3 of 4 milestones done)
 ```
 
 | # | Milestone | Progress | Status |
 |:-:|---|---|---|
 | 1 | Rules engine, state/move encoding, unit tests | `██████████` 100% | Done |
 | 2 | MCTS integrated with an untrained network | `██████████` 100% | Done |
-| 3 | Self-play training pipeline (50–100 games, loss tracking) | `░░░░░░░░░░`   0% | Up next |
-| 4 | Benchmarking vs random, heuristic and earlier agents | `░░░░░░░░░░`   0% | Planned |
+| 3 | Self-play training pipeline (50–100 games, loss tracking) | `██████████` 100% | Done |
+| 4 | Benchmarking vs random, heuristic and earlier agents | `░░░░░░░░░░`   0% | Up next |
 
-Also shipped: the **web app, phase 1**. It has a 3D board, three play modes, interactive lessons
-and a rules reference. The untrained MCTS agent from Milestone 2 is already one of its computer
-opponents; the trained agent and the live "Watch training" view follow Milestone 3.
+Milestone 3 went well past its 50 to 100 games: the run `main-v4` trained for 60 generations and
+30,000 self-play games, and its final network beats Random in every game and Greedy in 95% of its
+strength check (see "Training by self-play").
+
+Also shipped: the **web app**. It has a 3D board, three play modes, interactive lessons and a
+rules reference. Its computer opponents include the untrained MCTS agent from Milestone 2 and,
+from Milestone 3, the trained agent at four levels, playing any network of a run. Its Training
+page starts, follows, pauses, resumes and reports runs on this Mac, Colab, Kaggle or your own
+server.
 
 <details>
 <summary>How to update the progress bars</summary>
