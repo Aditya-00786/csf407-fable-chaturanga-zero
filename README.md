@@ -31,9 +31,9 @@ strength check (see "Training by self-play").
 
 Milestone 4 is under way. A rating ladder gives every 10th generation an Elo rating against
 Random, Greedy and the other generations. A conversion test measures how surely and quickly each
-generation finishes a won position. `main-v4`'s ratings rise from 181 for the untrained network
-to about 1,055 for generations 56 and 60, and level off after generation 56 (see
-[Benchmarking](#benchmarking)).
+generation turns a small material edge into a win. `main-v4`'s ratings rise from 181 for the
+untrained network to about 1,055 for generations 56 and 60, and level off after generation 56
+(see [Benchmarking](#benchmarking)).
 
 Also shipped: the **web app**. It has a 3D board, three play modes, interactive lessons and a
 rules reference. Its computer opponents include the untrained MCTS agent from Milestone 2 and,
@@ -86,7 +86,7 @@ the same commit that completes the work.
   generation evaluated, checkpointed and logged. Runs resume after any interruption, on a laptop
   or on Colab, and teammates can contribute self-play games from their own machines.
 - **Benchmarking.** An Elo rating ladder of a run's generations with Random and Greedy, each step
-  between generations with its own interval, and a conversion test of won endgames. Both play in
+  between generations with its own interval, and a conversion test of small material edges. Both play in
   the background, on the run's server if it has one.
 - **Browser app.** A carved rosewood-and-brass 3D board in light and dark themes, with:
   - a figural piece set after Indian court chess sets: a crowned Raja, a turbaned Mantri, a temple-car
@@ -791,7 +791,8 @@ ladder, their games as they finish, as when they are started by hand. The report
     40 were faster still (2.2 minutes) but changed 19 games, because the GPU's arithmetic shifts
     slightly with the batch size, so tasks stay at 20.
 - **Rating ladder and conversion test**, on request (see [Benchmarking](#benchmarking)):
-  Elo ratings for the run's generations, and how surely and quickly each finishes a won game.
+  Elo ratings for the run's generations, and how surely and quickly each turns a small material
+  edge into a win.
   Results are kept in `runs/<run>/report/benchmark.json`.
 - **Where they play.** The strength check and the ladder play where the run trained: a server
   run's on its server, which the page follows (if the connection drops they play on, and
@@ -945,37 +946,46 @@ Run report (**Rating ladder**, then **Rate generations**), or with `python scrip
 
 ### The conversion test
 
-Forty positions in which one side is far ahead in material, eight of each:
+Forty positions in which one side is ahead in material by a small edge, eight of each:
 
-- a Ratha against a Padati;
-- a Ratha against a Mantri;
-- a Ratha and a Padati against a Gaja;
-- an Ashva and two Padatis against a Padati;
-- a Ratha and an Ashva against an Ashva.
+- an Ashva and a Padati against an Ashva;
+- a Ratha and a Padati against a Ratha;
+- a Ratha and an Ashva against a Ratha;
+- a Ratha and a Gaja against a Ratha;
+- a Ratha and two Padatis against a Ratha and a Padati.
 
 They are placed at random once, with a fixed seed: legal, the side ahead to move (White in half of
 them), and no win in one. Each network plays the side ahead against Greedy, both playing their
-best moves from the first ply. The test counts the wins and the plies they took. The last piece
-still has to be caught (a bare Raja loses) without stalemating it (the stalemated side wins).
-Greedy playing the side ahead is the reference.
+best moves from the first ply. The test counts the wins and the plies they took. Winning takes a
+plan: promote a Padati, bring two pieces together, and catch the last piece (a bare Raja loses)
+without stalemating it (the stalemated side wins), all before 70 moves each pass without a
+capture or a Padati move. Greedy playing the side ahead is the reference.
+
+**Why these.** The first version of the test used a large edge (a Ratha against a Padati, say), and
+every network from generation 10 won 39 or 40 of its 40 positions, so it could not tell generation
+30 from 60. Fourteen balances were tried on the lab server, 12 positions each, with the untrained
+network, generations 10, 30 and 60 and Greedy playing the side ahead. These five separated them
+best: generation 10 won at most 8 of 12 and generation 60 10 to 12, in about half the plies
+generation 30 needed. With a single Ashva or Ratha against a Padati, or two Padatis against one,
+every network from generation 10 won all 12.
 
 ### main-v4 on the ladder
 
-2,160 games (1,800 on the ladder, 360 in the conversion test) took 44 minutes on the lab server's
+2,160 games (1,800 on the ladder, 360 in the first conversion test) took 44 minutes on the lab server's
 GPU:
 
-| Player | Elo (95% interval) | Score | vs Greedy (W / D / L) | Conversion: won | Median plies to win |
-|---|:-:|:-:|:-:|:-:|:-:|
-| Generation 56 (the run's best) | 1,058 (936 to 1,180) | 82% | 36 / 2 / 2 | 40 of 40 | 22 |
-| Generation 60 | 1,054 (932 to 1,175) | 82% | 34 / 6 / 0 | 39 of 40 | 17 |
-| Generation 50 | 1,001 (880 to 1,121) | 77% | 30 / 8 / 2 | 40 of 40 | 18 |
-| Generation 40 | 923 (804 to 1,042) | 69% | 31 / 7 / 2 | 40 of 40 | 24 |
-| Generation 30 | 846 (728 to 964) | 61% | 23 / 6 / 11 | 39 of 40 | 15 |
-| Greedy | 699 (583 to 814) | 47% | | 28 of 40 | 53 |
-| Generation 20 | 656 (541 to 771) | 43% | 12 / 11 / 17 | 40 of 40 | 21 |
-| Generation 10 | 370 (265 to 475) | 23% | 0 / 4 / 36 | 40 of 40 | 28 |
-| Generation 0 (untrained) | 181 (84 to 279) | 12% | 0 / 4 / 36 | 24 of 40 | 33 |
-| Random | 0 | 4% | 0 / 0 / 40 | | |
+| Player | Elo (95% interval) | Score | vs Greedy (W / D / L) |
+|---|:-:|:-:|:-:|
+| Generation 56 (the run's best) | 1,058 (936 to 1,180) | 82% | 36 / 2 / 2 |
+| Generation 60 | 1,054 (932 to 1,175) | 82% | 34 / 6 / 0 |
+| Generation 50 | 1,001 (880 to 1,121) | 77% | 30 / 8 / 2 |
+| Generation 40 | 923 (804 to 1,042) | 69% | 31 / 7 / 2 |
+| Generation 30 | 846 (728 to 964) | 61% | 23 / 6 / 11 |
+| Greedy | 699 (583 to 814) | 47% | |
+| Generation 20 | 656 (541 to 771) | 43% | 12 / 11 / 17 |
+| Generation 10 | 370 (265 to 475) | 23% | 0 / 4 / 36 |
+| Generation 0 (untrained) | 181 (84 to 279) | 12% | 0 / 4 / 36 |
+| Random | 0 | 4% | 0 / 0 / 40 |
 
 | Step | Elo gained (95% interval) |
 |---|:-:|
@@ -1000,10 +1010,31 @@ GPU:
 - **Strong networks draw each other.** Of the 40 games between generations 56 and 60, 29 were
   drawn, 14 of them by repetition and 15 at the 300-ply cap. Neither side found a way through, which
   is where longer plans would show.
-- **The conversion test is solved from generation 10.** Every trained network won 39 or 40 of the
-  40 positions, against 24 for the untrained one and 28 for Greedy, which often ran into the
-  70-move rule. Their median plies to win (15 to 28) show no trend after generation 20. To follow
-  planning in later generations, the test needs harder positions, with a smaller material edge.
+
+The conversion test, 40 positions each (the small edge took 2.2 minutes for all nine players):
+
+| Player | Small edge (the test now): won | Median plies (mean) | Large edge (the first test): won | Median plies |
+|---|:-:|:-:|:-:|:-:|
+| Generation 0 (untrained) | 12 (17 lost) | 21 (40) | 24 | 33 |
+| Generation 10 | 18 | 88 (85) | 40 | 28 |
+| Generation 20 | 26 | 49 (64) | 40 | 21 |
+| Generation 30 | 30 | 56 (68) | 39 | 15 |
+| Generation 40 | 36 | 43 (58) | 40 | 24 |
+| Generation 50 | 33 | 45 (58) | 40 | 18 |
+| Generation 56 | 34 | 53 (55) | 40 | 22 |
+| Generation 60 | 32 | 31 (35) | 39 | 17 |
+| Greedy | 14 | 45 (63) | 28 | 53 |
+
+- **Converting a small edge improved until generation 40, then held.** Wins rose from 18 of 40
+  (generation 10) to 36 (generation 40), and then stayed between 32 and 36, about as far apart as
+  chance allows with 40 positions. This is the same levelling off the ladder shows.
+- **Generation 60 finishes fastest.** Its wins took 31 plies at the median and 35 on average,
+  against 43 to 56 (55 to 68 on average) for generations 30 to 56: the clearest sign in this
+  test of better planning late in the run.
+- **The large edge told nothing after generation 10.** Every trained network won 39 or 40, and
+  the plies showed no trend, which is why the test changed.
+- Most positions not won were drawn, by the 70-move rule or by repetition; the untrained network
+  lost 17, giving pieces away, and Greedy 5.
 
 ---
 

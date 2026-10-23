@@ -325,6 +325,8 @@ function LadderTable({ ladder }: { ladder: Ladder }) {
   const conversion = ladder.conversion ?? {}
   const rows = [...(ladder.entries ?? [])].sort((a, b) => (r[b]?.elo ?? -Infinity) - (r[a]?.elo ?? -Infinity))
   const positions = ladder.suite?.length ?? 0
+  // The material balances the test's positions were made from, as "an Ashva against a Padati".
+  const balances = [...new Set(ladder.recipes ?? [])].map((r) => r.charAt(0).toLowerCase() + r.slice(1))
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[620px] border-collapse text-left text-[13px] tabular-nums">
@@ -359,10 +361,10 @@ function LadderTable({ ladder }: { ladder: Ladder }) {
         </tbody>
       </table>
       {positions > 0 && (
-        <p className="mt-2 max-w-[75ch] text-[12.5px] leading-snug text-ink-faint">
-          Converts: of {positions} positions where it is far ahead in material (from a Ratha against a Padati to a Ratha and
-          an Ashva against an Ashva), how many it won against Greedy, and the median plies those wins took. Greedy playing the
-          side ahead is the reference.
+        <p className="mt-2 text-[12.5px] leading-snug text-ink-faint">
+          Converts: of {positions} positions where it is ahead in material
+          {balances.length > 0 && ` (${balances.length > 1 ? `${balances.slice(0, -1).join(', ')} or ${balances[balances.length - 1]}` : balances[0]})`},
+          how many it won against Greedy, and the median plies those wins took. Greedy playing the side ahead is the reference.
         </p>
       )}
     </div>
@@ -420,7 +422,7 @@ function LadderSection({ run, ladder, server, reconnect, onStarted }: {
       <p className="mt-1 text-[13px] leading-snug text-ink-muted">
         Generations a few apart play each other, Random and Greedy from the opening, and get Elo ratings with Random at 0.
         It shows the progress the run's own tests no longer can: each generation scores about 50% against the one before,
-        and Greedy has little left to tell. A conversion test measures how surely and quickly each one finishes a won game.
+        and Greedy has little left to tell. A conversion test measures how surely and quickly each one turns a material edge into a win.
       </p>
       {verdict && (
         <div className="mt-3">

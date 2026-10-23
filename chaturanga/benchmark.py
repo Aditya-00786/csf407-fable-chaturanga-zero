@@ -12,11 +12,11 @@ rather than an endless one. The 95% intervals come from the fit's curvature and 
 each step from one rated generation to the next has its own, much narrower (neighbours' ratings
 move together, so their difference is known better than either rating).
 
-Conversion test. A fixed set of positions in which one side is far ahead in material (a Ratha
-against a Padati, say), placed at random once with a fixed seed. Each network plays the side ahead
-against Greedy, both playing their best moves from the first. A win counts the same however long it
-takes, so this measures what scores cannot: how many it wins, and in how many plies. Greedy playing
-the side ahead is the reference.
+Conversion test. A fixed set of positions in which one side is ahead in material (a Ratha and a
+Padati against a Ratha, say), placed at random once with a fixed seed. Each network plays the side
+ahead against Greedy, both playing their best moves from the first. A win counts the same however
+long it takes, so this measures what scores cannot: how many it wins, and in how many plies. Greedy
+playing the side ahead is the reference.
 
 Everything is kept in report/benchmark.json with every pair's results, so rating more generations
 later plays only their games. Progress is written there as games finish.
@@ -44,14 +44,18 @@ BENCHMARK_FILE = Path("report") / "benchmark.json"
 BASELINES = ("random", "greedy")
 VIRTUAL_DRAWS = 1  # per pair, besides its games
 
-# The side ahead's pieces and the side behind's, besides their Rajas. Clearly won, but the last
-# piece still has to be caught (a bare Raja loses) without stalemating it (the stalemated side wins).
+# The side ahead's pieces and the side behind's, besides their Rajas: a small edge, which takes a
+# plan to turn into a win (promote a Padati, bring two pieces together, catch the last piece
+# without stalemating it: the stalemated side wins). Chosen from 14 balances tried on main-v4's
+# networks (12 positions each) as those that separate them: generation 60 won 10 to 12 of 12 and
+# generation 10 at most 8, and 60 won in about half the plies 30 took. With a large edge (a Ratha
+# against a Padati, say) every network from generation 10 won 39 or 40 of 40, which says nothing.
 RECIPES = [
-    ("A Ratha against a Padati", "R", "P"),
-    ("A Ratha against a Mantri", "R", "M"),
-    ("A Ratha and a Padati against a Gaja", "RP", "G"),
-    ("An Ashva and two Padatis against a Padati", "NPP", "P"),
-    ("A Ratha and an Ashva against an Ashva", "RN", "N"),
+    ("An Ashva and a Padati against an Ashva", "NP", "N"),
+    ("A Ratha and a Padati against a Ratha", "RP", "R"),
+    ("A Ratha and an Ashva against a Ratha", "RN", "R"),
+    ("A Ratha and a Gaja against a Ratha", "RG", "R"),
+    ("A Ratha and two Padatis against a Ratha and a Padati", "RPP", "RP"),
 ]
 _PADATI_SQUARES = tuple(range(8, 56))  # never on the first or last rank
 
@@ -60,12 +64,13 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def won_positions(per_recipe: int = 8, seed: int = 4007) -> list[dict]:
-    """The conversion test's positions, the same every time: for each recipe, `per_recipe` legal,
-    unfinished positions with the side ahead to move (White in half of them) and no win in one."""
+def won_positions(per_recipe: int = 8, seed: int = 4007, recipes: Optional[list] = None) -> list[dict]:
+    """The conversion test's positions, the same every time: for each recipe (RECIPES unless
+    given), `per_recipe` legal, unfinished positions with the side ahead to move (White in half of
+    them) and no win in one."""
     rng = random.Random(seed)
     out = []
-    for name, ahead, behind in RECIPES:
+    for name, ahead, behind in recipes or RECIPES:
         found = 0
         while found < per_recipe:
             side = WHITE if found % 2 == 0 else BLACK
