@@ -43,19 +43,19 @@ xychart-beta
 | 1 | Rules engine, state/move encoding, unit tests | `██████████` 100% | Done |
 | 2 | MCTS integrated with an untrained network | `██████████` 100% | Done |
 | 3 | Self-play training pipeline (50–100 games, loss tracking) | `██████████` 100% | Done |
-| 4 | Benchmarking vs random, heuristic and earlier agents | `████░░░░░░`  40% | In progress |
+| 4 | Benchmarking vs random, heuristic and earlier agents | `█████████░`  95% | In progress |
 
 ```
-Overall   ██████████████████████████████████░░░░░░  85%   (3 of 4 milestones done)
+Overall   ███████████████████████████████████████░  99%   (3 of 4 milestones done)
 ```
 
 - **Milestone 3** went well past its 50 to 100 games: `main-v4` trained 100 generations and 35,019
   games ([the runs](docs/RUNS.md)).
-- **Milestone 4** is under way: a rating ladder gives the generations Elo ratings against Random,
-  Greedy and each other, a conversion test measures how surely each turns a small edge into a win,
-  and generation 100 is frozen as the agent ([benchmarking](docs/BENCHMARKING.md)). Games against
-  people are recorded in the app, and teammates send theirs from their own laptops
-  ([games against people](docs/HUMAN_GAMES.md).
+- **Milestone 4** is all but done: a rating ladder gives the generations Elo ratings against
+  Random, Greedy and each other, a conversion test measures how surely each turns a small edge into
+  a win, and generation 100 is frozen as the agent ([benchmarking](docs/BENCHMARKING.md)). What
+  remains is the data from people playing the agent: the app records those games, and teammates
+  send theirs from their own laptops ([games against people](docs/HUMAN_GAMES.md)).
 - **Also shipped:** a web app with a 3D board, three play modes, lessons, a rules reference and a
   Training page that runs and follows training on a Mac, Colab, Kaggle or your own server.
 
@@ -70,14 +70,15 @@ remaining, and update the percentage. Update the bars in the same commit that co
 ## How it works
 
 ```mermaid
+%%{init: {"flowchart": {"nodeSpacing": 16, "rankSpacing": 22, "padding": 6, "diagramPadding": 4, "subGraphTitleMargin": {"top": 4, "bottom": 4}}, "themeVariables": {"fontSize": "13px"}}}%%
 flowchart LR
-    R[Rules engine<br/>legal moves, results] --> S[MCTS<br/>PUCT search]
+    R[Rules engine<br/>legal moves,<br/>results] --> S[MCTS<br/>PUCT search]
     N[ResNet<br/>policy + value] -- move priors,<br/>position value --> S
-    S -- self-play games --> B[(Replay buffer)]
+    S -- self-play<br/>games --> B[(Replay<br/>buffer)]
     B -- batches --> T[Training]
-    T -- new weights --> N
-    T --> E[Tests against the previous<br/>generation, Greedy, Random]
-    E -- best network --> P[Play in the web app]
+    T -- new<br/>weights --> N
+    T --> E[Tests against<br/>the previous generation,<br/>Greedy, Random]
+    E -- best<br/>network --> P[Play in<br/>the web app]
 ```
 
 1. **Search.** For each move the search looks ahead a few hundred positions, guided by the

@@ -9,13 +9,14 @@ No names, no times. Teammates play on their own laptops and send their games as 
 them in a pull request.
 
 ```mermaid
+%%{init: {"flowchart": {"nodeSpacing": 16, "rankSpacing": 22, "padding": 6, "diagramPadding": 4, "subGraphTitleMargin": {"top": 4, "bottom": 4}}, "themeVariables": {"fontSize": "13px"}}}%%
 flowchart LR
     subgraph L["A teammate's laptop"]
-        P["Play, recording on"] --> F[("results/human_games/<br/>a file per game")]
-        F --> X["Export: one file"]
+        P["Play,<br/>recording on"] --> F[("results/human_games/<br/>a file per game")]
+        F --> X["Export:<br/>one file"]
     end
-    X -- "email or chat" --> I["Import on the<br/>Results page"]
-    F -- "pull request" --> R
+    X -- "email<br/>or chat" --> I["Import on the<br/>Results page"]
+    F -- "pull<br/>request" --> R
     I --> R[("results/human_games/<br/>in the repository")]
     R --> V["Results page and<br/>scripts/human_games.py"]
 ```

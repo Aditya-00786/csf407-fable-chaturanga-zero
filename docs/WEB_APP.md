@@ -9,11 +9,12 @@ legal moves and the result. The server keeps no game state, so undo and review a
 move lists.
 
 ```mermaid
+%%{init: {"flowchart": {"nodeSpacing": 16, "rankSpacing": 22, "padding": 6, "diagramPadding": 4, "subGraphTitleMargin": {"top": 4, "bottom": 4}}, "themeVariables": {"fontSize": "13px"}}}%%
 flowchart LR
     subgraph Browser
         UI[React app<br/>Play · Learn · Rules · Results · Training]
         B3[3D board<br/>React Three Fiber]
-        UI --- B3
+        B3 --- UI
     end
     subgraph API[FastAPI server, chaturanga_server/]
         G[Game endpoints<br/>replay the move list]
@@ -22,9 +23,9 @@ flowchart LR
         H[Games against people<br/>check, keep, add up]
     end
     UI -- moves so far --> G
-    G -- position, legal moves, result --> UI
+    G -- position, legal<br/>moves, result --> UI
     UI -- whose move --> A
-    UI -- poll every few seconds --> T
+    UI -- poll every<br/>few seconds --> T
     UI -- finished games --> H
     H --> HG[(results/human_games/)]
     G --> E[(Rules engine<br/>chaturanga/)]
@@ -94,9 +95,13 @@ The games people played against the computer, with recording on
 Follows the training runs in `runs/`, live:
 
 ```mermaid
-flowchart LR
-    M["Run menu"] --> S["Status card<br/>live progress, time left"] --> C["Controls<br/>Pause · Resume · Settings · In Play"]
-    S --> CH["Charts and<br/>every generation"] --> RR["Run report<br/>strength check, ladder"]
+%%{init: {"flowchart": {"nodeSpacing": 16, "rankSpacing": 20, "padding": 6, "diagramPadding": 4, "subGraphTitleMargin": {"top": 4, "bottom": 4}}, "themeVariables": {"fontSize": "13px"}}}%%
+flowchart TB
+    M[Run menu<br/>each run's state] --> S[Status card<br/>phase, live progress, time left]
+    S --> C[Controls<br/>Pause · Resume · Train further · Settings · In Play]
+    S --> CH[Charts<br/>losses, test scores, self-play]
+    CH --> GT[Every generation<br/>Watch replays a game on the board]
+    GT --> RR[Run report<br/>findings, strength check, rating ladder]
 ```
 
 - **New run** starts training on this Mac, Colab, Kaggle or your own server

@@ -5,6 +5,7 @@
 Set up the repository, run the tests and the app, and drive the engine from Python.
 
 ```mermaid
+%%{init: {"flowchart": {"nodeSpacing": 16, "rankSpacing": 22, "padding": 6, "diagramPadding": 4, "subGraphTitleMargin": {"top": 4, "bottom": 4}}, "themeVariables": {"fontSize": "13px"}}}%%
 flowchart LR
     A[Fork and clone] --> B[Virtual environment] --> C["pip install -e '.[dev]'"] --> D[Tests pass] --> E[npm install in web/] --> F[Play in the browser]
 ```

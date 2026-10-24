@@ -6,10 +6,18 @@ The network plays itself with MCTS, learns from those games, and the improved ne
 next batch: AlphaZero's loop, with every generation tested, saved and logged.
 
 ```mermaid
+%%{init: {"flowchart": {"nodeSpacing": 18, "rankSpacing": 26, "padding": 6, "diagramPadding": 4, "subGraphTitleMargin": {"top": 4, "bottom": 4}}, "themeVariables": {"fontSize": "13px"}}}%%
 flowchart LR
-    SP["1 · Self-play<br/>newest network vs itself"] --> IN["2 · Teammates'<br/>games added"] --> TR["3 · Training<br/>on the replay buffer"] --> EV["4 · Tests<br/>previous, Greedy, Random"]
-    EV -- next generation --> SP
-    EV -. best so far .-> PUB["best.pt<br/>Play's opponent"]
+    subgraph G[One generation]
+        direction LR
+        SP["1 · Self-play<br/>newest network<br/>vs itself"] --> IN["2 · Teammates'<br/>games<br/>checked, added"]
+        IN --> TR["3 · Training<br/>batches from the<br/>replay buffer"]
+        TR --> EV["4 · Tests<br/>vs previous,<br/>Greedy, Random"]
+    end
+    EV --> BEST{"Best<br/>so far?"}
+    BEST -- yes --> PUB["best.pt<br/>Play's Trained<br/>opponent"]
+    EV --> NEXT["Next<br/>generation"]
+    NEXT --> SP
 ```
 
 ## Starting a run
@@ -83,6 +91,7 @@ Everything lives in `runs/<run>/` (git-ignored; see [Sharing runs](#sharing-runs
 ## Pausing and resuming
 
 ```mermaid
+%%{init: {"themeVariables": {"fontSize": "12px"}}}%%
 stateDiagram-v2
     direction LR
     [*] --> starting
@@ -90,15 +99,15 @@ stateDiagram-v2
     selfplay --> training
     training --> evaluating
     evaluating --> generation_done
-    generation_done --> selfplay: more generations
-    generation_done --> reporting: last one, with the report on
+    generation_done --> selfplay: more<br/>generations
+    generation_done --> reporting: last one, with<br/>the report on
     generation_done --> finished: last one
     reporting --> finished
     selfplay --> paused: Pause
     training --> paused
     evaluating --> paused
     paused --> starting: Resume
-    finished --> starting: Train further
+    finished --> starting: Train<br/>further
 ```
 
 | Pause | What happens |

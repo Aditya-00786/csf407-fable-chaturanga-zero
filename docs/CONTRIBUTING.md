@@ -6,6 +6,7 @@ Changes reach `main` only through pull requests, and the repository owner review
 one. Collaborators work in their own fork: **fork → branch → pull request**.
 
 ```mermaid
+%%{init: {"flowchart": {"nodeSpacing": 16, "rankSpacing": 18, "padding": 6, "diagramPadding": 4, "subGraphTitleMargin": {"top": 4, "bottom": 4}}, "themeVariables": {"fontSize": "13px"}}}%%
 flowchart LR
     A[Sync your fork<br/>with upstream main] --> B[Branch<br/>feat/…, fix/…] --> C[Small commits<br/>tests pass] --> D[Push to your fork] --> E[Pull request<br/>into main] --> F[Review] --> G[Merged by the owner] --> A
     F -- changes asked --> C

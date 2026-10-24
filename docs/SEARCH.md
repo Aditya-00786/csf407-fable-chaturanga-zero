@@ -8,6 +8,7 @@ suggestions to look ahead. Finished games are scored exactly by the rules engine
 network.
 
 ```mermaid
+%%{init: {"flowchart": {"nodeSpacing": 16, "rankSpacing": 18, "padding": 6, "diagramPadding": 4, "subGraphTitleMargin": {"top": 4, "bottom": 4}}, "themeVariables": {"fontSize": "13px"}}}%%
 flowchart LR
     P[Position] --> E[encode_state<br/>15 × 8 × 8 planes]
     E --> N[ResNet]
@@ -79,14 +80,15 @@ whatever the visits say. ChaturangZero applies two rules when it chooses a move,
 draws:
 
 ```mermaid
-flowchart TD
-    S[Search done] --> W{A move wins<br/>at once?}
+%%{init: {"flowchart": {"nodeSpacing": 16, "rankSpacing": 22, "padding": 6, "diagramPadding": 4, "subGraphTitleMargin": {"top": 4, "bottom": 4}}, "themeVariables": {"fontSize": "13px"}}}%%
+flowchart LR
+    S[Search<br/>done] --> W{A move wins<br/>at once?}
     W -- yes --> Play1[Play it]
-    W -- no --> C[Most visited move]
+    W -- no --> C[Most visited<br/>move]
     C --> L{Does it let the<br/>opponent win at once?}
     L -- no --> Play2[Play it]
     L -- yes --> Safe{Another move<br/>that does not?}
-    Safe -- yes --> Play3[Play the most visited safe move]
+    Safe -- yes --> Play3[Play the most<br/>visited safe move]
     Safe -- no --> Play2
 ```
 
