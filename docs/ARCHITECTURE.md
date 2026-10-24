@@ -53,7 +53,7 @@ flowchart TB
 ## A game becomes training data
 
 ```mermaid
-%%{init: {"sequence": {"wrap": true, "width": 140, "height": 36, "actorMargin": 12, "messageMargin": 12, "boxMargin": 4, "noteMargin": 4, "mirrorActors": false, "messageFontSize": 12, "actorFontSize": 12, "noteFontSize": 12}, "themeVariables": {"fontSize": "12px"}}}%%
+%%{init: {"fontSize": 12, "sequence": {"wrap": true, "width": 120, "height": 30, "actorMargin": 10, "messageMargin": 10, "boxMargin": 4, "noteMargin": 4, "mirrorActors": false}}}%%
 sequenceDiagram
     participant SP as Self-play
     participant M as MCTS

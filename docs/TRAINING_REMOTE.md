@@ -21,7 +21,7 @@ choose **Server**, give its address (or pick a host from `~/.ssh/config`), a fol
 and its password, and press **Connect**.
 
 ```mermaid
-%%{init: {"sequence": {"wrap": true, "width": 200, "height": 36, "actorMargin": 16, "messageMargin": 10, "boxMargin": 4, "noteMargin": 4, "mirrorActors": false, "messageFontSize": 12, "actorFontSize": 12, "noteFontSize": 12}, "themeVariables": {"fontSize": "12px"}}}%%
+%%{init: {"fontSize": 12, "sequence": {"wrap": true, "width": 165, "height": 30, "actorMargin": 12, "messageMargin": 10, "boxMargin": 4, "noteMargin": 4, "mirrorActors": false}}}%%
 sequenceDiagram
     autonumber
     participant App as Training page
