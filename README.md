@@ -656,9 +656,10 @@ defended better (24% in generation 60). The next step for a longer run is a lowe
 
 **Generations 61 to 75: a lower learning rate.** `main-v4` trained 15 more generations with one
 change, the learning rate down from 1e-3 to 3e-4 (from generation 61, self-play also takes wins in
-one; see [The search's rules](#the-searchs-rules)). They took 3.2 hours on the lab server (12.7
-minutes a generation, as before), and the run report at the end 38 minutes more (its strength
-check 2 minutes, keeping the untrained network's results; the ladder's 1,440 new games 36).
+one; see [The search's rules](#the-searchs-rules)). They took 4.6 hours on the lab server, 18.4
+minutes a generation: 12.5 of self-play, 5.7 of test games (120, at 200 simulations) and under one
+of training. The run report at the end took 38 minutes more (its strength check 2 minutes, keeping
+the untrained network's results; the ladder's 1,440 new games 36).
 
 | Generations | vs the generation before | vs Greedy | Policy loss on new games | Self-play length (plies) |
 |---|:-:|:-:|:-:|:-:|

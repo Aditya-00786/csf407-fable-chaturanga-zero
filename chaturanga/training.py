@@ -838,11 +838,14 @@ class TrainingRun:
                     "steps": steps, "losses": losses or {}}, tmp)
         tmp.replace(self.dir / "checkpoints" / "train_state.pt")
 
-    def _finish_generation(self, generation: int, steps: int, losses: dict, seconds: float) -> None:
-        """Evaluate a trained generation, choose the best network and close the generation."""
+    def _finish_generation(self, generation: int, steps: int, losses: dict, started: Optional[float]) -> None:
+        """Evaluate a trained generation, choose the best network and close the generation. Its
+        seconds run from `started` (perf_counter) to here, its test games included (until generation
+        75 of main-v4 they stopped before them); 0 for a generation whose start was in another session."""
         evaluation = self._evaluate(generation)
         self._update_best(generation, evaluation)
         self._save_train_state(generation, evaluated=True)
+        seconds = time.perf_counter() - started if started is not None else 0.0
         self.record("generation", generation=generation, best=self.best, steps=steps, seconds=round(seconds, 1),
                     **{k: round(v, 5) for k, v in losses.items()})
         self.set_status(state="generation_done", generation=generation, best_generation=self.best,
@@ -911,7 +914,7 @@ class TrainingRun:
             self.set_status(generation=last, best_generation=self.best, paused_in=None, paused_after=None)
             if self._pending_eval is not None:
                 self.log(f"Generation {last}: evaluating (interrupted before)")
-                self._finish_generation(last, self._pending_eval.get("steps") or 0, self._pending_eval["losses"], 0.0)
+                self._finish_generation(last, self._pending_eval.get("steps") or 0, self._pending_eval["losses"], None)
                 self._pending_eval = None
                 self._check_pause("generation", after="generation")
             for generation in range(last + 1, cfg.generations + 1):
@@ -947,7 +950,7 @@ class TrainingRun:
                          f"(value {losses['value_loss']:.3f}, policy {losses['policy_loss']:.3f})")
                 self._check_pause("phase", after="training")
 
-                self._finish_generation(generation, steps, losses, time.perf_counter() - t0)
+                self._finish_generation(generation, steps, losses, t0)
                 if generation < cfg.generations:
                     self._check_pause("generation", after="generation")
             self._stop_pool(abandon=False)
