@@ -21,7 +21,7 @@ choose **Server**, give its address (or pick a host from `~/.ssh/config`), a fol
 and its password, and press **Connect**.
 
 ```mermaid
-%%{init: {"fontSize": 12, "sequence": {"wrap": true, "width": 165, "height": 30, "actorMargin": 12, "messageMargin": 10, "boxMargin": 4, "noteMargin": 4, "mirrorActors": false}}}%%
+%%{init: {"fontSize": 11, "sequence": {"wrap": false, "width": 170, "height": 30, "actorMargin": 10, "messageMargin": 10, "boxMargin": 4, "boxTextMargin": 2, "noteMargin": 2, "mirrorActors": false, "diagramMarginX": 8, "diagramMarginY": 12}}}%%
 sequenceDiagram
     autonumber
     participant App as Training page
@@ -33,7 +33,7 @@ sequenceDiagram
     Note over API,S: the password goes through a pipe and is not kept
     App->>API: New run on the server
     API->>F: start the follower
-    F->>S: get the Python environment ready (first time: PyTorch)
+    F->>S: get the Python environment ready<br/>(first time: PyTorch)
     F->>S: copy the code and the run
     F->>S: start train.py, detached, at low priority
     loop every few seconds
