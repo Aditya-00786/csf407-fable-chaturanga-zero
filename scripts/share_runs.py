@@ -4,7 +4,7 @@
     python scripts/share_runs.py main-v4 main-v3     # writes results/<run>/ and dist/runs/<run>.tar
 
 results/<run>/ holds the run's settings, metrics, log, charts and reports (strength check, rating
-ladder): a few MB, enough to redraw its charts and check the README's numbers. dist/runs/<run>.tar
+ladder): a few MB, enough to redraw its charts and check the numbers in docs/. dist/runs/<run>.tar
 holds everything else too; upload the archives to the release `training-runs`:
 
     gh release upload training-runs dist/runs/*.tar --clobber
