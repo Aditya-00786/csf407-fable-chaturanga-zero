@@ -1,0 +1,22 @@
+{
+  "generations": 20,
+  "games_per_generation": 50,
+  "simulations": 50,
+  "temperature_plies": 30,
+  "late_temperature": 1.0,
+  "concurrent": 8,
+  "buffer_positions": 60000,
+  "batch_size": 256,
+  "steps_per_generation": 300,
+  "sample_reuse": 4.0,
+  "learning_rate": 0.001,
+  "weight_decay": 0.0001,
+  "eval_games": 20,
+  "eval_opponents": [
+    "previous",
+    "greedy"
+  ],
+  "blocks": 6,
+  "channels": 64,
+  "seed": 0
+}

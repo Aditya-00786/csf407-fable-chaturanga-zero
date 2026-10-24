@@ -8,3 +8,6 @@ runs/
 
 # Local Claude Code preview config
 .claude/
+
+# Archives of runs for GitHub releases (scripts/share_runs.py)
+dist/

@@ -1,0 +1,103 @@
+Run main-v2: generation 0 of 20, 0 games (0 positions) in the buffer; training on cuda, self-play on 9 processes
+Generation 1: 50 games in 49 s; from the opening W 11 / D 15 / B 13, 232 plies on average; 11 endgame starts, 11 decisive, 63 plies on average
+  trained 152 steps in 1 s: loss 6.401 (value 0.108, policy 6.293)
+  vs previous 0 W / 16 D / 4 L  (score 40%)
+  vs greedy   1 W / 0 D / 19 L  (score 5%)
+  vs random   2 W / 16 D / 2 L  (score 50%)
+Generation 2: 50 games in 52 s; from the opening W 11 / D 14 / B 11, 232 plies on average; 14 endgame starts, 10 decisive, 79 plies on average
+  trained 148 steps in 1 s: loss 4.458 (value 0.116, policy 4.342)
+  vs previous 0 W / 20 D / 0 L  (score 50%)
+  vs greedy   0 W / 0 D / 20 L  (score 0%)
+  vs random   1 W / 18 D / 1 L  (score 50%)
+Generation 3: 50 games in 52 s; from the opening W 6 / D 23 / B 3, 265 plies on average; 18 endgame starts, 16 decisive, 51 plies on average
+  trained 148 steps in 1 s: loss 3.551 (value 0.084, policy 3.467)
+  vs previous 1 W / 19 D / 0 L  (score 52%)
+  vs greedy   0 W / 0 D / 20 L  (score 0%)
+  vs random   0 W / 19 D / 1 L  (score 48%)
+Generation 4: 50 games in 50 s; from the opening W 7 / D 17 / B 7, 245 plies on average; 19 endgame starts, 15 decisive, 82 plies on average
+  trained 143 steps in 1 s: loss 3.238 (value 0.096, policy 3.142)
+  vs previous 1 W / 19 D / 0 L  (score 52%)
+  vs greedy   0 W / 1 D / 19 L  (score 2%)
+  vs random   0 W / 20 D / 0 L  (score 50%)
+Generation 5: 50 games in 54 s; from the opening W 10 / D 24 / B 8, 247 plies on average; 8 endgame starts, 7 decisive, 51 plies on average
+  trained 169 steps in 1 s: loss 3.097 (value 0.102, policy 2.995)
+  vs previous 1 W / 19 D / 0 L  (score 52%)
+  vs greedy   0 W / 1 D / 19 L  (score 2%)
+  vs random   2 W / 17 D / 1 L  (score 52%)
+Generation 6: 50 games in 62 s; from the opening W 3 / D 31 / B 5, 267 plies on average; 11 endgame starts, 9 decisive, 85 plies on average
+  trained 178 steps in 1 s: loss 2.962 (value 0.089, policy 2.872)
+  vs previous 2 W / 17 D / 1 L  (score 52%)
+  vs greedy   0 W / 2 D / 18 L  (score 5%)
+  vs random   2 W / 15 D / 3 L  (score 48%)
+Generation 7: 50 games in 55 s; from the opening W 4 / D 21 / B 10, 249 plies on average; 15 endgame starts, 11 decisive, 72 plies on average
+  trained 154 steps in 1 s: loss 2.779 (value 0.101, policy 2.678)
+  vs previous 0 W / 20 D / 0 L  (score 50%)
+  vs greedy   0 W / 1 D / 19 L  (score 2%)
+  vs random   1 W / 18 D / 1 L  (score 50%)
+Generation 8: 50 games in 52 s; from the opening W 6 / D 24 / B 9, 247 plies on average; 11 endgame starts, 5 decisive, 90 plies on average
+  trained 167 steps in 1 s: loss 2.725 (value 0.099, policy 2.626)
+  vs previous 0 W / 19 D / 1 L  (score 48%)
+  vs greedy   0 W / 1 D / 19 L  (score 2%)
+  vs random   0 W / 18 D / 2 L  (score 45%)
+Generation 9: 50 games in 61 s; from the opening W 6 / D 28 / B 7, 241 plies on average; 9 endgame starts, 3 decisive, 95 plies on average
+  trained 168 steps in 1 s: loss 2.657 (value 0.088, policy 2.569)
+  vs previous 0 W / 20 D / 0 L  (score 50%)
+  vs greedy   0 W / 3 D / 17 L  (score 8%)
+  vs random   1 W / 15 D / 4 L  (score 42%)
+Generation 10: 50 games in 62 s; from the opening W 4 / D 30 / B 5, 270 plies on average; 11 endgame starts, 9 decisive, 79 plies on average
+  trained 178 steps in 1 s: loss 2.626 (value 0.081, policy 2.545)
+  vs previous 0 W / 20 D / 0 L  (score 50%)
+  vs greedy   0 W / 1 D / 19 L  (score 2%)
+  vs random   0 W / 19 D / 1 L  (score 48%)
+Generation 11: 50 games in 59 s; from the opening W 4 / D 29 / B 7, 277 plies on average; 10 endgame starts, 7 decisive, 76 plies on average
+  trained 185 steps in 1 s: loss 2.600 (value 0.080, policy 2.520)
+  vs previous 0 W / 20 D / 0 L  (score 50%)
+  vs greedy   0 W / 3 D / 17 L  (score 8%)
+  vs random   3 W / 17 D / 0 L  (score 57%)
+Generation 12: 50 games in 54 s; from the opening W 6 / D 22 / B 7, 253 plies on average; 15 endgame starts, 14 decisive, 74 plies on average
+  trained 156 steps in 1 s: loss 2.612 (value 0.095, policy 2.517)
+  vs previous 0 W / 20 D / 0 L  (score 50%)
+  vs greedy   0 W / 2 D / 18 L  (score 5%)
+  vs random   1 W / 17 D / 2 L  (score 48%)
+Generation 13: 50 games in 56 s; from the opening W 5 / D 17 / B 7, 269 plies on average; 21 endgame starts, 19 decisive, 89 plies on average
+  trained 152 steps in 1 s: loss 2.613 (value 0.107, policy 2.505)
+  vs previous 0 W / 20 D / 0 L  (score 50%)
+  vs greedy   0 W / 0 D / 20 L  (score 0%)
+  vs random   1 W / 16 D / 3 L  (score 45%)
+Generation 14: 50 games in 55 s; from the opening W 6 / D 25 / B 6, 271 plies on average; 13 endgame starts, 12 decisive, 55 plies on average
+  trained 168 steps in 1 s: loss 2.606 (value 0.094, policy 2.512)
+  vs previous 0 W / 20 D / 0 L  (score 50%)
+  vs greedy   0 W / 0 D / 20 L  (score 0%)
+  vs random   1 W / 16 D / 3 L  (score 45%)
+Generation 15: 50 games in 53 s; from the opening W 6 / D 19 / B 8, 252 plies on average; 17 endgame starts, 12 decisive, 117 plies on average
+  trained 162 steps in 1 s: loss 2.602 (value 0.106, policy 2.496)
+  vs previous 0 W / 20 D / 0 L  (score 50%)
+  vs greedy   0 W / 0 D / 20 L  (score 0%)
+  vs random   2 W / 17 D / 1 L  (score 52%)
+Generation 16: 50 games in 49 s; from the opening W 7 / D 22 / B 5, 264 plies on average; 16 endgame starts, 10 decisive, 68 plies on average
+  trained 157 steps in 1 s: loss 2.588 (value 0.107, policy 2.480)
+  vs previous 1 W / 19 D / 0 L  (score 52%)
+  vs greedy   0 W / 1 D / 19 L  (score 2%)
+  vs random   2 W / 15 D / 3 L  (score 48%)
+Generation 17: 50 games in 57 s; from the opening W 9 / D 22 / B 6, 246 plies on average; 13 endgame starts, 9 decisive, 81 plies on average
+  trained 159 steps in 1 s: loss 2.584 (value 0.110, policy 2.473)
+  vs previous 0 W / 20 D / 0 L  (score 50%)
+  vs greedy   0 W / 3 D / 17 L  (score 8%)
+  vs random   1 W / 17 D / 2 L  (score 48%)
+Generation 18: 50 games in 51 s; from the opening W 10 / D 21 / B 5, 253 plies on average; 14 endgame starts, 12 decisive, 68 plies on average
+  trained 158 steps in 1 s: loss 2.590 (value 0.106, policy 2.484)
+  vs previous 0 W / 18 D / 2 L  (score 45%)
+  vs greedy   0 W / 2 D / 18 L  (score 5%)
+  vs random   4 W / 16 D / 0 L  (score 60%)
+Generation 19: 50 games in 51 s; from the opening W 3 / D 22 / B 8, 246 plies on average; 17 endgame starts, 15 decisive, 69 plies on average
+  trained 146 steps in 1 s: loss 2.571 (value 0.106, policy 2.466)
+  vs previous 0 W / 20 D / 0 L  (score 50%)
+  vs greedy   0 W / 0 D / 20 L  (score 0%)
+  vs random   4 W / 16 D / 0 L  (score 60%)
+Generation 20: 50 games in 55 s; from the opening W 8 / D 19 / B 4, 264 plies on average; 19 endgame starts, 13 decisive, 73 plies on average
+  trained 150 steps in 1 s: loss 2.561 (value 0.110, policy 2.451)
+  vs previous 1 W / 19 D / 0 L  (score 52%)
+  vs greedy   0 W / 1 D / 19 L  (score 2%)
+  vs random   0 W / 20 D / 0 L  (score 50%)
+Done: 20 generations; best network is generation 18.
+terminate called without an active exception

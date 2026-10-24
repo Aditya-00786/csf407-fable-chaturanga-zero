@@ -78,7 +78,7 @@ the same commit that completes the work.
 - **Researched ruleset.** Every rule is backed by historical sources, and contested rules are
   settled by counting references. See [docs/RULES.md](docs/RULES.md).
 - **Verified rules engine.** A cross-check against an independent reference move generator and a
-  10,000-game random-play stress test; 276 tests in all.
+  10,000-game random-play stress test; 278 tests in all.
 - **AlphaZero search.** PUCT Monte Carlo Tree Search guided by a residual policy-value network
   (6 blocks × 64 filters, about 1M parameters), with exact values for finished games, root noise,
   temperature and tree reuse for self-play. Planted bugs in the search are all caught by the tests.
@@ -191,6 +191,7 @@ The commands below assume the virtual environment is active. If it isn't, prefix
 | A quick test run | `python scripts/train.py --run quick --games 8 --generations 2 --eval-games 4` |
 | Plot a run's curves | `python scripts/plot_training.py` (needs `pip install -e ".[train]"`) |
 | A run's report (what it learned) | `python scripts/report.py --run main` (add `--strength` for the strength check) |
+| Share runs: results for the repository, archives for the release | `python scripts/share_runs.py main-v4` (see [Sharing runs](#sharing-runs)) |
 | Rate a run's generations (Elo ladder, conversion test) | `python scripts/report.py --run main --ladder` (`--every 10 --games 40` by default) |
 | Self-play games for a teammate's run | `python scripts/selfplay.py --checkpoint gen_0005.pt --games 50 --name <you>` |
 | Start the API server | `python -m chaturanga_server` (add `--reload` while developing) |
@@ -927,6 +928,32 @@ and sends back the `.jsonl.gz` file it writes, which goes into `runs/<run>/incom
 are merged, not trained networks: averaging separately trained weights does not give a better
 network, but more games from the current network always help.
 
+### Sharing runs
+
+Training runs live in `runs/`, which git ignores: `main-v4` alone is 1.7 GB, mostly networks and
+self-play games, and GitHub takes no file over 100 MB. They are shared in two parts by
+`python scripts/share_runs.py <run> ...`:
+
+- **`results/<run>/` in the repository:** each run's settings, metrics, log, charts and reports
+  (strength check, rating ladder and conversion test), a few MB in all. Enough to redraw a run's
+  charts and check the numbers in this README.
+- **The release `training-runs`:** one archive per run (`main.tar`, `main-v2.tar`, `main-v3.tar`,
+  `main-v4.tar`) with everything, networks and games included. To bring a run back into the app:
+
+  ```bash
+  gh release download training-runs -p main-v4.tar
+  ```
+
+  ```bash
+  tar -xf main-v4.tar -C runs/
+  ```
+
+Neither holds what ties a run to the machines it used (`launch.json` and `server.json`, with the
+server's address and folder, the followers' logs, pause requests), nor the machines' names in its
+status and reports, so a run brought back shows as finished on the machine it is unpacked on. After
+training a run further, run the script again, commit `results/` and upload the new archive
+(`gh release upload training-runs dist/runs/<run>.tar --clobber`).
+
 ### Training in the cloud
 
 **New run** asks **Where**: this Mac, Colab, Kaggle or your own server. The cloud keeps the Mac
@@ -1248,13 +1275,15 @@ csf407-fable-chaturanga-zero/
 │   ├── report.py            # a run's report in the terminal (and the app's strength check and ladder)
 │   ├── kaggle_run.py        # a run on Kaggle: upload, start, follow, bring home
 │   ├── server_run.py        # a run on your server: set up, start, follow live, pass pauses on
-│   └── server_job.py        # a server run's strength check or ladder, played there and followed
+│   ├── server_job.py        # a server run's strength check or ladder, played there and followed
+│   └── share_runs.py        # a run's results for the repository, and an archive of it for a release
+├── results/                 # each run's settings, metrics, charts and reports (scripts/share_runs.py)
 ├── notebooks/
 │   └── train_colab.ipynb    # the same training on Google Colab, saved to Drive
 ├── docs/
 │   ├── RULES.md             # rules specification with source tallies
 │   └── Handouts/            # source PDFs cited in RULES.md (linked from there)
-├── runs/, checkpoints/      # training runs and the published network (git-ignored)
+├── runs/, checkpoints/      # training runs and the published network (git-ignored; see Sharing runs)
 ├── pyproject.toml           # package metadata and dependencies
 ├── PRODUCT.md               # product and design brief for the web app
 └── README.md

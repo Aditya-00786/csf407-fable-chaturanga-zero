@@ -1,0 +1,29 @@
+{
+  "generations": 40,
+  "games_per_generation": 500,
+  "simulations": 50,
+  "temperature_plies": 30,
+  "late_temperature": 0.5,
+  "endgame_fraction": 0.3,
+  "endgame_max_pieces": 5,
+  "concurrent": 8,
+  "buffer_positions": 300000,
+  "batch_size": 256,
+  "steps_per_generation": 2000,
+  "sample_reuse": 4.0,
+  "value_mix": 0.5,
+  "learning_rate": 0.001,
+  "weight_decay": 0.0001,
+  "eval_games": 40,
+  "eval_opponents": [
+    "previous",
+    "greedy",
+    "random"
+  ],
+  "eval_opening_plies": 16,
+  "auto_report": false,
+  "report_games": 20,
+  "blocks": 6,
+  "channels": 64,
+  "seed": 0
+}
