@@ -21,6 +21,12 @@ at once whenever there is one, and do not play a move after which the opponent c
 another move leaves them no such reply. Searches score finished games exactly, but a winning move
 whose prior is near 0 is seldom tried, and among moves that all look won (0.997 against 1.0) the
 visits follow the priors, so main-v4's generation 60 took a win in one only about half the time.
+
+Contempt (`MCTSConfig.contempt`), Leela Chess Zero's draw score: a finished game that is drawn
+(repetition, the 70-move rule, the ply cap) is worth -contempt to the player searching (the root's
+side to move) instead of 0, and +contempt to the other, so the search steers away from draws it can
+avoid at no greater cost. It applies to draws the search reaches; the network's own values are left
+as they are.
 """
 
 import math
@@ -59,6 +65,7 @@ class MCTSConfig:
     dirichlet_alpha: float = 0.3   # root noise for self-play (AlphaZero used 0.3 for chess)
     dirichlet_fraction: float = 0.25  # share of the root prior replaced by noise when enabled
     fpu: float = 0.0               # value assumed for a move that has not been tried yet
+    contempt: float = 0.0          # what a draw costs the player searching (0: a draw is worth 0)
     take_wins: bool = False        # choose a move that wins at once whenever there is one
     avoid_losses: bool = False     # choose no move after which the opponent can win at once, if another avoids it
 
@@ -146,7 +153,11 @@ class MCTS:
         if outcome is None:
             return path
         node.children = {}
-        self._backup(path, float(outcome.value_for(node.state.side)))
+        value = float(outcome.value_for(node.state.side))
+        if outcome.winner is None and self.config.contempt:
+            # For the side to move there: a loss of `contempt` if it is the player searching, a gain if not.
+            value = -self.config.contempt if node.state.side == path[0].state.side else self.config.contempt
+        self._backup(path, value)
         return None
 
     def expand_and_backup(self, path: list[Node], priors: dict[int, float], value: float) -> None:

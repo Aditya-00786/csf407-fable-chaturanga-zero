@@ -248,3 +248,31 @@ def test_wins_and_losses_at_once():
     state = GameState.from_fen(STALEMATE_TRAP)
     assert {move_to_str(m) for m in state.legal_moves() if wins_at_once(state, m)} == {"a1a8"}
     assert {move_to_str(m) for m in state.legal_moves() if loses_at_once(state.apply(m), state.side)} == {"e6f7", "a1g1"}
+
+
+def _repeated(moves: str) -> GameState:
+    s = GameState.initial()
+    for m in moves.split():
+        s = s.play(m)
+    return s
+
+
+def test_contempt_makes_a_draw_cost_the_player_searching():
+    # Black to move: f6g8 brings the start position round a third time, a draw by repetition.
+    state = _repeated("g1f3 g8f6 f3g1 f6g8 g1f3 g8f6 f3g1")
+    draw = parse_move("f6g8")
+    assert state.apply(draw).outcome().reason == "repetition"
+    plain = MCTS(UniformEvaluator(), MCTSConfig(simulations=400), seed=0).search(state)
+    assert plain.children[draw].mean_value == 0
+    mcts = MCTS(UniformEvaluator(), MCTSConfig(simulations=400, contempt=0.3), seed=0)
+    root = mcts.search(state)
+    assert root.children[draw].mean_value == pytest.approx(-0.3)
+    assert mcts.choose_move(root) != draw
+
+
+def test_contempt_makes_a_draw_the_opponent_can_force_good_for_the_opponent():
+    # White to move; after f3g1, Black's f6g8 repeats the start a third time.
+    state = _repeated("g1f3 g8f6 f3g1 f6g8 g1f3 g8f6")
+    root = MCTS(UniformEvaluator(), MCTSConfig(simulations=800, contempt=0.3), seed=0).search(state)
+    reply = root.children[parse_move("f3g1")].children[parse_move("f6g8")]
+    assert reply.visits and reply.mean_value == pytest.approx(0.3)  # stored for Black, who made the move

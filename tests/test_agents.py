@@ -61,3 +61,7 @@ def test_the_levels_that_play_their_best_move_follow_the_search_rules():
         config = MCTSAgent(evaluator=UniformEvaluator(), sure=sure).mcts.config
         assert config.take_wins == config.avoid_losses == sure
     assert not MCTSAgent(evaluator=UniformEvaluator()).mcts.config.take_wins  # Milestone 2's baseline as it was
+    # The same levels play on rather than draw by repetition; the others, and the baseline, as before.
+    assert {lv.id: lv.contempt for lv in LEVELS.values()} == {"easy": 0, "medium": 0, "hard": 0.3, "impossible": 0.3}
+    assert MCTSAgent(evaluator=UniformEvaluator(), contempt=0.3).mcts.config.contempt == 0.3
+    assert MCTSAgent(evaluator=UniformEvaluator()).mcts.config.contempt == 0

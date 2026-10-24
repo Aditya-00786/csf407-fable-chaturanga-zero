@@ -77,7 +77,7 @@ the same commit that completes the work.
 - **Researched ruleset.** Every rule is backed by historical sources, and contested rules are
   settled by counting references. See [docs/RULES.md](docs/RULES.md).
 - **Verified rules engine.** A cross-check against an independent reference move generator and a
-  10,000-game random-play stress test; 274 tests in all.
+  10,000-game random-play stress test; 276 tests in all.
 - **AlphaZero search.** PUCT Monte Carlo Tree Search guided by a residual policy-value network
   (6 blocks × 64 filters, about 1M parameters), with exact values for finished games, root noise,
   temperature and tree reuse for self-play. Planted bugs in the search are all caught by the tests.
@@ -774,7 +774,7 @@ search left them.
 
 | Where | Take a win in one | Don't allow one |
 |---|:-:|:-:|
-| Play, Hard and Impossible | Yes | Yes |
+| Play, Hard and Impossible (also contempt, below) | Yes | Yes |
 | Play, Easy and Medium (they stray from their best move on purpose) | No | No |
 | Play, MCTS (Milestone 2's untrained agent, a benchmark baseline) | No | No |
 | Test games and the strength check (in `main-v4`, from generation 61) | Yes | Yes |
@@ -819,6 +819,31 @@ the same seeds:
   Against Greedy, 100 games put generation 60 at 87.5% (82 / 11 / 7), below the 95% of its
   20-game strength check (18 / 2 / 0). With 20 games a match, scores move by several points from
   chance alone.
+
+**Contempt.** By generation 90, most games between strong generations ended in a draw by
+repetition. Leela Chess Zero's answer is a draw score, or contempt (`MCTSConfig.contempt`): a
+finished game that is drawn (by repetition, the 70-move rule or the ply cap) is worth −c to the
+player searching instead of 0, and +c to its opponent, so the search avoids draws it can avoid at
+no greater cost. It applies to the draws the search reaches; the network's values stay as they are,
+so it needs no retraining. Generation 90 with contempt played generations 90, 80 and 75 and Greedy
+without it, 40 games each from the opening as the ladder plays them, the same seeds for every c:
+
+| Contempt | vs generation 90 | vs 80 | vs 75 | vs Greedy | Draws against the three generations: by repetition / at the ply cap |
+|---|:-:|:-:|:-:|:-:|:-:|
+| 0 | 9 / 23 / 8 | 10 / 26 / 4 | 8 / 31 / 1 | 38 / 2 / 0 | 64 / 16 |
+| 0.1 | 7 / 27 / 6 | 9 / 27 / 4 | 10 / 29 / 1 | 40 / 0 / 0 | 38 / 45 |
+| 0.3 | 8 / 28 / 4 | 11 / 27 / 2 | 12 / 26 / 2 | 40 / 0 / 0 | 6 / 74 |
+
+- **Repetitions turned into games run to the cap.** At 0.3 the draws by repetition all but went
+  (64 to 6 in 120 games), but about as many games were drawn, at the 300-ply cap instead. When
+  neither side finds a way through, avoiding repetition does not find one either; that has to come
+  from what the network knows.
+- **A little stronger.** Against the three generations it won 31 and lost 8 (59.6%), against 27 and
+  13 without (55.8%): about +27 Elo, which 120 games cannot tell from chance. Against Greedy its
+  two draws became wins.
+- **Where it is used.** Play's Hard and Impossible (`contempt` 0.3), where it plays on rather than
+  settle for a repetition. Not the test games, the ladder or self-play: their scores stay comparable
+  with earlier generations, and self-play's values (and so the value targets) stay unbiased.
 
 ### The run report
 
@@ -961,7 +986,7 @@ in Computers mode) and a level:
 |---|:-:|---|
 | Easy | 10 | Sampled in proportion to visits: it often strays from its favourite |
 | Medium | 50 | Visits sharpened (temperature 0.5): usually its favourite |
-| Hard | 200 | Always the most visited move; takes any win in one and never allows one it can avoid |
+| Hard | 200 | Always the most visited move; takes any win in one, never allows one it can avoid, and plays on rather than repeat for a draw (contempt 0.3) |
 | Impossible | 800 | As Hard; about a second per move |
 
 From Python: `make_agent("zero", level="hard")`. The server reads the network from

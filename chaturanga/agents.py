@@ -180,15 +180,17 @@ class MCTSAgent:
                    "yet: it knows only the rules and how games end.")
 
     def __init__(self, seed: Optional[int] = None, simulations: int = 50, evaluator=None, temperature: float = 0.0,
-                 sure: bool = False):
+                 sure: bool = False, contempt: float = 0.0):
         from .mcts import MCTS, MCTSConfig
 
         # No root noise: this agent plays to win, it is not exploring. At temperature 0 it plays
         # the most visited move; above 0 it samples in proportion to visits (weaker, more varied).
-        # `sure`: take a win in one, and do not allow one when it can be avoided (see mcts.py).
+        # `sure`: take a win in one, and do not allow one when it can be avoided; `contempt`: what a
+        # draw costs it, so it plays on rather than repeat (see mcts.py).
         if evaluator is None:
             evaluator = untrained_evaluator(timeout=NETWORK_WAIT_SECONDS)
-        self.mcts = MCTS(evaluator, MCTSConfig(simulations=simulations, take_wins=sure, avoid_losses=sure), seed)
+        self.mcts = MCTS(evaluator, MCTSConfig(simulations=simulations, take_wins=sure, avoid_losses=sure,
+                                               contempt=contempt), seed)
         self.temperature = temperature
 
     def select_move(self, state: GameState) -> int:
@@ -204,18 +206,23 @@ class Level:
     temperature: float
     description: str
     sure: bool = False  # the search's rules: take a win in one, never allow one that can be avoided
+    # What a draw costs it (see mcts.py). At 0.3, main-v4's generation 90 drew 6 of 120 games by
+    # repetition against generations 75, 80 and 90 instead of 64, won 31 instead of 27 and lost 8
+    # instead of 13 (most of the other draws ran to the ply cap instead), and beat Greedy 40-0-0.
+    contempt: float = 0.0
 
 
 # Strength comes from the search budget and from how often the agent strays from its best move.
-# The levels that always play their best move also follow the search's rules; Easy and Medium
-# stray on purpose, and keep their slips.
+# The levels that always play their best move also follow the search's rules and play on rather
+# than draw by repetition; Easy and Medium stray on purpose, and keep their slips.
 LEVELS = {level.id: level for level in (
     Level("easy", "Easy", 10, 1.0, "A short search, and it often plays a move other than its favourite."),
     Level("medium", "Medium", 50, 0.5, "A 50-simulation search; it mostly plays its favourite move."),
-    Level("hard", "Hard", 200, 0.0, "200 simulations, always its best move; takes any win in one and never "
-          "allows one it can avoid.", sure=True),
+    Level("hard", "Hard", 200, 0.0, "200 simulations, always its best move; takes any win in one, never "
+          "allows one it can avoid, and plays on rather than repeat for a draw.", sure=True, contempt=0.3),
     Level("impossible", "Impossible", 800, 0.0, "800 simulations, always its best move; thinks for about a "
-          "second, takes any win in one and never allows one it can avoid.", sure=True),
+          "second, takes any win in one, never allows one it can avoid, and plays on rather than repeat "
+          "for a draw.", sure=True, contempt=0.3),
 )}
 DEFAULT_LEVEL = "medium"
 
@@ -234,7 +241,8 @@ class ZeroAgent(MCTSAgent):
                                      "(it publishes checkpoints/best.pt).")
         evaluator, self.network = trained
         self.level = LEVELS[level]
-        super().__init__(seed, self.level.simulations, evaluator, self.level.temperature, self.level.sure)
+        super().__init__(seed, self.level.simulations, evaluator, self.level.temperature, self.level.sure,
+                         self.level.contempt)
 
 
 AGENTS = {agent.id: agent for agent in (RandomAgent, GreedyAgent, MCTSAgent, ZeroAgent)}
