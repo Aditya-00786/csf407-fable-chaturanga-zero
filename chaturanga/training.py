@@ -62,7 +62,7 @@ from .selfplay import (GameRecord, SelfPlayConfig, append_games, play_games, rea
 class TrainConfig:
     generations: int = 20             # stop after this many; raise it and resume to train further
     games_per_generation: int = 50
-    simulations: int = 50             # MCTS simulations per move in self-play and evaluation
+    simulations: int = 50             # MCTS simulations per move in self-play (and the tests, unless set apart)
     # Self-play samples moves in proportion to visits for the first `temperature_plies` plies and at
     # `late_temperature` after. AlphaZero played the most visited move after its opening (0), but at
     # this scale both sides then shuffle into repetition draws (measured: 22 of 28 games with the
@@ -101,6 +101,9 @@ class TrainConfig:
     learning_rate: float = 1e-3
     weight_decay: float = 1e-4
     eval_games: int = 20              # per opponent after each generation; 0 skips evaluation
+    # Simulations per move in the test games and the strength check; None: as in self-play. Kept apart
+    # so that a deeper self-play search leaves the tests, and their scores, comparable with earlier.
+    eval_simulations: Optional[int] = None
     eval_opponents: tuple = ("previous", "greedy", "random")
     # Test games sample their first moves in proportion to visits so they differ; with only 8 such
     # plies, games between successive generations nearly all ended in repetition.
@@ -112,6 +115,10 @@ class TrainConfig:
     blocks: int = NetConfig.blocks
     channels: int = NetConfig.channels
     seed: int = 0
+
+    @property
+    def test_simulations(self) -> int:
+        return self.eval_simulations or self.simulations
 
     @property
     def net_config(self) -> NetConfig:
@@ -787,9 +794,9 @@ class TrainingRun:
         if pool is None:
             for task in match_plan(games, 0, False):
                 self._check_pause("now")
-                keep(play_matches(task, self.config.simulations, self.config.eval_opening_plies))
+                keep(play_matches(task, self.config.test_simulations, self.config.eval_opening_plies))
         else:
-            self._gather([pool.apply_async(play_matches, (task, self.config.simulations, self.config.eval_opening_plies))
+            self._gather([pool.apply_async(play_matches, (task, self.config.test_simulations, self.config.eval_opening_plies))
                           for task in match_plan(games, self.workers, self.gpu_workers > 0)], keep)
         self._live = None
         results = {}

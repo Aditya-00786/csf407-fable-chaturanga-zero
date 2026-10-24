@@ -77,7 +77,7 @@ the same commit that completes the work.
 - **Researched ruleset.** Every rule is backed by historical sources, and contested rules are
   settled by counting references. See [docs/RULES.md](docs/RULES.md).
 - **Verified rules engine.** A cross-check against an independent reference move generator and a
-  10,000-game random-play stress test; 273 tests in all.
+  10,000-game random-play stress test; 274 tests in all.
 - **AlphaZero search.** PUCT Monte Carlo Tree Search guided by a residual policy-value network
   (6 blocks × 64 filters, about 1M parameters), with exact values for finished games, root noise,
   temperature and tree reuse for self-play. Planted bugs in the search are all caught by the tests.
@@ -186,6 +186,7 @@ The commands below assume the virtual environment is active. If it isn't, prefix
 | Resume a paused or stopped run | `python scripts/train.py --run main` |
 | Pause a run from another terminal | `python scripts/train.py --pause now` (or `after-phase`, `after-generation`; `--cancel-pause` withdraws it) |
 | Train further | `python scripts/train.py --generations 40` |
+| Search deeper in self-play, tests as before | `python scripts/train.py --generations 90 --sims 400 --eval-sims 200` |
 | A quick test run | `python scripts/train.py --run quick --games 8 --generations 2 --eval-games 4` |
 | Plot a run's curves | `python scripts/plot_training.py` (needs `pip install -e ".[train]"`) |
 | A run's report (what it learned) | `python scripts/report.py --run main` (add `--strength` for the strength check) |
@@ -460,10 +461,15 @@ restarted) resumes the same way. To train beyond the planned generations, add `-
 with the new total (or use **Train further** on a finished run); nothing caps it.
 
 **Changing settings as it goes.** **Settings**, beside Resume and Train further, changes what the
-coming generations do: games per generation (the buffer grows to match), simulations per move,
-test games per opponent, the learning rate (lowered in steps late in a run, as AlphaZero did), the
-temperature after the opening, the report at the end, and for a run on the server its self-play
-processes and how many use the GPU. The network's size stays. Each start or resume records the
+coming generations do: games per generation (the buffer grows to match), self-play simulations per
+move, test simulations per move, test games per opponent, the learning rate (lowered in steps late
+in a run, as AlphaZero did), the temperature after the opening, the report at the end, and for a
+run on the server its self-play processes and how many use the GPU. The network's size stays.
+Test simulations (`eval_simulations`, `--eval-sims`) are the search of the test games and the
+strength check; unset, they follow self-play's. Setting them apart lets self-play search deeper
+while the tests, and the scores they give, stay comparable with earlier generations; changing
+self-play's in the panel keeps the tests' where the panel shows them. The rating ladder keeps the
+search it began with whatever the run's become. Each start or resume records the
 settings it trains with in `metrics.jsonl` (`"event": "start"`), so a change is on record from the
 generation it applies to.
 
@@ -966,9 +972,10 @@ Run report (**Rating ladder**, then **Rate generations**), or with `python scrip
   at 0. One virtual draw per pair keeps a clean sweep's gap large but finite. Each rating's 95%
   interval is against Random. Each step from one rated generation to the next has its own interval,
   much narrower, because neighbouring ratings move together.
-- **Adding to it.** Rating later generations plays only their games against the rest. A run already
-  on the ladder adds its new generations in its end-of-run report. Results are kept in
-  `runs/<run>/report/benchmark.json`.
+- **Adding to it.** Rating later generations plays only their games against the rest, with the
+  search the ladder began with (its simulations and sampled plies), so a run that later searches
+  deeper in self-play still has comparable ratings. A run already on the ladder adds its new
+  generations in its end-of-run report. Results are kept in `runs/<run>/report/benchmark.json`.
 
 ### The conversion test
 

@@ -188,6 +188,22 @@ def test_worker_processes_take_their_devices_in_turn(monkeypatch):
     assert seen == ["cuda", "cpu", "cpu", "cuda"]  # a process restarted later takes the next turn
 
 
+def test_test_games_can_search_apart_from_self_play(tmp_path, monkeypatch):
+    """With eval_simulations, test games search as set there while self-play searches deeper; without
+    it, as self-play does (runs made before it existed)."""
+    from chaturanga import training
+
+    assert TrainConfig(simulations=400).test_simulations == 400
+    assert TrainConfig(simulations=400, eval_simulations=200).test_simulations == 200
+    searched = []
+    real = training.play_matches
+    monkeypatch.setattr(training, "play_matches", lambda games, sims, *a, **k: searched.append(sims) or real(games, sims, *a, **k))
+    cfg = replace(PAUSE_CFG, games_per_generation=2, simulations=6, eval_simulations=3, eval_games=2)
+    _run(tmp_path / "r", cfg)
+    assert searched and set(searched) == {3}
+    assert {g.plies for g in read_games(tmp_path / "r" / "games" / "gen_0001.jsonl.gz")}  # self-play still played
+
+
 def test_the_search_rules_in_self_play_and_test_games():
     # A run made before the rules existed takes wins in self-play from its next generation on.
     old = TrainConfig.from_json({"games_per_generation": 500, "simulations": 200})

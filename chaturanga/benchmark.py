@@ -5,8 +5,10 @@ scores about 50% by design, and Greedy, which it nearly always beats, has little
 
 Rating ladder. The run's networks every few generations (with the first, the latest and the best)
 play each other and Random and Greedy from the opening, `games` games a pair with colours
-alternating, searching as the run's test games do (its simulations, its sampled opening plies and
-the search's rules). Ratings are Elo, fitted to every result at once (Bradley-Terry, a draw half a
+alternating, searching as the run's test games did when the ladder began (their simulations,
+sampled opening plies and the search's rules). A ladder keeps that search for every generation it
+rates later, so all its ratings stay comparable whatever the run's settings become (a deeper
+self-play search, say). Ratings are Elo, fitted to every result at once (Bradley-Terry, a draw half a
 win), with Random at 0. Each pair also counts one virtual draw, so a clean sweep gives a large gap
 rather than an endless one. The 95% intervals come from the fit's curvature and are against Random;
 each step from one rated generation to the next has its own, much narrower (neighbours' ratings
@@ -257,10 +259,13 @@ def run_benchmark(run_dir, games: int = 40, every: int = 10, workers: int = 0, g
 
     run_dir = Path(run_dir)
     config = json.loads((run_dir / "config.json").read_text())
-    sims = config.get("simulations", 50)
-    opening = config.get("eval_opening_plies", 16)
     todo = plan(run_dir, games, every)
     old = read_benchmark(run_dir) or {}
+    if old.get("pairs"):  # the search the ladder began with, for every rating it holds
+        sims, opening = old["simulations"], old["opening_plies"]
+    else:  # a new ladder searches as the run's tests do now
+        sims = config.get("eval_simulations") or config.get("simulations", 50)
+        opening = config.get("eval_opening_plies", 16)
     pairs = dict(old.get("pairs", {}))
     conversion = dict(todo["kept_conversion"])
     data = {"state": "running", "games": games, "every": every, "simulations": sims, "opening_plies": opening,

@@ -121,6 +121,12 @@ def test_the_ladder_rates_every_entry_and_later_plays_only_what_is_new(tiny_run)
     assert again["conversion"]["gen_0000"] == data["conversion"]["gen_0000"]
     # More games a pair adds to every pair.
     assert plan(tiny_run, games=3, every=1)["ladder_games"] == 10
+    # The ladder keeps the search it began with, whatever the run's becomes (a deeper self-play search).
+    config = json.loads((tiny_run / "config.json").read_text())
+    (tiny_run / "config.json").write_text(json.dumps({**config, "simulations": 9, "eval_simulations": 7}))
+    save_checkpoint(str(tiny_run / "checkpoints" / "gen_0003.pt"), new_network(NetConfig(blocks=1, channels=8), seed=3))
+    later = run_benchmark(tiny_run, games=2, every=1, workers=1, log=lambda *_: None)
+    assert (later["simulations"], later["opening_plies"]) == (data["simulations"], data["opening_plies"]) == (2, 2)
 
 
 def test_every_nth_generation_with_the_first_latest_and_best(tmp_path):

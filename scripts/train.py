@@ -33,7 +33,7 @@ ROOT = os.path.join(os.path.dirname(__file__), "..")
 
 # Command-line flag -> TrainConfig field.
 OPTIONS = {
-    "generations": "generations", "games": "games_per_generation", "sims": "simulations",
+    "generations": "generations", "games": "games_per_generation", "sims": "simulations", "eval_sims": "eval_simulations",
     "steps": "steps_per_generation", "batch": "batch_size", "lr": "learning_rate",
     "buffer": "buffer_positions", "eval_games": "eval_games", "concurrent": "concurrent", "reuse": "sample_reuse",
     "late_temperature": "late_temperature", "endgames": "endgame_fraction", "value_mix": "value_mix",
@@ -59,8 +59,9 @@ def main():
     control.add_argument("--cancel-pause", action="store_true", help="withdraw a pause request, then exit")
     defaults = TrainConfig()
     for flag, name in OPTIONS.items():
-        ap.add_argument(f"--{flag.replace('_', '-')}", dest=flag, type=type(getattr(defaults, name)),
-                        help=f"default {getattr(defaults, name)}")
+        default = getattr(defaults, name)
+        ap.add_argument(f"--{flag.replace('_', '-')}", dest=flag, type=int if default is None else type(default),
+                        help=f"default {'as --sims' if default is None else default}")
     args = ap.parse_args()
 
     run_dir = os.path.join(args.runs_dir, args.run)

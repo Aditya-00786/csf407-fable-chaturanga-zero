@@ -265,7 +265,7 @@ def measure_strength(run_dir, games: int = 20, workers: int = 0, simulations: Op
 
     run_dir = Path(run_dir)
     config = json.loads((run_dir / "config.json").read_text())
-    sims = simulations or config.get("simulations", 50)
+    sims = simulations or config.get("eval_simulations") or config.get("simulations", 50)  # the tests' search
     nets = _checkpoints(run_dir)
     seed, opening = 424_242, 8
     prints = {label: _fingerprint(path) for label, (_, path) in nets.items()}

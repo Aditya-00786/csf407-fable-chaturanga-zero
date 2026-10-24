@@ -290,6 +290,7 @@ function Flash({ text }: { text: string | null }) {
 interface NextSettings {
   games: number
   sims: number
+  testSims: number
   lr: number
   temp: number
   evalGames: number
@@ -301,7 +302,8 @@ interface NextSettings {
 function currentSettings(config: RunDetail['config'], status: RunStatus): NextSettings {
   const num = (k: string, fallback: number) => (typeof config[k] === 'number' ? (config[k] as number) : fallback)
   return {
-    games: config.games_per_generation, sims: config.simulations, lr: num('learning_rate', 0.001),
+    games: config.games_per_generation, sims: config.simulations, testSims: num('eval_simulations', config.simulations),
+    lr: num('learning_rate', 0.001),
     temp: num('late_temperature', 0.5), evalGames: num('eval_games', 20), autoReport: config.auto_report === true,
     workers: status.server_workers ?? 1, gpuWorkers: status.server_gpu_workers ?? 0,
   }
@@ -312,6 +314,9 @@ function settingChanges(next: NextSettings, now: NextSettings, server: boolean):
   const out: RunSettings = {}
   if (next.games !== now.games) out.games_per_generation = next.games
   if (next.sims !== now.sims) out.simulations = next.sims
+  // Sent whenever self-play's changes too: a run whose tests followed self-play's search keeps the
+  // search shown here for its tests.
+  if (next.testSims !== now.testSims || next.sims !== now.sims) out.eval_simulations = next.testSims
   if (next.lr !== now.lr) out.learning_rate = next.lr
   if (next.temp !== now.temp) out.late_temperature = next.temp
   if (next.evalGames !== now.evalGames) out.eval_games = next.evalGames
@@ -323,7 +328,8 @@ function settingChanges(next: NextSettings, now: NextSettings, server: boolean):
 
 function settingsProblem(s: NextSettings, server: boolean): string | null {
   if (!(s.games >= 2 && s.games <= 5000)) return 'Games per generation: 2 to 5,000.'
-  if (!(s.sims >= 2 && s.sims <= 4000)) return 'Simulations per move: 2 to 4,000.'
+  if (!(s.sims >= 2 && s.sims <= 4000)) return 'Self-play simulations per move: 2 to 4,000.'
+  if (!(s.testSims >= 2 && s.testSims <= 4000)) return 'Test simulations per move: 2 to 4,000.'
   if (!(s.lr > 0 && s.lr <= 0.1)) return 'Learning rate: above 0, at most 0.1.'
   if (!(s.temp >= 0 && s.temp <= 2)) return 'Temperature after the opening: 0 to 2.'
   if (!(s.evalGames >= 0 && s.evalGames <= 400)) return 'Test games per opponent: 0 to 400.'
@@ -347,8 +353,10 @@ function NextSettingsPanel({ value, now, onChange, server, network }: {
       <div className="mt-3 grid gap-4 sm:grid-cols-3">
         <NumberField label="Games per generation" value={value.games} onChange={set('games')} min={2} max={5000}
           hint={`${was('games')}More games each generation; the buffer grows to match.`} />
-        <NumberField label="Simulations per move" value={value.sims} onChange={set('sims')} min={2} max={4000}
+        <NumberField label="Self-play simulations per move" value={value.sims} onChange={set('sims')} min={2} max={4000}
           hint={`${was('sims')}Deeper search: stronger targets, slower in proportion.`} />
+        <NumberField label="Test simulations per move" value={value.testSims} onChange={set('testSims')} min={2} max={4000}
+          hint={`${was('testSims')}The test games’ and strength check’s search. Keep it to compare scores with earlier generations.`} />
         <NumberField label="Test games per opponent" value={value.evalGames} onChange={set('evalGames')} min={0} max={400}
           hint={`${was('evalGames')}Steadier test scores, at more time.`} />
         <NumberField label="Learning rate" value={value.lr} onChange={set('lr')} min={0.00001} max={0.1} step={0.0001}
@@ -1837,7 +1845,9 @@ export function TrainingView() {
               <GenerationTable run={selected} detail={detail} />
               <p className="text-[12.5px] text-ink-faint">
                 Network: {detail.config.blocks} residual blocks × {detail.config.channels} filters ·{' '}
-                {detail.config.simulations} simulations per move · {detail.config.games_per_generation} games and{' '}
+                {detail.config.simulations} simulations per move
+                {typeof detail.config.eval_simulations === 'number' && detail.config.eval_simulations !== detail.config.simulations
+                  ? ` (${detail.config.eval_simulations} in the tests)` : ''} · {detail.config.games_per_generation} games and{' '}
                 up to {detail.config.steps_per_generation} training steps per generation.
               </p>
             </>

@@ -220,6 +220,8 @@ export interface RunStatus {
 export interface RunSettings {
   games_per_generation?: number
   simulations?: number
+  /** The test games' and strength check's search (unset: as self-play's). */
+  eval_simulations?: number
   learning_rate?: number
   late_temperature?: number
   eval_games?: number

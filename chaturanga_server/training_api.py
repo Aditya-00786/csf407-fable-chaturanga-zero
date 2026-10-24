@@ -339,7 +339,10 @@ class ResumeRequest(BaseModel):
     network's size cannot change)."""
     generations: Optional[int] = Field(None, ge=1, le=10_000, description="Train up to this many generations")
     games_per_generation: Optional[int] = Field(None, ge=2, le=5_000)
-    simulations: Optional[int] = Field(None, ge=2, le=4_000, description="Per move, in self-play and the tests")
+    simulations: Optional[int] = Field(None, ge=2, le=4_000, description="Per move, in self-play (and the tests, "
+                                                                        "unless eval_simulations sets theirs)")
+    eval_simulations: Optional[int] = Field(None, ge=2, le=4_000, description="Per move, in the test games and the "
+                                                                             "strength check")
     learning_rate: Optional[float] = Field(None, gt=0, le=0.1)
     late_temperature: Optional[float] = Field(None, ge=0, le=2, description="Self-play's temperature after ply 30")
     eval_games: Optional[int] = Field(None, ge=0, le=400, description="Test games per opponent")
@@ -348,8 +351,8 @@ class ResumeRequest(BaseModel):
     gpu_workers: Optional[int] = Field(None, ge=0, le=1024, description="Of them, how many use the GPU")
 
 
-_TRAINING_SETTINGS = ("games_per_generation", "simulations", "learning_rate", "late_temperature", "eval_games",
-                      "auto_report")
+_TRAINING_SETTINGS = ("games_per_generation", "simulations", "eval_simulations", "learning_rate", "late_temperature",
+                      "eval_games", "auto_report")
 
 
 @router.post("/runs/{name}/pause")

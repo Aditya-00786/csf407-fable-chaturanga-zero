@@ -355,14 +355,15 @@ def test_training_further_can_change_the_settings(tmp_path, monkeypatch):
     for g in (1, 2):
         (run / "checkpoints" / f"gen_{g:04d}.pt").write_bytes(b"")
     r = client.post("/api/training/runs/far/resume", json={
-        "generations": 4, "games_per_generation": 500, "simulations": 400, "learning_rate": 1e-4,
-        "late_temperature": 0.3, "eval_games": 60, "auto_report": True})
+        "generations": 4, "games_per_generation": 500, "simulations": 400, "eval_simulations": 200,
+        "learning_rate": 1e-4, "late_temperature": 0.3, "eval_games": 60, "auto_report": True})
     assert r.status_code == 202, r.text
     config = json.loads((run / "config.json").read_text())
-    assert {k: config[k] for k in ("generations", "games_per_generation", "simulations", "learning_rate",
-                                   "late_temperature", "eval_games", "auto_report", "buffer_positions")} == {
-        "generations": 4, "games_per_generation": 500, "simulations": 400, "learning_rate": 1e-4,
-        "late_temperature": 0.3, "eval_games": 60, "auto_report": True, "buffer_positions": 300_000}
+    assert {k: config[k] for k in ("generations", "games_per_generation", "simulations", "eval_simulations",
+                                   "learning_rate", "late_temperature", "eval_games", "auto_report", "buffer_positions")} == {
+        "generations": 4, "games_per_generation": 500, "simulations": 400, "eval_simulations": 200,
+        "learning_rate": 1e-4, "late_temperature": 0.3, "eval_games": 60, "auto_report": True, "buffer_positions": 300_000}
+    assert TrainConfig.from_json(config).test_simulations == 200  # self-play searches deeper; the tests as before
     assert (config["blocks"], config["channels"]) == (10, 128)
     assert started["cmd"][started["cmd"].index("--generations") + 1] == "4"
     # Self-play processes are for a run on a server; out-of-range values are refused.
@@ -484,6 +485,13 @@ def test_a_strength_check_keeps_what_the_last_one_measured(tmp_path, run_root):
     assert third["kept"] == ["untrained"] and third["total"] == 2 * 2
     assert third["results"]["untrained"] == first["results"]["untrained"]
     assert check(games=4)["kept"] == []  # other settings: everything again
+    # It searches as the run's tests do: their own simulations when set apart from self-play's.
+    import json
+
+    config = json.loads((run / "config.json").read_text())
+    (run / "config.json").write_text(json.dumps({**config, "simulations": 9, "eval_simulations": 3}))
+    apart = measure_strength(run, games=2, workers=1, log=lambda *_: None)
+    assert apart["simulations"] == 3 and apart["kept"] == []
 
 
 def test_strength_check_starts_in_the_background_and_waits_for_training(tmp_path, monkeypatch, run_root):
