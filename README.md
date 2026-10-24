@@ -34,7 +34,8 @@ Random, Greedy and the other generations. A conversion test measures how surely 
 generation turns a small material edge into a win. `main-v4`'s ratings rise from 167 for the
 untrained network to about 975 for generations 56 and 60, where they levelled off; lower learning
 rates and a deeper self-play search took them to 1,208 at generation 100 (see
-[Benchmarking](#benchmarking)).
+[Benchmarking](#benchmarking)). Generation 100 is frozen as the Milestone 4 agent, its network on
+the GitHub release `milestone-4` (see [The Milestone 4 agent](#the-milestone-4-agent)).
 
 Also shipped: the **web app**. It has a 3D board, three play modes, interactive lessons and a
 rules reference. Its computer opponents include the untrained MCTS agent from Milestone 2 and,
@@ -1038,6 +1039,33 @@ before, it scores about 50% by design, and Greedy, which it nearly always beats,
 tell. Two yardsticks take over (`chaturanga/benchmark.py`). Both are played from the Training page's
 Run report (**Rating ladder**, then **Rate generations**), or with `python scripts/report.py --run
 <name> --ladder`. A server run's ladder plays on its server.
+
+### The Milestone 4 agent
+
+Milestone 4's results describe one fixed agent: **`main-v4`'s generation 100**, frozen so that later
+training cannot change what they refer to.
+
+| | |
+|---|---|
+| Network | 10 residual blocks × 128 filters, 3,510,180 parameters |
+| File | `chaturangzero-main-v4-gen100.pt` (14.1 MB) on the GitHub release `milestone-4`; kept locally as `checkpoints/milestone4.pt` |
+| SHA-256 | `49e88b164fa48e7266e9c66f752fde452c30a946d0f7a3853f5301ab48c8a5e3` |
+| Training | 100 generations, 35,019 self-play games (7.8 million positions): generations 1 to 60 at a learning rate of 1e-3 and 200 simulations, 61 to 75 at 3e-4, 76 to 90 with self-play at 400 simulations, 91 to 100 at 1e-4 and 200 again |
+| How it plays | Hard: 200 simulations a move, Impossible: 800; always its most visited move, with the search's rules (a win in one taken, one for the opponent avoided) and contempt 0.3 |
+| How it was measured | The ladder and the conversion test search 200 simulations with the rules and no contempt, the first 16 plies sampled in proportion to visits |
+
+| Result | |
+|---|---|
+| Rating ladder | 1,208 Elo (1,103 to 1,313) with Random at 0; Greedy 626, generation 90 1,157, generation 60 979 |
+| Against Random and Greedy | 40 / 0 / 0 against each on the ladder; 20 / 0 / 0 against each in the strength check |
+| Against earlier generations | generation 90: 11 / 28 / 1; 75: 20 / 20 / 0; 60: 20 / 18 / 2; 56: 21 / 18 / 1 (40 games each) |
+| Conversion test | 33 of 40 small material edges won against Greedy, in 29 plies at the median |
+
+To play it: in the app, choose `main-v4`'s generation 100 in the Training page's In Play menu (it is
+pinned there), or put the release's file at `checkpoints/best.pt` (or point `CHATURANGA_CHECKPOINT`
+at it), then pick **Trained** at Hard or Impossible. From Python:
+`make_agent("zero", level="hard")`. Check a downloaded file with
+`shasum -a 256 chaturangzero-main-v4-gen100.pt`.
 
 ### The rating ladder
 
