@@ -11,7 +11,7 @@ move lists.
 ```mermaid
 flowchart LR
     subgraph Browser
-        UI[React app<br/>Play · Learn · Rules · Training]
+        UI[React app<br/>Play · Learn · Rules · Results · Training]
         B3[3D board<br/>React Three Fiber]
         UI --- B3
     end
@@ -19,11 +19,14 @@ flowchart LR
         G[Game endpoints<br/>replay the move list]
         A[Computer moves<br/>Random · Greedy · MCTS · Trained]
         T[Training API<br/>runs, reports, ladder]
+        H[Games against people<br/>check, keep, add up]
     end
     UI -- moves so far --> G
     G -- position, legal moves, result --> UI
     UI -- whose move --> A
     UI -- poll every few seconds --> T
+    UI -- finished games --> H
+    H --> HG[(results/human_games/)]
     G --> E[(Rules engine<br/>chaturanga/)]
     A --> E
     A --> NET[(checkpoints/best.pt)]
@@ -50,8 +53,11 @@ The board fills the screen, and a floating card shows whose turn it is.
   captured pieces, display options (including Reduced graphics) and Rotate. **Details** switches
   between *Essential* (headlines only) and *Full*, with toggles for move hints, move counters, why
   the game ended, and rule sources.
-- **Quick actions** (the ‹ button): Undo (or Start / Pause against computers), Full screen and New
-  game.
+- **Recording** (in the Game drawer, against the computer): **Record my games** and your name save
+  each finished game for the Results page. While a game is recorded, its mode, colour and opponent
+  are locked, and a new game before its end counts as resigning it.
+- **Quick actions** (the ‹ button): Undo (or Start / Pause against computers), Resign against the
+  computer, Full screen and New game.
 - **Review:** a bar at the foot of the board steps through the moves (⏮ ◀ ▶ ⏭, or ← → Home End)
   and replays the game at three speeds; stepping back plays the move in reverse, captured pieces
   returning from their tray.
@@ -67,6 +73,20 @@ position is legal and every task can be solved.
 
 A compact reference: setup, the pieces and how a game ends. The sources behind each rule are in
 [RULES.md](RULES.md).
+
+### Results
+
+The games people played against the computer, with recording on
+([details](HUMAN_GAMES.md)):
+
+- **The trained opponent:** whether Play's network is the Milestone 4 agent, recognised by its
+  file's sha256. A laptop without one is shown how to load it: download it from the release, then
+  **Load network file**.
+- **Results:** wins, draws and losses for the people against each opponent, level and network, with
+  each player's share when there are several.
+- **Games:** every recorded game, newest first, with **Replay**, which plays it on the board.
+- **Collect everyone's games:** **Export games** writes one file to send; **Import files** adds the
+  files teammates sent, each game replayed and checked, and any already there skipped.
 
 ### Training
 

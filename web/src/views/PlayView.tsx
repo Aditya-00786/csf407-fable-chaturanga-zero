@@ -1,4 +1,4 @@
-import { AlertTriangle, History, Maximize, Minimize, Pause, PanelRight, Play, RotateCcw, Undo2, X } from 'lucide-react'
+import { AlertTriangle, Check, Flag, History, Maximize, Minimize, Pause, PanelRight, Play, RotateCcw, Undo2, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { PlayPanel, Status } from '../components/PlayPanel'
@@ -6,22 +6,49 @@ import { ReviewBar } from '../components/ReviewBar'
 import { Covered, Drawer, DrawerToggle, Floating, QuickActions, QuickToggle, ToolButton } from '../components/stage'
 import { Button } from '../components/ui'
 import type { Color } from '../lib/api'
-import { captures, explainOutcome, INITIAL_BOARD } from '../lib/board'
+import { captures, colorName, explainOutcome, INITIAL_BOARD } from '../lib/board'
+import { href } from '../lib/route'
 import { useFullscreen } from '../lib/useFullscreen'
-import { runLabel, useGame } from '../state/game'
+import { humanMoved, runLabel, useGame } from '../state/game'
 import { prefersReducedMotion, useDetail } from '../state/settings'
 import { BoardScene } from '../three/BoardScene'
 
 // Let the moving piece land before the board turns to the next player.
 const TURN_DELAY_MS = 520
 
+/** Whether the game just over was saved for the results (a game left for a new one says so in the Game panel). */
+function Recorded() {
+  const { recording, saveRecording } = useGame()
+  if (recording.state === 'saving') return <p className="mt-2 text-[13px] text-ink-muted">Saving it to the results…</p>
+  if (recording.state === 'failed') {
+    return (
+      <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-danger">
+        Not saved: {recording.message}
+        <Button size="sm" onClick={saveRecording}>Try again</Button>
+      </p>
+    )
+  }
+  if (recording.state !== 'saved' || recording.ended === 'left') return null
+  return (
+    <p className="mt-2 flex flex-wrap items-center gap-x-1.5 text-[13px] text-ink-muted">
+      <Check size={15} className="shrink-0 text-success" aria-hidden />
+      Saved for {recording.player}: {recording.games} {recording.games === 1 ? 'game' : 'games'} recorded.
+      <a href={href('results')} className="font-medium text-accent underline-offset-4 hover:underline">See the results</a>
+    </p>
+  )
+}
+
 function GameEnd() {
-  const { game, newGame, review, reviewPly } = useGame()
+  const { game, newGame, review, reviewPly, resigned, humanColor } = useGame()
   const showExplanation = useDetail('explanation')
   const showRule = useDetail('rules')
   const [hiddenAtPly, setHiddenAtPly] = useState<number | null>(null)
-  if (!game?.outcome || reviewPly !== null || hiddenAtPly === game.ply) return null
-  const text = explainOutcome(game.outcome, game.side)
+  if (!game || !(game.outcome || resigned) || reviewPly !== null || hiddenAtPly === game.ply) return null
+  const text = game.outcome ? explainOutcome(game.outcome, game.side) : {
+    title: `${colorName(-humanColor as Color)} wins: you resigned`,
+    detail: 'You gave up the game.',
+    source: null,
+  }
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-5 z-[var(--z-stage-overlay)] flex justify-center px-4">
       <div
@@ -36,7 +63,8 @@ function GameEnd() {
           </button>
         </div>
         {showExplanation && <p className="mt-1.5 max-w-[60ch] text-sm leading-relaxed text-ink-muted">{text.detail}</p>}
-        {showRule && <p className="mt-2 text-[12.5px] text-ink-faint">Rule: {text.source}</p>}
+        {showRule && text.source && <p className="mt-2 text-[12.5px] text-ink-faint">Rule: {text.source}</p>}
+        <Recorded />
         <div className="mt-4 flex flex-wrap gap-2">
           <Button variant="primary" onClick={newGame} icon={<RotateCcw size={16} />}>Play again</Button>
           <Button onClick={() => review(Math.max(0, game.ply - 1))} icon={<History size={16} />}>Review moves</Button>
@@ -107,7 +135,7 @@ export function PlayView() {
   const view = reviewing ? g.reviewGame ?? g.game : g.game
   const last = view?.history[view.history.length - 1]
   const humanTurn =
-    !!g.game && !g.game.outcome &&
+    !!g.game && !g.game.outcome && !g.resigned &&
     (g.mode === 'hvh' || (g.mode === 'hvc' && g.game.side === g.humanColor))
   const interactive = g.status === 'ready' && !reviewing && humanTurn
   const busy = g.status === 'connecting'
@@ -147,6 +175,10 @@ export function PlayView() {
                 <ToolButton label="Undo" icon={<Undo2 size={17} />} onClick={g.undo}
                   disabled={busy || g.moves.length === 0 || g.status === 'thinking'} />
               )}
+              {g.mode === 'hvc' && (
+                <ToolButton label="Resign" icon={<Flag size={17} />} onClick={g.resign}
+                  disabled={busy || reviewing || !!g.watching || !g.game || !!g.game.outcome || g.resigned || !humanMoved(g.moves, g.humanColor)} />
+              )}
               {canFullscreen && (
                 <ToolButton label={fullscreen ? 'Exit full screen' : 'Full screen'}
                   icon={fullscreen ? <Minimize size={17} /> : <Maximize size={17} />} onClick={toggleFullscreen} />
@@ -154,7 +186,7 @@ export function PlayView() {
               <ToolButton label="New game" icon={<RotateCcw size={17} />} onClick={g.newGame} disabled={busy} />
             </QuickActions>
             <QuickToggle open={quickOpen} controls="quick-actions" onClick={() => setQuickOpen((open) => !open)}
-              describe={`${g.mode === 'cvc' ? 'start or pause' : 'undo'}, full screen, new game`} />
+              describe={`${g.mode === 'cvc' ? 'start or pause' : g.mode === 'hvc' ? 'undo, resign' : 'undo'}, full screen, new game`} />
             <DrawerToggle
               ref={toggleRef}
               open={panelOpen}

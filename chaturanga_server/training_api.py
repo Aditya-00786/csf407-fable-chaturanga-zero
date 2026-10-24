@@ -9,6 +9,7 @@ Colab, Kaggle, or your own server over SSH (scripts/server_run.py starts it ther
 back as it goes). The server listens on 127.0.0.1 by default, so only this machine can use them.
 """
 
+import hashlib
 import json
 import os
 import re
@@ -22,10 +23,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal, Optional, Union
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, SecretStr
 
-from chaturanga.agents import trained_checkpoint
+from chaturanga.agents import MILESTONES, trained_checkpoint
 from chaturanga.selfplay import read_games
 from chaturanga.training import TrainConfig, buffer_for, pending_pause, request_pause
 
@@ -710,6 +712,53 @@ def choose_play(name: str, req: PlayRequest):
     if req.network is not None:
         _put_in_play(path, req.network)
     return _status(path)
+
+
+MAX_NETWORK_BYTES = 500_000_000
+
+
+@router.post("/play/file")
+async def load_play_file(request: Request, name: str = Query("network.pt", max_length=300)):
+    """Give Play the network in a file chosen in the app: the Milestone 4 network from its GitHub
+    release, say, on a laptop that trained none. The request's body is the file itself."""
+    if int(request.headers.get("content-length") or 0) > MAX_NETWORK_BYTES:
+        raise HTTPException(413, "That file is far larger than a ChaturangZero network.")
+    return await run_in_threadpool(_load_play_file, await request.body(), name)
+
+
+def _load_play_file(data: bytes, name: str) -> dict:
+    if not data or len(data) > MAX_NETWORK_BYTES:
+        raise HTTPException(400 if not data else 413, f"“{name}” is not a ChaturangZero network.")
+    fingerprint = hashlib.sha256(data).hexdigest()
+    target = trained_checkpoint()
+    try:
+        same = hashlib.sha256(target.read_bytes()).hexdigest() == fingerprint
+    except OSError:
+        same = False
+    if not same:
+        from chaturanga.net import load_checkpoint  # PyTorch: imported only when needed
+
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_name(target.name + ".upload.tmp")
+        tmp.write_bytes(data)
+        try:
+            load_checkpoint(str(tmp))  # weights only: a file's contents never run as code
+        except Exception as exc:
+            tmp.unlink(missing_ok=True)
+            raise HTTPException(400, f"“{name}” is not a ChaturangZero network ({type(exc).__name__}).") from exc
+        # The runs stop giving Play their networks, or the next look at Training would put one back.
+        for path in _all_runs():
+            if (path / "launch.json").exists() and _play_choice(path) is not None:
+                _set_launch(path, play=None)
+        tmp.replace(target)  # Play picks it up at its next move
+        _play_note().write_text(json.dumps({"file": name, "fingerprint": fingerprint, "loaded": time.time()}))
+    from chaturanga.agents import NetworkUnavailable, trained_evaluator
+
+    try:
+        trained = trained_evaluator()  # loaded now, so the first move against it is quick
+    except NetworkUnavailable:
+        trained = None
+    return {**(trained[1] if trained else {}), "fingerprint": fingerprint, "milestone": MILESTONES.get(fingerprint)}
 
 
 # ---------------------------------------------------------------------- cloud accounts

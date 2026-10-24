@@ -106,8 +106,8 @@ export function ReviewBar() {
         {watching ? (
           <Button size="sm" onClick={() => {
             leaveWatch()
-            location.hash = href('training')
-          }}>Back to training</Button>
+            location.hash = href(watching.from)
+          }}>Back to {watching.from}</Button>
         ) : (
           <Button size="sm" onClick={() => review(null)}>Back to game</Button>
         )}

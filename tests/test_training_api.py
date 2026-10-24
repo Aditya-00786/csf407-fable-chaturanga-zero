@@ -20,6 +20,11 @@ client = TestClient(app)
 TINY = NetConfig(blocks=1, channels=16)
 
 
+def which(info):
+    """The run and generation of the network in Play (its info also has the file's fingerprint)."""
+    return {"run": info["run"], "generation": info["generation"]}
+
+
 @pytest.fixture
 def no_trained_network(tmp_path, monkeypatch):
     monkeypatch.setenv("CHATURANGA_CHECKPOINT", str(tmp_path / "missing.pt"))
@@ -37,7 +42,8 @@ def test_meta_lists_the_trained_agent_and_its_levels(trained_network):
     meta = client.get("/api/meta").json()
     assert {a["id"] for a in meta["agents"]} == {"random", "greedy", "mcts", "zero"}
     assert [lv["id"] for lv in meta["levels"]] == ["easy", "medium", "hard", "impossible"]
-    assert meta["trained"] == {"run": "demo", "generation": 7}
+    assert which(meta["trained"]) == {"run": "demo", "generation": 7}
+    assert len(meta["trained"]["fingerprint"]) == 64 and meta["trained"]["milestone"] is None
 
 
 def test_without_a_trained_network_the_agent_explains(no_trained_network):
@@ -51,7 +57,7 @@ def test_trained_agent_plays_at_each_level(trained_network, level):
     r = client.post("/api/agent-move", json={"moves": ["e2e3"], "agent": "zero", "level": level, "seed": 0})
     assert r.status_code == 200
     body = r.json()
-    assert body["game"]["ply"] == 2 and body["network"] == {"run": "demo", "generation": 7}
+    assert body["game"]["ply"] == 2 and which(body["network"]) == {"run": "demo", "generation": 7}
 
 
 def test_unknown_level_is_a_bad_request(trained_network):
@@ -95,7 +101,7 @@ def test_play_uses_the_chosen_network_of_one_run(tmp_path, monkeypatch):
     _run_with_networks(runs, "old", [1, 2, 3], best=3, play="best")
     _run_with_networks(runs, "new", [1, 2, 3, 4], best=2)
     _run_with_networks(runs, "empty", [], best=None)
-    in_play = lambda: client.get("/api/meta").json()["trained"]  # noqa: E731
+    in_play = lambda: which(client.get("/api/meta").json()["trained"])  # noqa: E731
     choices = lambda: {r["name"]: r["play"] for r in client.get("/api/training/runs").json()["runs"]}  # noqa: E731
 
     assert client.post("/api/training/runs/empty/play", json={"network": "best"}).status_code == 400
@@ -117,7 +123,7 @@ def test_play_follows_the_latest_or_best_as_a_run_trains_but_keeps_a_chosen_gene
     monkeypatch.setenv("CHATURANGA_RUNS", str(runs))
     monkeypatch.setenv("CHATURANGA_CHECKPOINT", str(tmp_path / "play" / "best.pt"))
     _run_with_networks(runs, "far", [1, 2], best=1)  # a server run: its folder here is copied from the server
-    in_play = lambda: client.get("/api/meta").json()["trained"]  # noqa: E731
+    in_play = lambda: which(client.get("/api/meta").json()["trained"])  # noqa: E731
 
     def trains_on(generation):
         save_checkpoint(str(runs / "far" / "checkpoints" / f"gen_{generation:04d}.pt"), new_network(TINY, seed=generation),

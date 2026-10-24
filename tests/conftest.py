@@ -30,3 +30,5 @@ def no_real_cloud(monkeypatch, tmp_path_factory):
     home = tmp_path_factory.mktemp("chaturanga-home")
     monkeypatch.setenv("CHATURANGA_HOME", str(home))
     monkeypatch.setenv("CHATURANGA_SSH_CONFIG", str(home / "no-ssh-config"))
+    # Nor the project's recorded games: a folder of their own.
+    monkeypatch.setenv("CHATURANGA_HUMAN_GAMES", str(tmp_path_factory.mktemp("human-games")))

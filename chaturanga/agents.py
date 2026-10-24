@@ -6,6 +6,7 @@ agent gets no such knowledge: only the rules, the results of finished games, and
 """
 
 import errno
+import hashlib
 import os
 import random
 import threading
@@ -128,6 +129,11 @@ def untrained_evaluator(timeout: Optional[float] = None):
         _evaluator_lock.release()
 
 
+# Networks frozen for a milestone, by the sha256 of their file. Milestone 4's is main-v4's generation 100,
+# attached to the GitHub release milestone-4 as chaturangzero-main-v4-gen100.pt.
+MILESTONES = {"49e88b164fa48e7266e9c66f752fde452c30a946d0f7a3853f5301ab48c8a5e3": "Milestone 4"}
+
+
 def trained_checkpoint() -> Path:
     """Where the trained network is published (scripts/train.py copies its best network here)."""
     default = Path(__file__).resolve().parent.parent / "checkpoints" / "best.pt"
@@ -139,7 +145,8 @@ _trained_lock = threading.Lock()
 
 
 def trained_evaluator():
-    """(evaluator, info) for the published trained network, or None if there is none yet.
+    """(evaluator, info) for the published trained network, or None if there is none yet. The info
+    names its run and generation, its file's sha256 and the milestone it was frozen for, if any.
 
     The file is checked on every call and reloaded when it changes, so while a training run
     publishes better networks the app plays the newest without a restart."""
@@ -159,7 +166,9 @@ def trained_evaluator():
                 if "evaluator" in _trained:
                     return _trained["evaluator"], _trained["info"]
                 raise NetworkUnavailable(f"The trained network could not be loaded: {_describe(exc)}") from exc
-            info = {"run": meta.get("run"), "generation": meta.get("generation")}
+            fingerprint = hashlib.sha256(path.read_bytes()).hexdigest()
+            info = {"run": meta.get("run"), "generation": meta.get("generation"), "fingerprint": fingerprint,
+                    "milestone": MILESTONES.get(fingerprint)}
             _trained.update(key=key, evaluator=NetworkEvaluator(net), info=info)
         return _trained["evaluator"], _trained["info"]
 

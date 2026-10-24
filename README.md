@@ -6,7 +6,7 @@
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![PyTorch](https://img.shields.io/badge/PyTorch-ResNet%20%2B%20MCTS-EE4C2C?logo=pytorch&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-278%20passing-2ea44f)
+![Tests](https://img.shields.io/badge/tests-284%20passing-2ea44f)
 ![Milestone](https://img.shields.io/badge/milestone-4%20of%204-f0a500)
 
 Course project for **CS F407 Artificial Intelligence**, BITS Pilani K. K. Birla Goa Campus · **Team Fable**
@@ -53,7 +53,9 @@ Overall   ███████████████████████�
   games ([the runs](docs/RUNS.md)).
 - **Milestone 4** is under way: a rating ladder gives the generations Elo ratings against Random,
   Greedy and each other, a conversion test measures how surely each turns a small edge into a win,
-  and generation 100 is frozen as the agent ([benchmarking](docs/BENCHMARKING.md)).
+  and generation 100 is frozen as the agent ([benchmarking](docs/BENCHMARKING.md)). Games against
+  people are recorded in the app, and teammates send theirs from their own laptops
+  ([games against people](docs/HUMAN_GAMES.md).
 - **Also shipped:** a web app with a 3D board, three play modes, lessons, a rules reference and a
   Training page that runs and follows training on a Mac, Colab, Kaggle or your own server.
 
@@ -111,7 +113,7 @@ git clone https://github.com/Aditya-00786/csf407-fable-chaturanga-zero.git
 cd csf407-fable-chaturanga-zero
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-python -m pytest -q                      # 278 passed
+python -m pytest -q                      # 284 passed
 (cd web && npm install && npm run build)
 python -m chaturanga_server              # then open http://127.0.0.1:8000
 ```
@@ -131,6 +133,7 @@ save it as `checkpoints/best.pt`, and choose **Trained** as the opponent. More i
 | [Training on servers and in the cloud](docs/TRAINING_REMOTE.md) | Your own server over SSH, Colab, Kaggle, CPUs and the GPU |
 | [The training runs](docs/RUNS.md) | What each run taught us, and what the trained agent plays |
 | [Benchmarking](docs/BENCHMARKING.md) | Milestone 4: the frozen agent, the rating ladder, the conversion test |
+| [Games against people](docs/HUMAN_GAMES.md) | Recording games in the app, and collecting teammates' games |
 | [The web app](docs/WEB_APP.md) | Screens, controls, accessibility, performance |
 | [Architecture](docs/ARCHITECTURE.md) | How the code fits together, and the project's layout |
 | [Rules](docs/RULES.md) | The full rules, with every source |
@@ -166,8 +169,8 @@ chaturanga/          rules engine, network, search, self-play, training, benchma
 chaturanga_server/   FastAPI server for the web app
 web/                 browser app (React + Three.js)
 scripts/             training, reports, benchmarks, runs on Kaggle and servers
-tests/               278 tests
-results/             each training run's metrics, charts and reports
+tests/               284 tests
+results/             each training run's metrics, charts and reports; games against people
 docs/                these guides and the rules
 ```
 

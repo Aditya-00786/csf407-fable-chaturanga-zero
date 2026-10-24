@@ -28,6 +28,9 @@ interface Settings {
   detailParts: DetailParts
   /** No shadows, pixel ratio 1, simpler materials, no continuous effects. */
   reducedGraphics: boolean
+  /** Record games against the computer for the results, under this player's name. */
+  recordGames: boolean
+  player: string
   setTheme: (t: Theme) => void
   setSound: (on: boolean) => void
   setLabels: (l: LabelMode) => void
@@ -35,6 +38,8 @@ interface Settings {
   setDetails: (d: DetailLevel) => void
   setDetailPart: (part: DetailPart, on: boolean) => void
   setReducedGraphics: (on: boolean) => void
+  setRecordGames: (on: boolean) => void
+  setPlayer: (name: string) => void
 }
 
 function read(key: string): string | null {
@@ -72,6 +77,8 @@ export const useSettings = create<Settings>((set, get) => ({
   details: read('cz-details') === 'full' ? 'full' : 'essential',
   detailParts: readParts(),
   reducedGraphics: (read('cz-reduced-graphics') ?? (LOW_POWER ? 'on' : 'off')) === 'on',
+  recordGames: read('cz-record-games') === 'on',
+  player: read('cz-player') ?? '',
   setTheme: (theme) => {
     document.documentElement.dataset.theme = theme
     write('cz-theme', theme)
@@ -96,6 +103,14 @@ export const useSettings = create<Settings>((set, get) => ({
   setReducedGraphics: (on) => {
     write('cz-reduced-graphics', on ? 'on' : 'off')
     set({ reducedGraphics: on })
+  },
+  setRecordGames: (on) => {
+    write('cz-record-games', on ? 'on' : 'off')
+    set({ recordGames: on })
+  },
+  setPlayer: (player) => {
+    write('cz-player', player)
+    set({ player })
   },
   setDetailPart: (part, on) => {
     const detailParts = { ...get().detailParts, [part]: on }

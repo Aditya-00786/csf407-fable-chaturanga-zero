@@ -20,6 +20,9 @@ Both are played from the Training page's Run report (**Rating ladder**, then **R
 generations**), or with `python scripts/report.py --run <name> --ladder`. For a run trained on a
 server, both play on that server.
 
+Against people, the app records each game played against the computer, and teammates send theirs
+from their own laptops: see [Games against people](HUMAN_GAMES.md).
+
 ## The Milestone 4 agent
 
 Milestone 4's results describe one fixed agent, **`main-v4`'s generation 100**, frozen so that later

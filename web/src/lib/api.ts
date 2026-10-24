@@ -44,6 +44,9 @@ export interface AgentInfo {
 export interface TrainedInfo {
   run: string | null
   generation: number | null
+  /** The sha256 of the network's file, and the milestone it was frozen for (null if none). */
+  fingerprint?: string | null
+  milestone?: string | null
 }
 
 export interface LevelInfo {
@@ -76,13 +79,17 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, body?: unknown, method?: 'DELETE'): Promise<T> {
+  return send<T>(path, {
+    method: method ?? (body === undefined ? 'GET' : 'POST'),
+    headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+}
+
+async function send<T>(path: string, init: RequestInit): Promise<T> {
   let res: Response
   try {
-    res = await fetch(path, {
-      method: method ?? (body === undefined ? 'GET' : 'POST'),
-      headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    })
+    res = await fetch(path, init)
   } catch {
     throw new ApiError('Cannot reach the rules engine.', 0)
   }
@@ -99,6 +106,71 @@ async function request<T>(path: string, body?: unknown, method?: 'DELETE'): Prom
   return res.json() as Promise<T>
 }
 
+/** A game against the computer as Play records it; the server works out its result. */
+export interface HumanGameRecord {
+  id: string
+  player: string
+  human: 'white' | 'black'
+  opponent: string
+  level: string | null
+  network: TrainedInfo | null
+  network_changed: boolean
+  moves: string[]
+  /** Played to the end, resigned, or left before the end (which counts as resigning). */
+  ended: 'over' | 'resigned' | 'left'
+  takebacks: number
+  started: string
+  finished: string
+}
+
+/** A recorded game as kept, with its result for the person. */
+export interface HumanGame extends Omit<HumanGameRecord, 'ended'> {
+  result: 'win' | 'draw' | 'loss'
+  reason: string
+  winner: 'white' | 'black' | null
+  plies: number
+}
+
+export interface Tally {
+  games: number
+  win: number
+  draw: number
+  loss: number
+  /** The people's score, wins plus half the draws, as a share of the games. */
+  score: number | null
+}
+
+export interface PlayerTally extends Tally {
+  player: string
+  file: string
+}
+
+export interface OpponentTally extends Tally {
+  opponent: string
+  level: string | null
+  network: TrainedInfo | null
+  milestone: string | null
+  label: string
+  players: PlayerTally[]
+}
+
+export interface HumanGames {
+  /** Where the games are kept, from the project folder. */
+  folder: string
+  total: number
+  opponents: OpponentTally[]
+  players: PlayerTally[]
+  /** Newest first. */
+  games: HumanGame[]
+}
+
+export interface ImportResult {
+  added: number
+  already: number
+  rejected: { file: string; game: number | null; reason: string }[]
+  total: number
+}
+
 export const api = {
   meta: () => request<Meta>('/api/meta'),
   game: (moves: string[], startFen?: string | null) =>
@@ -106,6 +178,15 @@ export const api = {
   agentMove: (moves: string[], agent: string, startFen?: string | null, level?: string) =>
     request<{ move: string; game: GameView; network?: TrainedInfo }>('/api/agent-move', {
       moves, agent, start_fen: startFen ?? null, level: level ?? null,
+    }),
+  humanGames: () => request<HumanGames>('/api/human-games'),
+  recordGame: (game: HumanGameRecord) =>
+    request<{ game: HumanGame; added: boolean; file: string; player_games: number }>('/api/human-games', game),
+  importGames: (files: { name: string; text: string }[]) => request<ImportResult>('/api/human-games/import', { files }),
+  /** Give Play the network in a file (a .pt checkpoint); the server checks it loads. */
+  loadNetwork: (file: File) =>
+    send<TrainedInfo>(`/api/training/play/file?name=${encodeURIComponent(file.name)}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file,
     }),
   trainingRuns: () => request<{ runs: RunStatus[] }>('/api/training/runs'),
   trainingRun: (name: string) => request<RunDetail>(`/api/training/runs/${encodeURIComponent(name)}`),

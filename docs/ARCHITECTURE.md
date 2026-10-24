@@ -67,18 +67,19 @@ csf407-fable-chaturanga-zero/
 │   └── agents.py            # players: random, greedy (2-ply material), MCTS, trained (four levels)
 ├── chaturanga_server/       # FastAPI app used by the web client (stateless)
 │   ├── app.py               # game and computer-move endpoints
+│   ├── human_games.py       # games against people: checked, kept, added up, exported and imported
 │   └── training_api.py      # training runs, reports and the ladder, for the Training page
 ├── web/                     # browser app (React + Three.js)
 │   └── src/
 │       ├── three/           # 3D board, procedural pieces, highlights, animation
-│       ├── views/           # Play, Learn, Rules, Training screens
+│       ├── views/           # Play, Learn, Rules, Results, Training screens
 │       ├── components/      # top bar, side panel, run report, charts, shared controls
 │       ├── content/         # lessons.json (validated by tests/test_lessons.py)
 │       ├── state/           # game and settings stores (Zustand)
 │       └── lib/             # API client, piece data, notation, sounds
-├── tests/                   # pytest suite (278 tests)
+├── tests/                   # pytest suite (284 tests)
 │   ├── reference.py         # independent, deliberately naive move generator
-│   └── test_*.py            # engine, search, network, training, benchmarks, agents, API, lessons
+│   └── test_*.py            # engine, search, network, training, benchmarks, agents, API, games, lessons
 ├── scripts/
 │   ├── random_play.py       # random-vs-random stress test and benchmark
 │   ├── mcts_benchmark.py    # MCTS speed and matches against the baselines
@@ -89,8 +90,9 @@ csf407-fable-chaturanga-zero/
 │   ├── kaggle_run.py        # a run on Kaggle: upload, start, follow, bring home
 │   ├── server_run.py        # a run on your server: set up, start, follow live, pass pauses on
 │   ├── server_job.py        # a server run's strength check or ladder, played there and followed
-│   └── share_runs.py        # a run's results for the repository, and an archive of it for a release
-├── results/                 # each run's settings, metrics, charts and reports
+│   ├── share_runs.py        # a run's results for the repository, and an archive of it for a release
+│   └── human_games.py       # the results of the games against people, as Markdown tables
+├── results/                 # each run's settings, metrics, charts and reports, and human_games/
 ├── notebooks/
 │   └── train_colab.ipynb    # the same training on Google Colab, saved to Drive
 ├── docs/                    # these guides, RULES.md and its source PDFs (Handouts/)

@@ -42,7 +42,7 @@ flowchart LR
    ```
 4. **Check that everything works:**
    ```bash
-   python -m pytest -q                # expect: 278 passed
+   python -m pytest -q                # expect: 284 passed
    ```
 5. **Install the web app's packages** (only for the browser app):
    ```bash
@@ -109,6 +109,7 @@ move comes from the legal-move list and every game must end, so a crash or a han
 | A run's report | `python scripts/report.py --run main` (add `--strength` for the strength check) |
 | Rate a run's generations (Elo ladder, conversion test) | `python scripts/report.py --run main --ladder` |
 | Share runs on GitHub | `python scripts/share_runs.py main-v4` (see [Sharing runs](TRAINING.md#sharing-runs)) |
+| Results of the games against people | `python scripts/human_games.py` (see [Games against people](HUMAN_GAMES.md)) |
 
 </details>
 

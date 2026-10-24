@@ -21,6 +21,7 @@ from chaturanga.agents import AGENTS, LEVELS, NetworkUnavailable, ZeroAgent, mak
 from chaturanga.constants import PADATI
 from chaturanga.tables import LAST_RANK
 
+from .human_games import router as human_games_router
 from .training_api import router as training_router
 
 MAX_MOVES = 1000
@@ -111,6 +112,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="ChaturangZero", version="0.2.0", lifespan=lifespan)
 app.include_router(training_router)
+app.include_router(human_games_router)
 
 
 @app.get("/api/health")
@@ -135,7 +137,8 @@ def meta():
 
 
 def _trained_info():
-    """The published trained network ({run, generation}), or None if there is none (yet)."""
+    """The published trained network ({run, generation, fingerprint, milestone}), or None if there is
+    none (yet)."""
     try:
         trained = trained_evaluator()
     except NetworkUnavailable:
