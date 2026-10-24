@@ -1,7 +1,7 @@
 import { AlertTriangle, Check, Flag, History, Maximize, Minimize, Pause, PanelRight, Play, RotateCcw, Undo2, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
-import { PlayPanel, Status } from '../components/PlayPanel'
+import { PlayPanel, RecordDot, Status } from '../components/PlayPanel'
 import { ReviewBar } from '../components/ReviewBar'
 import { Covered, Drawer, DrawerToggle, Floating, QuickActions, QuickToggle, ToolButton } from '../components/stage'
 import { Button } from '../components/ui'
@@ -10,7 +10,7 @@ import { captures, colorName, explainOutcome, INITIAL_BOARD } from '../lib/board
 import { href } from '../lib/route'
 import { useFullscreen } from '../lib/useFullscreen'
 import { humanMoved, runLabel, useGame } from '../state/game'
-import { prefersReducedMotion, useDetail } from '../state/settings'
+import { prefersReducedMotion, useDetail, useSettings } from '../state/settings'
 import { BoardScene } from '../three/BoardScene'
 
 // Let the moving piece land before the board turns to the next player.
@@ -32,7 +32,7 @@ function Recorded() {
   return (
     <p className="mt-2 flex flex-wrap items-center gap-x-1.5 text-[13px] text-ink-muted">
       <Check size={15} className="shrink-0 text-success" aria-hidden />
-      Saved for {recording.player}: {recording.games} {recording.games === 1 ? 'game' : 'games'} recorded.
+      Saved: {recording.games} {recording.games === 1 ? 'game' : 'games'} recorded on this computer.
       <a href={href('results')} className="font-medium text-accent underline-offset-4 hover:underline">See the results</a>
     </p>
   )
@@ -98,6 +98,7 @@ function useBoardOrientation(): [Color, () => void] {
 
 export function PlayView() {
   const g = useGame()
+  const recordGames = useSettings((s) => s.recordGames)
   const init = g.init
   useEffect(() => init(), [init]) // init is stable; it changes only when hot reload rebuilds the store
 
@@ -176,8 +177,14 @@ export function PlayView() {
                   disabled={busy || g.moves.length === 0 || g.status === 'thinking'} />
               )}
               {g.mode === 'hvc' && (
-                <ToolButton label="Resign" icon={<Flag size={17} />} onClick={g.resign}
-                  disabled={busy || reviewing || !!g.watching || !g.game || !!g.game.outcome || g.resigned || !humanMoved(g.moves, g.humanColor)} />
+                <>
+                  <ToolButton label="Record" pressed={recordGames} onClick={() => g.setRecording(!recordGames)}
+                    disabled={!!g.watching}
+                    title={recordGames ? 'Recording games for the results: on' : 'Record games for the results'}
+                    icon={<span className="grid h-[17px] w-[17px] place-items-center"><RecordDot on={recordGames} /></span>} />
+                  <ToolButton label="Resign" icon={<Flag size={17} />} onClick={g.resign}
+                    disabled={busy || reviewing || !!g.watching || !g.game || !!g.game.outcome || g.resigned || !humanMoved(g.moves, g.humanColor)} />
+                </>
               )}
               {canFullscreen && (
                 <ToolButton label={fullscreen ? 'Exit full screen' : 'Full screen'}
@@ -186,7 +193,7 @@ export function PlayView() {
               <ToolButton label="New game" icon={<RotateCcw size={17} />} onClick={g.newGame} disabled={busy} />
             </QuickActions>
             <QuickToggle open={quickOpen} controls="quick-actions" onClick={() => setQuickOpen((open) => !open)}
-              describe={`${g.mode === 'cvc' ? 'start or pause' : g.mode === 'hvc' ? 'undo, resign' : 'undo'}, full screen, new game`} />
+              describe={`${g.mode === 'cvc' ? 'start or pause' : g.mode === 'hvc' ? 'undo, record, resign' : 'undo'}, full screen, new game`} />
             <DrawerToggle
               ref={toggleRef}
               open={panelOpen}

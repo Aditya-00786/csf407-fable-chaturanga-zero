@@ -53,11 +53,12 @@ The board fills the screen, and a floating card shows whose turn it is.
   captured pieces, display options (including Reduced graphics) and Rotate. **Details** switches
   between *Essential* (headlines only) and *Full*, with toggles for move hints, move counters, why
   the game ended, and rule sources.
-- **Recording** (in the Game drawer, against the computer): **Record my games** and your name save
-  each finished game for the Results page. While a game is recorded, its mode, colour and opponent
-  are locked, and a new game before its end counts as resigning it.
-- **Quick actions** (the ‹ button): Undo (or Start / Pause against computers), Resign against the
-  computer, Full screen and New game.
+- **Recording** (against the computer): **Record**, in the quick actions or the Game drawer, saves
+  each finished game for the Results page: its moves and result, nothing about the player. The
+  status card shows *Recording*. Once you have moved in a recorded game, its mode, colour and
+  opponent are locked, and a new game before its end counts as resigning it.
+- **Quick actions** (the ‹ button): Undo (or Start / Pause against computers), Record and Resign
+  against the computer, Full screen and New game.
 - **Review:** a bar at the foot of the board steps through the moves (⏮ ◀ ▶ ⏭, or ← → Home End)
   and replays the game at three speeds; stepping back plays the move in reverse, captured pieces
   returning from their tray.
@@ -82,9 +83,9 @@ The games people played against the computer, with recording on
 - **The trained opponent:** whether Play's network is the Milestone 4 agent, recognised by its
   file's sha256. A laptop without one is shown how to load it: download it from the release, then
   **Load network file**.
-- **Results:** wins, draws and losses for the people against each opponent, level and network, with
-  each player's share when there are several.
-- **Games:** every recorded game, newest first, with **Replay**, which plays it on the board.
+- **Results:** wins, draws and losses for the people against each opponent, level and network.
+- **Games:** every recorded game, the most recently added first, with **Replay**, which plays it on
+  the board.
 - **Collect everyone's games:** **Export games** writes one file to send; **Import files** adds the
   files teammates sent, each game replayed and checked, and any already there skipped.
 

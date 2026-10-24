@@ -70,7 +70,6 @@ function TallyCells({ t }: { t: Tally }) {
 }
 
 function ResultsTable({ data }: { data: HumanGames }) {
-  const several = data.players.length > 1
   return (
     <div className="relative overflow-x-auto">
       <table className="w-full min-w-[280px] border-collapse text-left text-[13px] tabular-nums sm:text-[13.5px]">
@@ -92,12 +91,6 @@ function ResultsTable({ data }: { data: HumanGames }) {
               </th>
               <TallyCells t={o} />
             </tr>
-            {several && o.players.map((p) => (
-              <tr key={p.file} className="text-[12.5px] text-ink-muted">
-                <th scope="row" className="py-1.5 pr-2.5 pl-3 font-normal sm:pr-4 sm:pl-4">{p.player}</th>
-                <TallyCells t={p} />
-              </tr>
-            ))}
           </tbody>
         ))}
       </table>
@@ -120,25 +113,19 @@ function OpponentName({ o }: { o: OpponentTally }) {
   )
 }
 
-function when(iso: string) {
-  const d = new Date(iso)
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
-}
-
 function GamesTable({ games }: { games: HumanGame[] }) {
   const [all, setAll] = useState(false)
   const watchGame = useGame((s) => s.watchGame)
   const shown = all ? games : games.slice(0, GAMES_SHOWN)
   const name = (id: string | null) => (id ? id[0].toUpperCase() + id.slice(1) : '')
-  const level = (g: HumanGame) => (g.opponent === 'zero' ? `Trained · ${name(g.level)}` : g.opponent === 'mcts' ? 'MCTS' : name(g.opponent))
+  const opponent = (g: HumanGame) => (g.opponent === 'zero' ? `Trained · ${name(g.level)}` : g.opponent === 'mcts' ? 'MCTS' : name(g.opponent))
   return (
     <>
       <div className="relative overflow-x-auto">
-        <table className="w-full min-w-[680px] border-collapse text-left text-[13px] tabular-nums">
+        <table className="w-full min-w-[440px] border-collapse text-left text-[13px] tabular-nums">
           <thead>
             <tr className="border-b border-line-strong text-[12px] text-ink-faint">
-              <th scope="col" className="py-2 pr-4 font-medium">Finished</th>
-              <th scope="col" className="py-2 pr-4 font-medium">Player</th>
+              <th scope="col" className="py-2 pr-4 font-medium">Played as</th>
               <th scope="col" className="py-2 pr-4 font-medium">Opponent</th>
               <th scope="col" className="py-2 pr-4 font-medium">Result</th>
               <th scope="col" className="py-2 pr-4 text-right font-medium">Plies</th>
@@ -148,16 +135,15 @@ function GamesTable({ games }: { games: HumanGame[] }) {
           <tbody>
             {shown.map((g) => (
               <tr key={g.id} className="border-b border-line text-ink-muted">
-                <td className="py-2 pr-4 whitespace-nowrap">{when(g.finished)}</td>
                 <td className="py-2 pr-4 text-ink">
                   <span className="flex items-center gap-2">
                     <span aria-hidden className={`inline-block h-3 w-3 shrink-0 rounded-full ring-1 ${
                       g.human === 'white' ? 'bg-[#f1e6cc] ring-[#8a6a45]' : 'bg-[#2b1e19] ring-[#c9a14c]'
                     }`} />
-                    <span>{g.player}<span className="sr-only">, as {g.human}</span></span>
+                    {name(g.human)}
                   </span>
                 </td>
-                <td className="py-2 pr-4 whitespace-nowrap">{level(g)}</td>
+                <td className="py-2 pr-4 whitespace-nowrap">{opponent(g)}</td>
                 <td className="py-2 pr-4">
                   <span className={g.result === 'win' ? 'font-medium text-success' : g.result === 'loss' ? 'text-danger' : 'text-ink'}>
                     {RESULT[g.result]}
@@ -165,10 +151,10 @@ function GamesTable({ games }: { games: HumanGame[] }) {
                   <span className="text-ink-faint"> · {REASONS[g.reason] ?? g.reason}</span>
                   {g.takebacks > 0 && <span className="text-ink-faint" title="Moves taken back with Undo"> · {plural(g.takebacks, 'take-back')}</span>}
                 </td>
-                <td className="py-2 pr-4 text-right">{g.plies}</td>
+                <td className="py-2 pr-4 text-right">{g.moves.length}</td>
                 <td className="py-2 text-right">
-                  <Button size="sm" variant="ghost" icon={<Play size={13} />} disabled={g.plies === 0}
-                    aria-label={`Replay ${g.player}'s game of ${when(g.finished)}`}
+                  <Button size="sm" variant="ghost" icon={<Play size={13} />} disabled={g.moves.length === 0}
+                    aria-label={`Replay the game played as ${g.human} against ${opponent(g)}, ${RESULT[g.result].toLowerCase()}`}
                     onClick={() => {
                       watchGame(g.moves, 'results')
                       location.hash = href('play')
@@ -301,7 +287,6 @@ function Share({ data, onImported }: { data: HumanGames; onImported: () => void 
       if (input.current) input.current.value = ''
     }
   }
-  const mine = data.players.length === 1 ? data.players[0].file : '<your name>.jsonl'
   return (
     <Card title="Collect everyone's games" label="share-title">
       <div className="grid gap-3 md:grid-cols-3">
@@ -332,9 +317,9 @@ function Share({ data, onImported }: { data: HumanGames; onImported: () => void 
         <div className="flex flex-col rounded-xl bg-bg p-4">
           <h3 className="text-[14px] font-semibold text-ink">Or commit them</h3>
           <p className="mt-1 text-[13px] leading-snug text-ink-muted">
-            Each player's games are kept in <span className="font-mono text-[12px] break-all text-ink">{data.folder}/{mine}</span> in
-            the project folder, a file of their own. Commit yours and open a pull request; the guide in{' '}
-            <span className="font-mono text-[12px] text-ink">docs/HUMAN_GAMES.md</span> has the steps.
+            Each game is a file of its own in <span className="font-mono text-[12px] break-all text-ink">{data.folder}/</span> in
+            the project folder, so nobody's commit touches anyone else's. Commit yours and open a pull request; the
+            guide in <span className="font-mono text-[12px] text-ink">docs/HUMAN_GAMES.md</span> has the steps.
           </p>
         </div>
       </div>
@@ -414,20 +399,20 @@ export function ResultsView() {
           {data && (
             <>
               <Card title="Results" label="results-title"
-                aside={data.total > 0 && `${plural(data.total, 'game')} · ${plural(data.players.length, 'player')}`}>
+                aside={data.total > 0 && plural(data.total, 'game')}>
                 {data.total > 0 ? <ResultsTable data={data} /> : (
                   <div className="rounded-xl bg-bg p-5">
                     <p className="text-[14px] font-medium text-ink">No games recorded yet</p>
                     <p className="mt-1 max-w-[62ch] text-[13.5px] leading-relaxed text-ink-muted">
-                      In Play, choose <b className="font-medium text-ink">Vs computer</b>, open the <b className="font-medium text-ink">Game</b> panel,
-                      switch on <b className="font-medium text-ink">Record my games</b> and enter your name. Each game you finish then shows up here.
+                      In Play, choose <b className="font-medium text-ink">Vs computer</b>, then turn on <b className="font-medium text-ink">Record</b> in
+                      the quick actions (the ‹ button) or in the Game panel. Each game you finish then shows up here.
                     </p>
                     <a href={href('play')} className="mt-3 inline-flex text-[13.5px] font-medium text-accent underline-offset-4 hover:underline">Go to Play</a>
                   </div>
                 )}
               </Card>
               {data.total > 0 && (
-                <Card title="Games" label="games-title" aside="newest first">
+                <Card title="Games" label="games-title" aside="most recently added first">
                   <GamesTable games={data.games} />
                 </Card>
               )}

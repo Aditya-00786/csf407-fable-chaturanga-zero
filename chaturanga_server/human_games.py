@@ -2,21 +2,19 @@
 
 The app sends each game it recorded once it is over: played to the end, resigned, or left before
 the end (a new game started, say), which counts as resigning. The engine replays every game before
-it is kept and works out the result itself. Games are kept one JSON line each in
-results/human_games/<player>.jsonl, one file per player, so teammates committing their own games
-never edit the same file. A game is known by the id the app gave it: recorded twice, or imported
-from two files, it is kept once.
+it is kept and works out the result itself. A game keeps only what the results need: the colour
+the person played, the opponent (its level and network), the moves, the result and the take-backs.
+No names, no times.
 
-Teammates playing on their own laptops send their games as a file (Export on the Results page),
-checked game by game when it is imported here, or commit their file.
+Each game is a file of its own, results/human_games/<id>.json, named by the id the app gave it: so
+teammates committing their games never edit the same file, and a game recorded twice, or imported
+from two files, is kept once. Teammates playing on their own laptops send their games as one file
+(Export on the Results page), checked game by game when it is imported here, or commit them.
 """
 
-import hashlib
 import json
 import os
-import re
 import threading
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Literal, Optional
 
@@ -32,7 +30,6 @@ ROOT = Path(__file__).resolve().parent.parent
 FORMAT = "chaturangzero-human-games"
 MAX_MOVES = 1000
 COLORS = {"white": 1, "black": -1}
-NAMES = {1: "white", -1: "black"}
 
 
 def games_dir() -> Path:
@@ -48,28 +45,17 @@ class Network(BaseModel):
 class GameIn(BaseModel):
     """A game as the app recorded it. Its result is not taken from here: the engine works it out."""
     id: str = Field(pattern=r"^[A-Za-z0-9-]{8,64}$")
-    player: str = Field(min_length=1, max_length=40)
     human: Literal["white", "black"]
     opponent: str
     level: Optional[str] = None
     network: Optional[Network] = None
-    network_changed: bool = False  # the run in Play published a new network during the game
     moves: List[str] = Field(default_factory=list, max_length=MAX_MOVES)
     ended: Literal["over", "resigned", "left"] = "over"
     takebacks: int = Field(0, ge=0, le=MAX_MOVES)
-    started: datetime
-    finished: datetime
-
-
-def _iso(t: datetime) -> str:
-    return t.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def check(game: GameIn) -> dict:
     """The game as it is kept, with the engine's result. ValueError says what is wrong with it."""
-    player = " ".join(game.player.split())
-    if not player or not player.isprintable():
-        raise ValueError("the player's name is empty or has control characters")
     if game.opponent not in AGENTS:
         raise ValueError(f"unknown opponent {game.opponent!r}")
     zero = game.opponent == "zero"
@@ -96,17 +82,13 @@ def check(game: GameIn) -> dict:
         if outcome is not None:
             raise ValueError(f"it was {game.ended} after the game was over")
         if (len(game.moves) + (human == 1)) // 2 == 0:
-            raise ValueError(f"it was {game.ended} before the player made a move")
+            raise ValueError(f"it was {game.ended} before the person made a move")
         winner, reason = -human, game.ended
     return {
-        "id": game.id, "player": player, "human": game.human, "opponent": game.opponent,
-        "level": game.level if zero else None,
+        "id": game.id, "human": game.human, "opponent": game.opponent, "level": game.level if zero else None,
         "network": game.network.model_dump() if zero and game.network else None,
-        "network_changed": zero and game.network_changed,
-        "result": "draw" if winner is None else "win" if winner == human else "loss",
-        "reason": reason, "winner": None if winner is None else NAMES[winner],
-        "plies": len(game.moves), "takebacks": game.takebacks,
-        "started": _iso(game.started), "finished": _iso(game.finished), "moves": game.moves,
+        "result": "draw" if winner is None else "win" if winner == human else "loss", "reason": reason,
+        "takebacks": game.takebacks, "moves": game.moves,
     }
 
 
@@ -115,49 +97,39 @@ def check(game: GameIn) -> dict:
 _lock = threading.Lock()
 
 
-def slug(player: str) -> str:
-    """The player's file name: their name in lower case, letters and digits only."""
-    s = re.sub(r"[^a-z0-9]+", "-", player.lower()).strip("-")[:40].strip("-")
-    return s or "player-" + hashlib.sha1(player.encode()).hexdigest()[:8]
-
-
-def _read(path: Path) -> list[dict]:
-    games = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        try:
-            game = json.loads(line)
-        except ValueError:
-            continue
-        if isinstance(game, dict) and "id" in game and "result" in game:
-            games.append(game)
-    return games
+def _read(path: Path) -> Optional[dict]:
+    try:
+        game = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return game if isinstance(game, dict) and "result" in game and "moves" in game else None
 
 
 def all_games(folder: Optional[Path] = None) -> list[dict]:
-    folder = folder or games_dir()
-    return [g for path in sorted(folder.glob("*.jsonl")) for g in _read(path)]
+    """Every game kept, the most recently added first (by its file's time on this computer; the
+    games themselves keep no times)."""
+    found = []
+    for path in (folder or games_dir()).glob("*.json"):
+        game = _read(path)
+        if game is not None:
+            found.append((-path.stat().st_mtime, path.stem, game))
+    return [game for *_, game in sorted(found, key=lambda f: f[:2])]
 
 
 def add(games: list[dict]) -> tuple[int, int]:
-    """Keep the games not kept already (by id); (how many were added, how many were kept already).
-    A player's file is kept in the order the games finished, so the same games give the same file."""
+    """Keep the games not kept already (by id); (how many were added, how many were kept already)."""
     with _lock:
         folder = games_dir()
-        known = {g["id"] for g in all_games(folder)}
-        new: dict[str, list[dict]] = {}
-        for g in games:
-            if g["id"] not in known:
-                known.add(g["id"])
-                new.setdefault(slug(g["player"]), []).append(g)
         folder.mkdir(parents=True, exist_ok=True)
-        for name, items in new.items():
-            path = folder / f"{name}.jsonl"
-            kept = (_read(path) if path.exists() else []) + items
-            kept.sort(key=lambda g: (g.get("finished") or "", g["id"]))
-            tmp = path.with_suffix(".jsonl.tmp")
-            tmp.write_text("".join(json.dumps(g, ensure_ascii=False) + "\n" for g in kept), encoding="utf-8")
+        added = 0
+        for g in games:
+            path = folder / f"{g['id']}.json"
+            if path.exists():
+                continue
+            tmp = path.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(g) + "\n", encoding="utf-8")
             tmp.replace(path)
-        added = sum(len(items) for items in new.values())
+            added += 1
         return added, len(games) - added
 
 
@@ -195,18 +167,8 @@ def _tally(games: list[dict]) -> dict:
     return t
 
 
-def _by_player(games: list[dict]) -> list[dict]:
-    players: dict[str, list[dict]] = {}
-    for g in games:
-        players.setdefault(slug(g["player"]), []).append(g)
-    rows = [{"player": items[-1]["player"], "file": f"{name}.jsonl", **_tally(items)} for name, items in players.items()]
-    return sorted(rows, key=lambda r: (-r["games"], r["player"].lower()))
-
-
 def summary(games: list[dict]) -> dict:
-    """The people's results against each opponent (the trained agent apart for each level and network),
-    overall and by player."""
-    games = sorted(games, key=lambda g: (g.get("finished") or "", g["id"]))
+    """The people's results against each opponent: the trained agent apart for each level and network."""
     groups: dict[tuple, list[dict]] = {}
     for g in games:
         groups.setdefault(_opponent_key(g), []).append(g)
@@ -220,18 +182,18 @@ def summary(games: list[dict]) -> dict:
 
     opponents = []
     for (opponent, level, _), items in sorted(groups.items(), key=rank):
-        net = items[-1].get("network")
+        net = items[0].get("network")
         opponents.append({"opponent": opponent, "level": level or None, "network": net,
                           "milestone": MILESTONES.get((net or {}).get("fingerprint") or ""),
-                          "label": opponent_label(items[-1]), **_tally(items), "players": _by_player(items)})
-    return {"total": len(games), "opponents": opponents, "players": _by_player(games)}
+                          "label": opponent_label(items[0]), **_tally(items)})
+    return {"total": len(games), "opponents": opponents}
 
 
 # ---------------------------------------------------------------------- reading files people send
 
 def parse_file(text: str) -> list:
-    """The games in a file: one exported from the Results page, or a player's file of games, one
-    per line (results/human_games/<player>.jsonl)."""
+    """The games in a file: one exported from the Results page, one game's own file
+    (results/human_games/<id>.json), or games one per line."""
     text = text.strip().lstrip("﻿")
     try:
         data = json.loads(text)
@@ -254,7 +216,8 @@ def parse_file(text: str) -> list:
 
 
 def check_kept(item) -> dict:
-    """A game from a file, checked again: its moves replayed, and its result the engine's."""
+    """A game from a file, checked again: its moves replayed, and its result the engine's. Anything
+    else in it (a name, say, from another version of the app) is left out."""
     if not isinstance(item, dict):
         raise ValueError("it is not a game")
     reason = item.get("reason")
@@ -282,10 +245,9 @@ def _folder_shown() -> str:
 
 @router.get("")
 def recorded():
-    """Every game kept on this computer, newest first, and the results."""
+    """Every game kept on this computer, the most recently added first, and the results."""
     games = all_games()
-    return {"folder": _folder_shown(), **summary(games),
-            "games": sorted(games, key=lambda g: (g.get("finished") or "", g["id"]), reverse=True)}
+    return {"folder": _folder_shown(), **summary(games), "games": games}
 
 
 @router.post("")
@@ -295,23 +257,15 @@ def record(game: GameIn):
     except ValueError as exc:
         raise HTTPException(400, f"The game could not be saved: {exc}.") from exc
     added, _ = add([kept])
-    mine = slug(kept["player"])
-    return {"game": kept, "added": bool(added), "file": f"{_folder_shown()}/{mine}.jsonl",
-            "player_games": sum(slug(g["player"]) == mine for g in all_games())}
+    return {"game": kept, "added": bool(added), "total": len(all_games())}
 
 
 @router.get("/export")
-def export(player: Optional[str] = None):
-    """Every game kept here (or one player's) as one file to send."""
-    games = sorted(all_games(), key=lambda g: (g.get("finished") or "", g["id"]))
-    if player:
-        games = [g for g in games if slug(g["player"]) == slug(player)]
-    names = sorted({slug(g["player"]) for g in games})
-    now = datetime.now(timezone.utc)
-    who = names[0] if len(names) == 1 else "all"
-    body = {"format": FORMAT, "version": 1, "exported": _iso(now), "games": games}
-    return Response(json.dumps(body, ensure_ascii=False, indent=1), media_type="application/json", headers={
-        "Content-Disposition": f'attachment; filename="chaturangzero-games-{who}-{now.astimezone():%Y-%m-%d}.json"'})
+def export():
+    """Every game kept here, as one file to send."""
+    body = {"format": FORMAT, "version": 1, "games": sorted(all_games(), key=lambda g: g["id"])}
+    return Response(json.dumps(body, indent=1), media_type="application/json",
+                    headers={"Content-Disposition": 'attachment; filename="chaturangzero-games.json"'})
 
 
 class ImportFile(BaseModel):

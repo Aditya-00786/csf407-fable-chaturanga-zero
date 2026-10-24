@@ -29,7 +29,7 @@ export type Recording =
   | { state: 'off' }
   | { state: 'on' }
   | { state: 'saving' }
-  | { state: 'saved'; ended: HumanGameRecord['ended']; games: number; player: string; file: string }
+  | { state: 'saved'; ended: HumanGameRecord['ended']; games: number }
   | { state: 'failed'; message: string }
 
 const PACE_MS: Record<Pace, number> = { slow: 1400, normal: 700, fast: 220 }
@@ -74,8 +74,8 @@ interface GameStore {
   resign: () => void
   /** Try again to save the recorded game that could not be saved. */
   saveRecording: () => void
-  /** Stop recording this game (the switch was turned off). */
-  dropRecording: () => void
+  /** Record games against the computer, or stop (this game too, if it was being recorded). */
+  setRecording: (on: boolean) => void
   setMode: (mode: Mode) => void
   setHumanColor: (c: Color) => void
   setOpponent: (id: string) => void
@@ -120,12 +120,11 @@ const reviewKey = (moves: string[], ply: number) => moves.slice(0, ply).join(' '
  */
 interface Draft {
   id: string
-  started: string
   human: Color
   opponent: string
   level: Level
   takebacks: number
-  networks: TrainedInfo[]
+  network: TrainedInfo | null // the trained network that played it
 }
 let draft: Draft | null = null
 let unsaved: HumanGameRecord | null = null
@@ -172,13 +171,11 @@ export const useGame = create<GameStore>((set, get) => {
     return null
   }
 
-  /** Start recording at the game's first move, if the switch is on and a name given. */
+  /** Start recording at the game's first move, if recording is on. */
   const beginRecording = () => {
     const s = get()
-    const { recordGames, player } = useSettings.getState()
-    if (draft || s.mode !== 'hvc' || s.moves.length > 0 || s.watching || !recordGames || !player.trim()) return
-    draft = { id: newId(), started: new Date().toISOString(), human: s.humanColor, opponent: s.opponent,
-      level: s.levels.opponent, takebacks: 0, networks: [] }
+    if (draft || s.mode !== 'hvc' || s.moves.length > 0 || s.watching || !useSettings.getState().recordGames) return
+    draft = { id: newId(), human: s.humanColor, opponent: s.opponent, level: s.levels.opponent, takebacks: 0, network: null }
     set({ recording: { state: 'on' } })
   }
 
@@ -194,22 +191,27 @@ export const useGame = create<GameStore>((set, get) => {
       return
     }
     unsaved = {
-      id: d.id, player: useSettings.getState().player.trim(), human: d.human === 1 ? 'white' : 'black',
-      opponent: d.opponent, level: d.opponent === 'zero' ? d.level : null, network: d.networks[0] ?? null,
-      network_changed: d.networks.length > 1, moves, ended, takebacks: d.takebacks, started: d.started,
-      finished: new Date().toISOString(),
+      id: d.id, human: d.human === 1 ? 'white' : 'black', opponent: d.opponent,
+      level: d.opponent === 'zero' ? d.level : null, network: d.network, moves, ended, takebacks: d.takebacks,
     }
     saveRecording()
+  }
+
+  /**
+   * A setting of the recorded game changed (the Game panel locks them once you have moved): the
+   * game counts as left. True if you had not moved yet, so it can start again, recorded.
+   */
+  const changeRecorded = () => {
+    if (!draft) return false
+    const s = get()
+    const fresh = !humanMoved(s.watching?.moves ?? s.moves, draft.human)
+    finishRecording('left')
+    return fresh && !s.watching
   }
 
   const saveRecording = () => {
     const record = unsaved
     if (!record) return
-    record.player ||= useSettings.getState().player.trim()
-    if (!record.player) {
-      set({ recording: { state: 'failed', message: 'Enter your name in the Game panel to save this game.' } })
-      return
-    }
     set({ recording: { state: 'saving' } })
     api.recordGame(record).then(
       (res) => {
@@ -217,7 +219,7 @@ export const useGame = create<GameStore>((set, get) => {
         unsaved = null
         // A new game being recorded by now shows that instead.
         if (!draft) {
-          set({ recording: { state: 'saved', ended: record.ended, games: res.player_games, player: res.game.player, file: res.file } })
+          set({ recording: { state: 'saved', ended: record.ended, games: res.total } })
         }
       },
       (err) => {
@@ -247,8 +249,7 @@ export const useGame = create<GameStore>((set, get) => {
         if (gen !== generation) return
         set({ moves: [...get().moves, res.move], game: res.game, status: 'ready', error: null,
           ...(res.network ? { trained: res.network } : {}) })
-        const net = res.network
-        if (draft && net && !draft.networks.some((n) => n.fingerprint === net.fingerprint)) draft.networks.push(net)
+        if (draft && res.network && !draft.network) draft.network = res.network
         soundFor(res.game)
         if (res.game.outcome) finishRecording('over')
         schedule()
@@ -422,9 +423,19 @@ export const useGame = create<GameStore>((set, get) => {
       finishRecording('resigned')
     },
     saveRecording,
-    dropRecording: () => {
-      draft = null
-      if (get().recording.state === 'on') set({ recording: { state: 'off' } })
+    setRecording: (on) => {
+      useSettings.getState().setRecordGames(on)
+      const s = get()
+      if (!on) {
+        draft = null
+        if (s.recording.state === 'on') set({ recording: { state: 'off' } })
+        return
+      }
+      if (s.mode !== 'hvc' || s.watching || draft) return
+      // A game is recorded from its first move. Before yours, it starts now (or again, the
+      // computer's opening move played afresh); once you have moved, with the next game.
+      if (s.moves.length === 0) beginRecording()
+      else if (!s.game?.outcome && !s.resigned && !humanMoved(s.moves, s.humanColor)) get().newGame()
     },
 
     setMode: (mode) => {
@@ -436,19 +447,28 @@ export const useGame = create<GameStore>((set, get) => {
       schedule()
     },
     setHumanColor: (humanColor) => {
-      if (humanColor !== get().humanColor) finishRecording('left')
+      if (humanColor === get().humanColor) return
+      const restart = changeRecorded()
       set({ humanColor, orientation: humanColor })
+      if (restart) {
+        get().newGame()
+        return
+      }
       generation++
       schedule()
     },
     setOpponent: (opponent) => {
-      if (opponent !== get().opponent) finishRecording('left')
+      if (opponent === get().opponent) return
+      const restart = changeRecorded()
       set({ opponent })
+      if (restart) get().newGame()
     },
     setAgent: (color, id) => set(color === 1 ? { whiteAgent: id } : { blackAgent: id }),
     setLevel: (slot, level) => {
-      if (slot === 'opponent' && level !== get().levels.opponent) finishRecording('left')
+      if (level === get().levels[slot]) return
+      const restart = slot === 'opponent' && changeRecorded()
       set({ levels: { ...get().levels, [slot]: level } })
+      if (restart) get().newGame()
     },
     refreshTrained: () => {
       void api.meta().then((m) => set({ trained: m.trained }), () => {})

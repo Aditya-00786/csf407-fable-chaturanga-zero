@@ -177,6 +177,7 @@ export function Status({ view }: { view: GameView | null }) {
         )}
       </p>
       {showHint && hint && <p className={`mt-1 text-[13.5px] leading-snug ${tag?.danger ? 'text-danger' : 'text-ink-muted'}`}>{hint}</p>}
+      <RecordingBadge />
       {showCounters && (
         <p className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[12px] text-ink-faint tabular-nums">
           <span>Move {Math.floor(view.ply / 2) + 1}</span>
@@ -271,60 +272,75 @@ function Captured({ view }: { view: GameView | null }) {
   )
 }
 
+/** The record mark: a red dot while games are recorded, a ring when not. */
+export function RecordDot({ on }: { on: boolean }) {
+  return (
+    <span aria-hidden className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full border-[1.5px] transition-colors duration-200 ${
+      on ? 'border-danger bg-danger' : 'border-current'
+    }`} />
+  )
+}
+
+/** Whether the game on the board is recorded, in the status card: clear without opening the Game panel. */
+function RecordingBadge() {
+  const { mode, recording, moves, game, resigned, watching, reviewPly } = useGame()
+  const on = useSettings((s) => s.recordGames)
+  if (mode !== 'hvc' || !on || watching || reviewPly !== null || !game || game.outcome || resigned) return null
+  const live = recording.state === 'on' || moves.length === 0
+  return (
+    <p className="mt-1.5 flex items-center gap-1.5 text-[12px] font-medium text-ink-muted">
+      <RecordDot on={live} />
+      {live ? 'Recording' : 'Recording starts with your next game'}
+    </p>
+  )
+}
+
 /** What recording is doing, in one line under its switch. */
-function recordingNote(g: ReturnType<typeof useGame.getState>, player: string): { text: string; danger?: boolean } {
+function recordingNote(g: ReturnType<typeof useGame.getState>): { text: string; danger?: boolean } {
   const r = g.recording
   if (r.state === 'on') {
-    return { text: 'Recording this game. The opponent and your colour stay as they are until it ends; a new game before then counts as resigning this one.' }
+    return {
+      text: humanMoved(g.moves, g.humanColor)
+        ? 'Recording this game. The opponent and your colour stay as they are until it ends; a new game before then counts as resigning it.'
+        : 'Recording this game from its first move. Changing the opponent or your colour before you move starts it again.',
+    }
   }
   if (r.state === 'saving') return { text: 'Saving the game…' }
   if (r.state === 'failed') return { text: `Not saved: ${r.message}`, danger: true }
   const last = r.state === 'saved'
-    ? `${r.ended === 'left' ? 'The game you left was saved as resigned' : 'Saved'}: ${r.games} ${r.games === 1 ? 'game' : 'games'} recorded for ${r.player}. `
+    ? `${r.ended === 'left' ? 'The game you left was saved as resigned' : 'Saved'}: ${r.games} ${r.games === 1 ? 'game' : 'games'} recorded on this computer. `
     : ''
-  if (!player.trim()) return { text: `${last}Enter your name to record your games.` }
   const over = !!g.game?.outcome || g.resigned
-  if (g.moves.length > 0 && !over) return { text: `${last}Recording starts with your next game.` }
+  if (g.moves.length === 0) return { text: `${last}This game is recorded from its first move.` }
+  if (!over) return { text: `${last}Recording starts with your next game.` }
   return { text: `${last}Your next game is recorded from its first move.` }
 }
 
 /** Recording games against the computer for the Results page. */
 function RecordSection() {
   const g = useGame()
-  const { recordGames, setRecordGames, player, setPlayer } = useSettings()
+  const recordGames = useSettings((s) => s.recordGames)
   const id = useId()
-  const note = recordingNote(g, player)
+  const note = recordGames
+    ? recordingNote(g)
+    : { text: 'Each game you finish is saved for the results against the agent: its moves and result, nothing about you.' }
   const canResign = g.recording.state === 'on' && !g.watching && !!g.game && !g.game.outcome && humanMoved(g.moves, g.humanColor)
   return (
     <section aria-labelledby={`${id}-title`} className="space-y-3">
       <SectionTitle aside={<a href={href('results')} className="text-accent underline-offset-4 hover:underline">Results</a>}>
         <span id={`${id}-title`}>Recording</span>
       </SectionTitle>
-      <Switch label="Record my games" checked={recordGames} onChange={(on) => {
-        setRecordGames(on)
-        if (!on) g.dropRecording()
-      }} />
-      <Collapse open={recordGames}>
-        <div className="space-y-2.5 pt-0.5">
-          <label className="block text-[13px] font-medium text-ink-muted" htmlFor={`${id}-name`}>Your name</label>
-          <input id={`${id}-name`} value={player} maxLength={40} autoComplete="nickname" spellCheck={false}
-            onChange={(e) => setPlayer(e.target.value)} placeholder="As your teammates know you"
-            className="-mt-1 h-9 w-full rounded-lg border border-line bg-bg px-3 text-[14px] text-ink transition-colors duration-150 placeholder:text-ink-faint hover:border-line-strong focus-visible:border-accent" />
-          <p key={note.text} aria-live="polite" className={`cz-swap text-[12.5px] leading-snug ${note.danger ? 'text-danger' : 'text-ink-muted'}`}>
-            {note.text}
-          </p>
-          {(canResign || g.recording.state === 'failed') && (
-            <div className="flex gap-2">
-              {canResign && <Button size="sm" onClick={g.resign} icon={<Flag size={14} />}>Resign</Button>}
-              {g.recording.state === 'failed' && <Button size="sm" onClick={g.saveRecording}>Try again</Button>}
-            </div>
-          )}
+      <Switch label="Record games for the results" checked={recordGames} onChange={g.setRecording} />
+      <p key={note.text} aria-live="polite" className={`cz-swap -mt-1 text-[12.5px] leading-snug ${
+        note.danger ? 'text-danger' : recordGames ? 'text-ink-muted' : 'text-ink-faint'
+      }`}>
+        {note.text}
+      </p>
+      {(canResign || g.recording.state === 'failed') && (
+        <div className="flex gap-2">
+          {canResign && <Button size="sm" onClick={g.resign} icon={<Flag size={14} />}>Resign</Button>}
+          {g.recording.state === 'failed' && <Button size="sm" onClick={g.saveRecording}>Try again</Button>}
         </div>
-      </Collapse>
-      {!recordGames && (
-        <p className="-mt-1 text-[12.5px] leading-snug text-ink-faint">
-          Each finished game is saved for the results against the agent, under your name.
-        </p>
       )}
     </section>
   )
@@ -333,8 +349,8 @@ function RecordSection() {
 export function PlayPanel({ view, onClose, onRotate }: { view: GameView | null; onClose: () => void; onRotate: () => void }) {
   const g = useGame()
   const settings = useSettings()
-  // A game being recorded keeps one opponent and one colour from start to end.
-  const locked = g.recording.state === 'on' && !g.watching
+  // A game being recorded keeps one opponent and one colour from your first move to its end.
+  const locked = g.recording.state === 'on' && !g.watching && humanMoved(g.moves, g.humanColor)
   return (
     <>
       <DrawerHeader title="Game" onClose={onClose} closeLabel="Close the game panel" />

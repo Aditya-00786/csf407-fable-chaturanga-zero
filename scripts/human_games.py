@@ -33,17 +33,12 @@ def main():
     if not games:
         sys.exit(f"No recorded games in {args.folder}.")
     s = summary(games)
-    header = "| {} | Games | Won | Drawn | Lost | People's score |\n|---|:-:|:-:|:-:|:-:|:-:|"
-    print(header.format("Opponent"))
+    print("| Opponent | Games | Won | Drawn | Lost | People's score |\n|---|:-:|:-:|:-:|:-:|:-:|")
     for o in s["opponents"]:
         print(_row(o["label"], o))
-    print()
-    print(header.format("Player"))
-    for p in s["players"]:
-        print(_row(p["player"], p))
-    n, players = s["total"], len(s["players"])
+    n = s["total"]
     print(f"\nWon, drawn and lost are the people's; resigning or leaving a game counts as a loss. "
-          f"{n} {'game' if n == 1 else 'games'} by {players} {'player' if players == 1 else 'players'}.")
+          f"{n} {'game' if n == 1 else 'games'} in all.")
 
 
 if __name__ == "__main__":

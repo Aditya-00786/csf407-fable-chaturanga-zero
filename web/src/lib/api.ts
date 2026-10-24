@@ -106,29 +106,26 @@ async function send<T>(path: string, init: RequestInit): Promise<T> {
   return res.json() as Promise<T>
 }
 
-/** A game against the computer as Play records it; the server works out its result. */
+/**
+ * A game against the computer as Play records it: only what the results need (no names, no
+ * times). The server works out its result.
+ */
 export interface HumanGameRecord {
   id: string
-  player: string
   human: 'white' | 'black'
   opponent: string
   level: string | null
   network: TrainedInfo | null
-  network_changed: boolean
   moves: string[]
   /** Played to the end, resigned, or left before the end (which counts as resigning). */
   ended: 'over' | 'resigned' | 'left'
   takebacks: number
-  started: string
-  finished: string
 }
 
 /** A recorded game as kept, with its result for the person. */
 export interface HumanGame extends Omit<HumanGameRecord, 'ended'> {
   result: 'win' | 'draw' | 'loss'
   reason: string
-  winner: 'white' | 'black' | null
-  plies: number
 }
 
 export interface Tally {
@@ -140,18 +137,12 @@ export interface Tally {
   score: number | null
 }
 
-export interface PlayerTally extends Tally {
-  player: string
-  file: string
-}
-
 export interface OpponentTally extends Tally {
   opponent: string
   level: string | null
   network: TrainedInfo | null
   milestone: string | null
   label: string
-  players: PlayerTally[]
 }
 
 export interface HumanGames {
@@ -159,8 +150,7 @@ export interface HumanGames {
   folder: string
   total: number
   opponents: OpponentTally[]
-  players: PlayerTally[]
-  /** Newest first. */
+  /** The most recently added first. */
   games: HumanGame[]
 }
 
@@ -181,7 +171,7 @@ export const api = {
     }),
   humanGames: () => request<HumanGames>('/api/human-games'),
   recordGame: (game: HumanGameRecord) =>
-    request<{ game: HumanGame; added: boolean; file: string; player_games: number }>('/api/human-games', game),
+    request<{ game: HumanGame; added: boolean; total: number }>('/api/human-games', game),
   importGames: (files: { name: string; text: string }[]) => request<ImportResult>('/api/human-games/import', { files }),
   /** Give Play the network in a file (a .pt checkpoint); the server checks it loads. */
   loadNetwork: (file: File) =>
