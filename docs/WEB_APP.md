@@ -73,12 +73,9 @@ A compact reference: setup, the pieces and how a game ends. The sources behind e
 Follows the training runs in `runs/`, live:
 
 ```mermaid
-flowchart TB
-    M[Run menu<br/>each run's state] --> S[Status card<br/>phase, live progress, time left]
-    S --> C[Controls<br/>Pause · Resume · Train further · Settings · In Play]
-    S --> CH[Charts<br/>losses, test scores, self-play]
-    CH --> GT[Every generation<br/>Watch replays a game on the board]
-    GT --> RR[Run report<br/>findings, strength check, rating ladder]
+flowchart LR
+    M["Run menu"] --> S["Status card<br/>live progress, time left"] --> C["Controls<br/>Pause · Resume · Settings · In Play"]
+    S --> CH["Charts and<br/>every generation"] --> RR["Run report<br/>strength check, ladder"]
 ```
 
 - **New run** starts training on this Mac, Colab, Kaggle or your own server

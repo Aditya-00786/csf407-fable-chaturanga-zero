@@ -7,16 +7,9 @@ next batch: AlphaZero's loop, with every generation tested, saved and logged.
 
 ```mermaid
 flowchart LR
-    subgraph G[One generation]
-        direction LR
-        SP[1 · Self-play<br/>newest network vs itself] --> IN[2 · Teammates' games<br/>checked, added]
-        IN --> TR[3 · Training<br/>batches from the replay buffer]
-        TR --> EV[4 · Tests<br/>vs previous, Greedy, Random]
-    end
-    EV --> BEST{Best so far?}
-    BEST -- yes --> PUB[best.pt<br/>Play's Trained opponent]
-    EV --> NEXT[Next generation]
-    NEXT --> SP
+    SP["1 · Self-play<br/>newest network vs itself"] --> IN["2 · Teammates'<br/>games added"] --> TR["3 · Training<br/>on the replay buffer"] --> EV["4 · Tests<br/>previous, Greedy, Random"]
+    EV -- next generation --> SP
+    EV -. best so far .-> PUB["best.pt<br/>Play's opponent"]
 ```
 
 ## Starting a run
