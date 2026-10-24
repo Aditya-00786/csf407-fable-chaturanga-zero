@@ -7,46 +7,13 @@ How the code is laid out, and how a position becomes a move and a game becomes t
 ## The parts and how they connect
 
 ```mermaid
-flowchart TB
-    subgraph engine[Rules engine · chaturanga/]
-        game[game.py<br/>GameState, legal moves, results]
-        tables[tables.py · zobrist.py<br/>move tables, hashing]
-        config[config.py<br/>RulesConfig]
-    end
-    subgraph learn[Learning · chaturanga/]
-        enc[encoding.py<br/>planes, actions, masks]
-        net[net.py<br/>ResNet, evaluator, checkpoints]
-        mcts[mcts.py<br/>PUCT search, search rules]
-        sp[selfplay.py<br/>batched self-play, game records]
-        buf[replay_buffer.py]
-        train[training.py<br/>the generation loop]
-        endg[endgames.py<br/>endgame starts]
-    end
-    subgraph measure[Measuring · chaturanga/]
-        agents[agents.py<br/>Random, Greedy, MCTS, Trained]
-        analysis[analysis.py<br/>report, strength check]
-        bench[benchmark.py<br/>rating ladder, conversion test]
-    end
-    subgraph elsewhere[Training elsewhere · chaturanga/]
-        cloud[cloud.py<br/>Colab, Kaggle]
-        remote[remote.py<br/>your own server over SSH]
-    end
-    subgraph app[The app]
-        server[chaturanga_server/<br/>FastAPI]
-        web[web/<br/>React + Three.js]
-    end
-    game --> enc --> net --> mcts
-    game --> mcts
-    mcts --> sp --> buf --> train --> net
-    endg --> sp
-    mcts --> agents
-    agents --> analysis
-    agents --> bench
-    train --> cloud
-    train --> remote
-    agents --> server
-    train --> server
-    server <--> web
+flowchart LR
+    E["Rules engine<br/>game · tables<br/>zobrist · config"] --> L["Learning<br/>encoding · net · mcts<br/>selfplay · replay_buffer<br/>training · endgames"]
+    L --> M["Measuring<br/>agents · analysis<br/>benchmark"]
+    L --> X["Training elsewhere<br/>cloud · remote"]
+    M --> S["chaturanga_server<br/>FastAPI"]
+    L --> S
+    S <--> W["web/<br/>React + Three.js"]
 ```
 
 ## A game becomes training data
