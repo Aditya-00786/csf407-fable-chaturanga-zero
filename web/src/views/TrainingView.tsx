@@ -214,7 +214,7 @@ function useServer(wanted: boolean) {
   return { server, setServer, refresh }
 }
 
-/** "krish@10.1.19.63": who the app signs in as, from the SSH config when it says. */
+/** "student@10.0.0.5": who the app signs in as, from the SSH config when it says. */
 function serverLabel(server: Pick<ServerStatus, 'host' | 'hosts'> | null, host?: string | null): string {
   const name = host ?? server?.host ?? ''
   const known = server?.hosts.find((h) => h.name === name)

@@ -179,7 +179,7 @@ def test_hosts_and_folders_that_could_be_misread_are_refused(server):
 
 def test_hosts_from_the_ssh_config_are_offered(server, monkeypatch, tmp_path):
     config = tmp_path / "ssh_config"
-    config.write_text("Host lab\n  HostName 10.1.19.63\n  User krish\nHost *.internal !x\nHost linux vm\n")
+    config.write_text("Host lab\n  HostName 10.0.0.5\n  User student\nHost *.internal !x\nHost linux vm\n")
     monkeypatch.setenv("CHATURANGA_SSH_CONFIG", str(config))
     hosts = client.get("/api/training/cloud").json()["server"]["hosts"]
     assert [h["name"] for h in hosts] == ["lab", "linux", "vm"]
