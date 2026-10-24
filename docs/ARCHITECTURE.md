@@ -7,7 +7,7 @@ How the code is laid out, and how a position becomes a move and a game becomes t
 ## The parts and how they connect
 
 ```mermaid
-%%{init: {"flowchart": {"nodeSpacing": 12, "rankSpacing": 16, "padding": 5, "diagramPadding": 4, "subGraphTitleMargin": {"top": 6, "bottom": 6}}, "themeVariables": {"fontSize": "12px"}}}%%
+%%{init: {"flowchart": {"nodeSpacing": 8, "rankSpacing": 16, "padding": 4, "diagramPadding": 4, "subGraphTitleMargin": {"top": 8, "bottom": 8}}, "themeVariables": {"fontSize": "12px"}}}%%
 flowchart TB
     subgraph engine[Rules engine · chaturanga/]
         game[game.py<br/>GameState, legal moves, results]
@@ -24,9 +24,9 @@ flowchart TB
         endg[endgames.py<br/>endgame starts]
     end
     subgraph measure[Measuring · chaturanga/]
-        agents[agents.py<br/>Random, Greedy, MCTS, Trained]
-        analysis[analysis.py<br/>report, strength check]
-        bench[benchmark.py<br/>rating ladder, conversion test]
+        agents[agents.py<br/>Random, Greedy,<br/>MCTS, Trained]
+        analysis[analysis.py<br/>report,<br/>strength check]
+        bench[benchmark.py<br/>rating ladder,<br/>conversion test]
     end
     subgraph elsewhere[Training elsewhere · chaturanga/]
         cloud[cloud.py<br/>Colab, Kaggle]
