@@ -31,9 +31,9 @@ strength check (see "Training by self-play").
 
 Milestone 4 is under way. A rating ladder gives every 10th generation an Elo rating against
 Random, Greedy and the other generations. A conversion test measures how surely and quickly each
-generation turns a small material edge into a win. `main-v4`'s ratings rise from 170 for the
-untrained network to about 1,005 for generations 56 and 60, where they levelled off; 15 more
-generations at a lower learning rate took them to 1,143 at generation 75 (see
+generation turns a small material edge into a win. `main-v4`'s ratings rise from 165 for the
+untrained network to about 990 for generations 56 and 60, where they levelled off; a lower
+learning rate and then a deeper self-play search took them to 1,178 at generation 90 (see
 [Benchmarking](#benchmarking)).
 
 Also shipped: the **web app**. It has a 3D board, three play modes, interactive lessons and a
@@ -667,18 +667,46 @@ the untrained network's results; the ladder's 1,440 new games 36).
 | 61 to 70 (3e-4) | 53.4% | 91.6% | 2.27 | 199 |
 | 71 to 75 (3e-4) | 50.7% | 93.7% | 2.24 | 198 |
 
-- **It restarted progress.** On the ladder, generation 70 is 106 Elo above 60 (+52 to +161), after
-  nothing between 56 and 60, and generation 75 is 139 above 60 (+84 to +195). Against generation
+- **It restarted progress.** On the ladder, generation 70 is 93 Elo above 60 (+44 to +142), after
+  nothing between 56 and 60, and generation 75 is 121 above 60 (+72 to +171). Against generation
   60, generations 70, 72 and 75 each won 17 of 40 games and lost 1 to 4. Most of the gain came in
-  the first 10 generations; 70 to 75 added 33 (−23 to +89), about the slower pace of generations
+  the first 10 generations; 70 to 75 added 28 (−21 to +78), about the slower pace of generations
   30 to 50.
 - **The policy fitted the search more closely.** Its loss on new games, flat at 2.28 to 2.32 from
   generation 40 to 60, fell to 2.22 to 2.25 by generations 72 to 75. The value's loss stayed at
   about 80% of predicting a draw.
 - **Self-play games got shorter** (209 plies on average to 198), as games now end at the first win
   in one, but as many were decided (70% from the opening) and as many reached the ply cap (19%).
-- Generation 72 is the run's best by its test scores; on the ladder 72 and 75 are level (+19, −37
-  to +76), and generation 75 won all 40 games against Greedy there.
+- Generation 72 is the run's best by its test scores; on the ladder 72 and 75 are level (+9, −40
+  to +59), and generation 75 won all 40 games against Greedy there.
+
+**Generations 76 to 90: a deeper self-play search.** 15 more generations with self-play searching
+400 simulations a move instead of 200, the test games staying at 200 (`eval_simulations`) and the
+learning rate at 3e-4. They took 7.7 hours, 30.8 minutes a generation (25 of self-play, about 6 of
+tests and training), and the report at the end 31 minutes more.
+
+| Generations | vs the generation before | vs Greedy | Self-play from the opening: decided | at the ply cap | by repetition | length |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|
+| 61 to 75 (200 simulations) | 52.5% | 92.3% | 71% | 19% | 10% | 198 plies |
+| 76 to 90 (400 simulations) | 52.8% | 96.3% | 60% | 25% | 14% | 211 plies |
+
+- **A real gain, at about the pace before, for twice the time.** On the ladder (which still
+  searches 200 simulations), generation 80 is level with 75 (+8, −42 to +58), and 90 is 59 above
+  80 (+8 to +111) and 67 above 75 (+15 to +118). That is about the pace of generations 70 to 75 at
+  200 simulations (+28 in 5), with each generation taking 31 minutes instead of 18. The first
+  generations at 400 still trained mostly on games of 200 (the buffer holds about three
+  generations).
+- **Generation 90 is the strongest yet.** It is the run's best by its test scores and the top of
+  the ladder, 188 Elo above generation 60 (+137 to +239). It beat generation 75 17 times in 40 with
+  no losses, won all 20 games against Greedy and Random in the strength check, and 37 of 40 against
+  Greedy on the ladder (2 draws, 1 loss).
+- **Self-play became more drawn.** With both sides searching deeper, fewer games from the opening
+  were decided (60% against 71%) and more reached the ply cap (25%) or repeated (14%). The value
+  head's loss stayed at about 81% of predicting a draw. (The policy's loss on new games, 2.20
+  against 2.26, is not comparable: deeper searches give sharper targets.)
+- **It did not end the repetitions.** Between generations 72, 75, 80 and 90, 22 to 32 of 40 games
+  were drawn, 14 to 23 of them by repetition, as many as before. Neither side finds a way through
+  when the other defends, and searching deeper in self-play did not teach it one.
 
 ### What the trained agent plays
 
@@ -1007,52 +1035,59 @@ every network from generation 10 won all 12.
 
 The first rating (generations 0 to 60) played 2,160 games, 1,800 on the ladder and 360 in the first
 conversion test, in 44 minutes on the lab server's GPU. Generations 70, 72 and 75 joined at the end
-of the next 15 generations (1,440 games, 36 minutes). Ratings are refitted to every result each
-time, so they move a little as players join (generation 60 rated 1,054 at first, 1,003 now); the
-steps between generations are what to compare.
+of the next 15 generations (1,440 games, 36 minutes), and 80 and 90 at the end of the 15 after
+(1,160 games, 30 minutes). Ratings are refitted to every result each time, so they move a little as
+players join (generation 60 rated 1,054 at first, 990 now); the steps between generations are what
+to compare.
 
 | Player | Elo (95% interval) | Score | vs Greedy (W / D / L) |
 |---|:-:|:-:|:-:|
-| Generation 75 | 1,143 (1,030 to 1,255) | 82% | 40 / 0 / 0 |
-| Generation 72 (the run's best) | 1,123 (1,012 to 1,235) | 81% | 34 / 4 / 2 |
-| Generation 70 | 1,110 (998 to 1,221) | 79% | 36 / 3 / 1 |
-| Generation 56 | 1,007 (898 to 1,117) | 69% | 36 / 2 / 2 |
-| Generation 60 | 1,003 (893 to 1,113) | 69% | 34 / 6 / 0 |
-| Generation 50 | 963 (854 to 1,072) | 65% | 30 / 8 / 2 |
-| Generation 40 | 875 (766 to 984) | 56% | 31 / 7 / 2 |
-| Generation 30 | 807 (699 to 915) | 50% | 23 / 6 / 11 |
-| Greedy | 658 (552 to 765) | 37% | |
-| Generation 20 | 609 (502 to 715) | 33% | 12 / 11 / 17 |
-| Generation 10 | 345 (246 to 444) | 17% | 0 / 4 / 36 |
-| Generation 0 (untrained) | 170 (77 to 264) | 9% | 0 / 4 / 36 |
-| Random | 0 | 3% | 0 / 0 / 40 |
+| Generation 90 (the run's best) | 1,178 (1,070 to 1,285) | 82% | 37 / 2 / 1 |
+| Generation 80 | 1,118 (1,012 to 1,225) | 77% | 38 / 1 / 1 |
+| Generation 75 | 1,111 (1,005 to 1,217) | 76% | 40 / 0 / 0 |
+| Generation 72 | 1,102 (996 to 1,208) | 75% | 34 / 4 / 2 |
+| Generation 70 | 1,082 (977 to 1,188) | 73% | 36 / 3 / 1 |
+| Generation 60 | 990 (884 to 1,095) | 64% | 34 / 6 / 0 |
+| Generation 56 | 984 (879 to 1,090) | 63% | 36 / 2 / 2 |
+| Generation 50 | 945 (840 to 1,050) | 59% | 30 / 8 / 2 |
+| Generation 40 | 860 (756 to 964) | 51% | 31 / 7 / 2 |
+| Generation 30 | 786 (682 to 890) | 44% | 23 / 6 / 11 |
+| Greedy | 641 (538 to 745) | 32% | |
+| Generation 20 | 591 (488 to 694) | 29% | 12 / 11 / 17 |
+| Generation 10 | 333 (237 to 430) | 15% | 0 / 4 / 36 |
+| Generation 0 (untrained) | 165 (74 to 257) | 8% | 0 / 4 / 36 |
+| Random | 0 | 2% | 0 / 0 / 40 |
 
 | Step | Elo gained (95% interval) |
 |---|:-:|
-| Generation 0 to 10 | +174 (+92 to +257) |
-| 10 to 20 | +264 (+188 to +340) |
-| 20 to 30 | +198 (+138 to +259) |
-| 30 to 40 | +68 (+14 to +122) |
-| 40 to 50 | +88 (+35 to +141) |
-| 50 to 56 | +44 (−8 to +97) |
-| 56 to 60 | −4 (−57 to +48) |
-| 60 to 70 (learning rate 3e-4 from 61) | +106 (+52 to +161) |
-| 70 to 72 | +14 (−42 to +70) |
-| 72 to 75 | +19 (−37 to +76) |
+| Generation 0 to 10 | +168 (+87 to +249) |
+| 10 to 20 | +258 (+184 to +331) |
+| 20 to 30 | +195 (+137 to +253) |
+| 30 to 40 | +74 (+23 to +124) |
+| 40 to 50 | +85 (+36 to +134) |
+| 50 to 56 | +40 (−8 to +88) |
+| 56 to 60 | +5 (−43 to +53) |
+| 60 to 70 (learning rate 3e-4 from 61) | +93 (+44 to +142) |
+| 70 to 72 | +19 (−30 to +68) |
+| 72 to 75 | +9 (−40 to +59) |
+| 75 to 80 (self-play at 400 simulations from 76) | +8 (−42 to +58) |
+| 80 to 90 | +59 (+8 to +111) |
 
 - **The run levelled off at generation 56, and a lower learning rate restarted it.** It gained
-  about +170 to +260 Elo every 10 generations up to generation 30, about +78 from 30 to 50, and
+  about +170 to +260 Elo every 10 generations up to generation 30, about +80 from 30 to 50, and
   nothing measurable from 56 to 60. The tests against the generation before only hinted at this
   (51% in generations 51 to 60). With the learning rate at 3e-4 (AlphaZero lowered its own as
-  progress slowed), generation 70 rated 106 above 60, and 75 139 above.
+  progress slowed), generation 70 rated 93 above 60. A deeper self-play search from generation 76
+  added 67 by generation 90, at about the pace before.
 - **Generations 56 and 60 are equals.** Against each other generation 60 scored 59% (9 wins, 29
   draws, 2 losses), but 56 did a little better against the earlier networks and Greedy.
-- **It passed Greedy between generations 20 and 30** (Greedy rates 658; generation 20, 609;
-  generation 30, 807). Against Greedy, generation 75 won all 40 games.
+- **It passed Greedy between generations 20 and 30** (Greedy rates 641; generation 20, 591;
+  generation 30, 786). Against Greedy, generation 75 won all 40 games and 90 37 (2 draws, 1
+  loss).
 - **Strong networks draw each other, now mostly by repetition.** Of the 40 games between
-  generations 56 and 60, 29 were drawn (14 by repetition, 15 at the 300-ply cap); between 70, 72
-  and 75, 24 to 28 of 40 were drawn, about 20 of them by repetition. Neither side finds a way
-  through, which is where longer plans would show.
+  generations 56 and 60, 29 were drawn (14 by repetition, 15 at the 300-ply cap); between 70, 72,
+  75, 80 and 90, 22 to 32 of 40, 13 to 23 of them by repetition. Neither side finds a way through,
+  which is where longer plans would show.
 
 The conversion test, 40 positions each (the small edge took 2.2 minutes for all nine players):
 
@@ -1069,14 +1104,18 @@ The conversion test, 40 positions each (the small edge took 2.2 minutes for all 
 | Generation 70 | 34 | 28 (51) | | |
 | Generation 72 | 36 | 30 (39) | | |
 | Generation 75 | 35 | 27 (42) | | |
+| Generation 80 | 36 | 37 (46) | | |
+| Generation 90 | 36 | 47 (47) | | |
 | Greedy | 14 | 45 (63) | 28 | 53 |
 
 - **Converting a small edge improved until generation 40, then held.** Wins rose from 18 of 40
-  (generation 10) to 36 (generation 40), and then stayed between 32 and 36 up to generation 75,
+  (generation 10) to 36 (generation 40), and then stayed between 32 and 36 up to generation 90,
   about as far apart as chance allows with 40 positions.
 - **From generation 60 it finishes faster.** Generations 60 to 75 took 27 to 31 plies at the
   median, against 43 to 56 for generations 30 to 56: the clearest sign in this test of better
-  planning late in the run. The lower learning rate kept this, but did not add wins.
+  planning late in the run. The lower learning rate kept this, but did not add wins; with the
+  deeper self-play search, generations 80 and 90 took a little longer (37 and 47 at the median,
+  46 and 47 on average against 35 to 51 for generations 60 to 75).
 - **The large edge told nothing after generation 10.** Every trained network won 39 or 40, and
   the plies showed no trend, which is why the test changed.
 - Most positions not won were drawn, by the 70-move rule or by repetition; the untrained network
