@@ -33,7 +33,7 @@ training cannot change what they refer to.
 | Network | 10 residual blocks × 128 filters, 3,510,180 parameters |
 | File | `chaturangzero-main-v4-gen100.pt` (14.1 MB) on the GitHub release [`milestone-4`](https://github.com/Aditya-00786/csf407-fable-chaturanga-zero/releases/tag/milestone-4); kept locally as `checkpoints/milestone4.pt` |
 | SHA-256 | `49e88b164fa48e7266e9c66f752fde452c30a946d0f7a3853f5301ab48c8a5e3` |
-| Training | 100 generations, 35,019 self-play games (7.8 million positions), about 57 hours on one server GPU |
+| Training | 100 generations, 50,000 self-play games (7.8 million positions), about 57 hours on one server GPU |
 | How it plays | Hard: 200 simulations a move, Impossible: 800; its most visited move, with the search's rules and contempt 0.3 |
 | How it was measured | the ladder and the conversion test search 200 simulations with the rules and no contempt, the first 16 plies sampled |
 

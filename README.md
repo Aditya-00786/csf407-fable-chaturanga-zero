@@ -33,7 +33,7 @@ xychart-beta
 | Strength | **1,208 Elo** (Random 0, Greedy 626, the untrained network 167) |
 | Against Random and Greedy | won **40 of 40** against each |
 | Network | 10 residual blocks × 128 filters, 3.5 million parameters |
-| Training | 100 generations, 35,019 self-play games, about 57 hours on one GPU |
+| Training | 100 generations, 50,000 self-play games (500 a generation), about 57 hours on one GPU |
 | Download | [release `milestone-4`](https://github.com/Aditya-00786/csf407-fable-chaturanga-zero/releases/tag/milestone-4) |
 
 ## Progress
@@ -49,8 +49,8 @@ xychart-beta
 Overall   ███████████████████████████████████████░  99%   (3 of 4 milestones done)
 ```
 
-- **Milestone 3** went well past its 50 to 100 games: `main-v4` trained 100 generations and 35,019
-  games ([the runs](docs/RUNS.md)).
+- **Milestone 3** went well past its 50 to 100 games: `main-v4` trained 100 generations of 500 games,
+  50,000 in all ([the runs](docs/RUNS.md)).
 - **Milestone 4** is all but done: a rating ladder gives the generations Elo ratings against
   Random, Greedy and each other, a conversion test measures how surely each turns a small edge into
   a win, and generation 100 is frozen as the agent ([benchmarking](docs/BENCHMARKING.md)). What

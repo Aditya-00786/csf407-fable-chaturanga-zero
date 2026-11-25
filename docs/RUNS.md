@@ -21,7 +21,10 @@ timeline
 | `main` | 6 × 64 | 50 | 50 | 20 | 1,000 | about 2 hours | Apple M1 |
 | `main-v2` | 6 × 64 | 50 | 50 | 20 | 1,000 | 34 minutes | lab server, 9 CPU processes |
 | `main-v3` | 6 × 64 | 50 | 500 | 40 | 20,000 | about 4 hours | lab server, 20 CPU processes |
-| `main-v4` | 10 × 128 | 200 (400 in 76–90) | 500 | 100 | 35,019 | about 57 hours | lab server, the network on the GPU |
+| `main-v4` | 10 × 128 | 200 (400 in 76–90) | 500 | 100 | 50,000 | about 57 hours | lab server, the network on the GPU |
+
+Self-play games count every game, endgame starts included: `main-v4`'s 50,000 are 35,019 played from the
+opening and 14,981 from endgames.
 
 ## main: the pipeline works, the value head does not
 
