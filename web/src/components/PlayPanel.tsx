@@ -1,8 +1,9 @@
-import { FlipVertical2, Pause, Play } from 'lucide-react'
-import { useEffect, useMemo, useRef } from 'react'
+import { Flag, FlipVertical2, Pause, Play } from 'lucide-react'
+import { useEffect, useId, useMemo, useRef } from 'react'
 import type { Color, GameView } from '../lib/api'
 import { colorName, describeMove, explainOutcome, squareName } from '../lib/board'
-import { runLabel, useGame, type Mode, type Pace } from '../state/game'
+import { href } from '../lib/route'
+import { humanMoved, runLabel, useGame, type AgentSlot, type Level, type Mode, type Pace } from '../state/game'
 import { useDetail, useSettings, type DetailPart } from '../state/settings'
 import { PieceGlyph } from './PieceGlyph'
 import { DrawerHeader } from './stage'
@@ -16,7 +17,89 @@ const AGENTS = [
     label: 'MCTS',
     title: 'Monte Carlo Tree Search: 50 simulations per move, guided by a network that is not trained yet',
   },
+  {
+    value: 'zero',
+    label: 'Trained',
+    title: 'ChaturangZero: the same search, guided by the network trained by self-play',
+  },
 ]
+
+const LEVELS: { value: Level; label: string; note: string }[] = [
+  { value: 'easy', label: 'Easy', note: 'A 10-simulation search, and it often plays a move other than its favourite.' },
+  { value: 'medium', label: 'Medium', note: 'A 50-simulation search; it usually plays its favourite move.' },
+  { value: 'hard', label: 'Hard', note: '200 simulations per move, always its best move. It takes any win in one, never lets you win in one if it can help it, and plays on rather than repeat for a draw.' },
+  { value: 'impossible', label: 'Impossible', note: '800 simulations per move, always its best move; about a second to think. It takes any win in one, never lets you win in one if it can help it, and plays on rather than repeat for a draw.' },
+]
+
+/** One to four dots under a level's name: how strong it plays. */
+function Pips({ level, on }: { level: number; on: boolean }) {
+  return (
+    <span aria-hidden className="flex gap-[3px]">
+      {[0, 1, 2, 3].map((i) => (
+        <span key={i} className={`h-[7px] w-[7px] rounded-full transition-colors duration-200 ${
+          i > level ? 'bg-line' : on ? 'bg-accent' : 'bg-ink-muted'
+        }`} />
+      ))}
+    </span>
+  )
+}
+
+/** The trained agent's difficulty, in a panel that hangs from the Trained option above it. */
+function LevelPicker({ slot, disabled }: { slot: AgentSlot; disabled: boolean }) {
+  const { levels, setLevel, trained } = useGame()
+  const name = useId()
+  const current = levels[slot]
+  const note = LEVELS.find((l) => l.value === current)?.note
+  return (
+    <div className="relative mt-2.5 rounded-lg border border-line bg-bg px-3 pt-2.5 pb-3">
+      {/* The notch points at Trained, the last of the four agents. */}
+      <span aria-hidden className="absolute -top-[6px] left-[calc(87.5%-6px)] h-[11px] w-[11px] rotate-45 border-t border-l border-line bg-bg" />
+      <fieldset disabled={disabled} className="transition-opacity duration-200 disabled:opacity-55 [&:disabled_label]:cursor-not-allowed">
+        <legend className="mb-2 text-[12.5px] font-medium text-ink-muted">Difficulty</legend>
+        <div className="grid grid-cols-4 gap-1">
+          {LEVELS.map((l, i) => {
+            const on = l.value === current
+            return (
+              <label key={l.value}
+                className={`relative flex cursor-pointer flex-col items-center gap-1.5 rounded-md px-1 py-2 text-[12px] font-medium transition-colors duration-200 ${
+                  on ? 'bg-surface-2 text-ink shadow-[inset_0_0_0_1px_var(--line-strong)]' : 'text-ink-muted hover:bg-surface-2/60 hover:text-ink'
+                }`}>
+                <input type="radio" name={name} className="peer sr-only" checked={on} onChange={() => setLevel(slot, l.value)} />
+                <span className="pointer-events-none absolute inset-0 rounded-md peer-focus-visible:outline-2 peer-focus-visible:outline-accent" />
+                {l.label}
+                <Pips level={i} on={on} />
+              </label>
+            )
+          })}
+        </div>
+      </fieldset>
+      <p key={current} className="cz-swap mt-2 text-[12.5px] leading-snug text-ink-muted">{note}</p>
+      <p className="mt-1.5 text-[12px] leading-snug text-ink-faint">
+        {trained === undefined ? 'Checking for a trained network'
+          : trained === null ? <>No trained network on this computer yet. <a href={href('results')} className="text-accent underline-offset-4 hover:underline">Load the Milestone 4 network</a></>
+            : `Plays with ${trained.milestone ? `the ${trained.milestone} agent, ` : ''}generation ${trained.generation ?? '?'} of the run “${trained.run ?? 'unknown'}”.`}
+      </p>
+    </div>
+  )
+}
+
+/** A computer player's picker; the trained agent adds its difficulty. */
+function AgentPicker({ label, slot, value, onChange, disabled = false }: {
+  label: string; slot: AgentSlot; value: string; onChange: (id: string) => void; disabled?: boolean
+}) {
+  const refreshTrained = useGame((s) => s.refreshTrained)
+  useEffect(() => {
+    if (value === 'zero') refreshTrained()
+  }, [value, refreshTrained])
+  return (
+    <div>
+      <Segmented label={label} value={value} onChange={onChange} size="sm" options={AGENTS} disabled={disabled} />
+      <Collapse open={value === 'zero'}>
+        <LevelPicker slot={slot} disabled={disabled} />
+      </Collapse>
+    </div>
+  )
+}
 
 const DETAIL_PARTS: { part: DetailPart; label: string }[] = [
   { part: 'hints', label: 'Move hints' },
@@ -43,7 +126,7 @@ function Swatch({ color }: { color: Color }) {
  * the headline plus urgent tags (check, thinking); "Full" can add the hint and the counters.
  */
 export function Status({ view }: { view: GameView | null }) {
-  const { mode, humanColor, status, reviewPly, running, moves } = useGame()
+  const { mode, humanColor, status, reviewPly, running, moves, resigned } = useGame()
   const showHint = useDetail('hints')
   const showCounters = useDetail('counters')
   if (!view) {
@@ -60,6 +143,8 @@ export function Status({ view }: { view: GameView | null }) {
   let tag: { text: string; danger?: boolean } | null = null
   if (view.outcome) {
     title = explainOutcome(view.outcome, side).title
+  } else if (resigned && reviewPly === null) {
+    title = `${colorName(-humanColor as Color)} wins: you resigned`
   } else if (reviewPly !== null) {
     hint = `Reviewing the position after ${reviewPly} ${reviewPly === 1 ? 'ply' : 'plies'}.`
   } else if (status === 'thinking') {
@@ -81,7 +166,7 @@ export function Status({ view }: { view: GameView | null }) {
   return (
     <div>
       <p className="flex flex-wrap items-center gap-x-2 gap-y-1 font-serif text-[20px] leading-tight font-semibold text-ink">
-        {!view.outcome && <Swatch color={side} />}
+        {!view.outcome && !(resigned && reviewPly === null) && <Swatch color={side} />}
         {title}
         {tag && (
           <span className={`rounded-md px-1.5 py-0.5 font-sans text-[12px] font-semibold ${
@@ -92,6 +177,7 @@ export function Status({ view }: { view: GameView | null }) {
         )}
       </p>
       {showHint && hint && <p className={`mt-1 text-[13.5px] leading-snug ${tag?.danger ? 'text-danger' : 'text-ink-muted'}`}>{hint}</p>}
+      <RecordingBadge />
       {showCounters && (
         <p className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[12px] text-ink-faint tabular-nums">
           <span>Move {Math.floor(view.ply / 2) + 1}</span>
@@ -186,9 +272,85 @@ function Captured({ view }: { view: GameView | null }) {
   )
 }
 
+/** The record mark: a red dot while games are recorded, a ring when not. */
+export function RecordDot({ on }: { on: boolean }) {
+  return (
+    <span aria-hidden className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full border-[1.5px] transition-colors duration-200 ${
+      on ? 'border-danger bg-danger' : 'border-current'
+    }`} />
+  )
+}
+
+/** Whether the game on the board is recorded, in the status card: clear without opening the Game panel. */
+function RecordingBadge() {
+  const { mode, recording, moves, game, resigned, watching, reviewPly } = useGame()
+  const on = useSettings((s) => s.recordGames)
+  if (mode !== 'hvc' || !on || watching || reviewPly !== null || !game || game.outcome || resigned) return null
+  const live = recording.state === 'on' || moves.length === 0
+  return (
+    <p className="mt-1.5 flex items-center gap-1.5 text-[12px] font-medium text-ink-muted">
+      <RecordDot on={live} />
+      {live ? 'Recording' : 'Recording starts with your next game'}
+    </p>
+  )
+}
+
+/** What recording is doing, in one line under its switch. */
+function recordingNote(g: ReturnType<typeof useGame.getState>): { text: string; danger?: boolean } {
+  const r = g.recording
+  if (r.state === 'on') {
+    return {
+      text: humanMoved(g.moves, g.humanColor)
+        ? 'Recording this game. The opponent and your colour stay as they are until it ends; a new game before then counts as resigning it.'
+        : 'Recording this game from its first move. Changing the opponent or your colour before you move starts it again.',
+    }
+  }
+  if (r.state === 'saving') return { text: 'Saving the game…' }
+  if (r.state === 'failed') return { text: `Not saved: ${r.message}`, danger: true }
+  const last = r.state === 'saved'
+    ? `${r.ended === 'left' ? 'The game you left was saved as resigned' : 'Saved'}: ${r.games} ${r.games === 1 ? 'game' : 'games'} recorded on this computer. `
+    : ''
+  const over = !!g.game?.outcome || g.resigned
+  if (g.moves.length === 0) return { text: `${last}This game is recorded from its first move.` }
+  if (!over) return { text: `${last}Recording starts with your next game.` }
+  return { text: `${last}Your next game is recorded from its first move.` }
+}
+
+/** Recording games against the computer for the Results page. */
+function RecordSection() {
+  const g = useGame()
+  const recordGames = useSettings((s) => s.recordGames)
+  const id = useId()
+  const note = recordGames
+    ? recordingNote(g)
+    : { text: 'Each game you finish is saved for the results against the agent: its moves and result, nothing about you.' }
+  const canResign = g.recording.state === 'on' && !g.watching && !!g.game && !g.game.outcome && humanMoved(g.moves, g.humanColor)
+  return (
+    <section aria-labelledby={`${id}-title`} className="space-y-3">
+      <SectionTitle aside={<a href={href('results')} className="text-accent underline-offset-4 hover:underline">Results</a>}>
+        <span id={`${id}-title`}>Recording</span>
+      </SectionTitle>
+      <Switch label="Record games for the results" checked={recordGames} onChange={g.setRecording} />
+      <p key={note.text} aria-live="polite" className={`cz-swap -mt-1 text-[12.5px] leading-snug ${
+        note.danger ? 'text-danger' : recordGames ? 'text-ink-muted' : 'text-ink-faint'
+      }`}>
+        {note.text}
+      </p>
+      {(canResign || g.recording.state === 'failed') && (
+        <div className="flex gap-2">
+          {canResign && <Button size="sm" onClick={g.resign} icon={<Flag size={14} />}>Resign</Button>}
+          {g.recording.state === 'failed' && <Button size="sm" onClick={g.saveRecording}>Try again</Button>}
+        </div>
+      )}
+    </section>
+  )
+}
+
 export function PlayPanel({ view, onClose, onRotate }: { view: GameView | null; onClose: () => void; onRotate: () => void }) {
   const g = useGame()
   const settings = useSettings()
+  // A game being recorded keeps one opponent and one colour from your first move to its end.
+  const locked = g.recording.state === 'on' && !g.watching && humanMoved(g.moves, g.humanColor)
   return (
     <>
       <DrawerHeader title="Game" onClose={onClose} closeLabel="Close the game panel" />
@@ -199,6 +361,7 @@ export function PlayPanel({ view, onClose, onRotate }: { view: GameView | null; 
             label="Mode"
             value={g.mode}
             onChange={g.setMode}
+            disabled={locked}
             options={[
               { value: 'hvh', label: 'Two players', title: 'Two people take turns on this screen' },
               { value: 'hvc', label: 'Vs computer' },
@@ -210,15 +373,15 @@ export function PlayPanel({ view, onClose, onRotate }: { view: GameView | null; 
           )}
           {g.mode === 'hvc' && (
             <div className="space-y-3">
-              <Segmented<Color> label="You play" value={g.humanColor} onChange={g.setHumanColor} size="sm"
+              <Segmented<Color> label="You play" value={g.humanColor} onChange={g.setHumanColor} size="sm" disabled={locked}
                 options={[{ value: 1, label: 'White' }, { value: -1, label: 'Black' }]} />
-              <Segmented label="Opponent" value={g.opponent} onChange={g.setOpponent} size="sm" options={AGENTS} />
+              <AgentPicker label="Opponent" slot="opponent" value={g.opponent} onChange={g.setOpponent} disabled={locked} />
             </div>
           )}
           {g.mode === 'cvc' && (
             <div className="space-y-3">
-              <Segmented label="White" value={g.whiteAgent} onChange={(v) => g.setAgent(1, v)} size="sm" options={AGENTS} />
-              <Segmented label="Black" value={g.blackAgent} onChange={(v) => g.setAgent(-1, v)} size="sm" options={AGENTS} />
+              <AgentPicker label="White" slot="white" value={g.whiteAgent} onChange={(v) => g.setAgent(1, v)} />
+              <AgentPicker label="Black" slot="black" value={g.blackAgent} onChange={(v) => g.setAgent(-1, v)} />
               <div className="flex items-end gap-3">
                 <div className="flex-1">
                   <Segmented<Pace> label="Pace" value={g.pace} onChange={g.setPace} size="sm"
@@ -232,6 +395,8 @@ export function PlayPanel({ view, onClose, onRotate }: { view: GameView | null; 
             </div>
           )}
         </section>
+
+        {g.mode === 'hvc' && <RecordSection />}
 
         <section aria-labelledby="moves-title">
           <SectionTitle aside={view && view.ply > 0 ? `${view.ply} plies` : undefined}>

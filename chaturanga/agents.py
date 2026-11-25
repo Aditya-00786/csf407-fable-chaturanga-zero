@@ -6,8 +6,12 @@ agent gets no such knowledge: only the rules, the results of finished games, and
 """
 
 import errno
+import hashlib
+import os
 import random
 import threading
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 from .constants import ASHVA, GAJA, MANTRI, PADATI, RAJA, RATHA
@@ -125,10 +129,57 @@ def untrained_evaluator(timeout: Optional[float] = None):
         _evaluator_lock.release()
 
 
+# Networks frozen for a milestone, by the sha256 of their file. Milestone 4's is main-v4's generation 100,
+# attached to the GitHub release milestone-4 as chaturangzero-main-v4-gen100.pt.
+MILESTONES = {"49e88b164fa48e7266e9c66f752fde452c30a946d0f7a3853f5301ab48c8a5e3": "Milestone 4"}
+
+
+def trained_checkpoint() -> Path:
+    """Where the trained network is published (scripts/train.py copies its best network here)."""
+    default = Path(__file__).resolve().parent.parent / "checkpoints" / "best.pt"
+    return Path(os.environ.get("CHATURANGA_CHECKPOINT", default))
+
+
+_trained: dict = {}
+_trained_lock = threading.Lock()
+
+
+def trained_evaluator():
+    """(evaluator, info) for the published trained network, or None if there is none yet. The info
+    names its run and generation, its file's sha256 and the milestone it was frozen for, if any.
+
+    The file is checked on every call and reloaded when it changes, so while a training run
+    publishes better networks the app plays the newest without a restart."""
+    path = trained_checkpoint()
+    try:
+        key = (str(path), path.stat().st_mtime_ns)
+    except OSError:
+        return None
+    with _trained_lock:
+        if _trained.get("key") != key:
+            untrained_evaluator(timeout=NETWORK_WAIT_SECONDS)  # PyTorch itself loads (and fails) there
+            from .net import NetworkEvaluator, load_checkpoint
+
+            try:
+                net, meta = load_checkpoint(str(path))
+            except Exception as exc:  # a half-written or foreign file: keep what we had
+                if "evaluator" in _trained:
+                    return _trained["evaluator"], _trained["info"]
+                raise NetworkUnavailable(f"The trained network could not be loaded: {_describe(exc)}") from exc
+            fingerprint = hashlib.sha256(path.read_bytes()).hexdigest()
+            info = {"run": meta.get("run"), "generation": meta.get("generation"), "fingerprint": fingerprint,
+                    "milestone": MILESTONES.get(fingerprint)}
+            _trained.update(key=key, evaluator=NetworkEvaluator(net), info=info)
+        return _trained["evaluator"], _trained["info"]
+
+
 def warm_up() -> None:
-    """Load PyTorch and the network and run one evaluation, so the first MCTS move is as fast as
+    """Load PyTorch and the networks and run one evaluation, so the first MCTS move is as fast as
     the rest. Importing PyTorch alone takes a few seconds."""
     untrained_evaluator().evaluate(GameState.initial())
+    trained = trained_evaluator()
+    if trained:
+        trained[0].evaluate(GameState.initial())
 
 
 class MCTSAgent:
@@ -137,23 +188,78 @@ class MCTSAgent:
     description = ("Searches 50 positions ahead for every move, guided by a network that has not been trained "
                    "yet: it knows only the rules and how games end.")
 
-    def __init__(self, seed: Optional[int] = None, simulations: int = 50, evaluator=None):
+    def __init__(self, seed: Optional[int] = None, simulations: int = 50, evaluator=None, temperature: float = 0.0,
+                 sure: bool = False, contempt: float = 0.0):
         from .mcts import MCTS, MCTSConfig
 
-        # No root noise and the most visited move: this agent plays to win, it is not exploring.
+        # No root noise: this agent plays to win, it is not exploring. At temperature 0 it plays
+        # the most visited move; above 0 it samples in proportion to visits (weaker, more varied).
+        # `sure`: take a win in one, and do not allow one when it can be avoided; `contempt`: what a
+        # draw costs it, so it plays on rather than repeat (see mcts.py).
         if evaluator is None:
             evaluator = untrained_evaluator(timeout=NETWORK_WAIT_SECONDS)
-        self.mcts = MCTS(evaluator, MCTSConfig(simulations=simulations), seed)
+        self.mcts = MCTS(evaluator, MCTSConfig(simulations=simulations, take_wins=sure, avoid_losses=sure,
+                                               contempt=contempt), seed)
+        self.temperature = temperature
 
     def select_move(self, state: GameState) -> int:
         root = self.mcts.search(state)
-        return self.mcts.choose_move(root, temperature=0.0)
+        return self.mcts.choose_move(root, temperature=self.temperature)
 
 
-AGENTS = {agent.id: agent for agent in (RandomAgent, GreedyAgent, MCTSAgent)}
+@dataclass(frozen=True)
+class Level:
+    id: str
+    name: str
+    simulations: int
+    temperature: float
+    description: str
+    sure: bool = False  # the search's rules: take a win in one, never allow one that can be avoided
+    # What a draw costs it (see mcts.py). At 0.3, main-v4's generation 90 drew 6 of 120 games by
+    # repetition against generations 75, 80 and 90 instead of 64, won 31 instead of 27 and lost 8
+    # instead of 13 (most of the other draws ran to the ply cap instead), and beat Greedy 40-0-0.
+    contempt: float = 0.0
 
 
-def make_agent(agent_id: str, seed: Optional[int] = None):
+# Strength comes from the search budget and from how often the agent strays from its best move.
+# The levels that always play their best move also follow the search's rules and play on rather
+# than draw by repetition; Easy and Medium stray on purpose, and keep their slips.
+LEVELS = {level.id: level for level in (
+    Level("easy", "Easy", 10, 1.0, "A short search, and it often plays a move other than its favourite."),
+    Level("medium", "Medium", 50, 0.5, "A 50-simulation search; it mostly plays its favourite move."),
+    Level("hard", "Hard", 200, 0.0, "200 simulations, always its best move; takes any win in one, never "
+          "allows one it can avoid, and plays on rather than repeat for a draw.", sure=True, contempt=0.3),
+    Level("impossible", "Impossible", 800, 0.0, "800 simulations, always its best move; thinks for about a "
+          "second, takes any win in one, never allows one it can avoid, and plays on rather than repeat "
+          "for a draw.", sure=True, contempt=0.3),
+)}
+DEFAULT_LEVEL = "medium"
+
+
+class ZeroAgent(MCTSAgent):
+    id = "zero"
+    name = "ChaturangZero"
+    description = "MCTS guided by the network trained by self-play, at a chosen level."
+
+    def __init__(self, seed: Optional[int] = None, level: str = DEFAULT_LEVEL):
+        if level not in LEVELS:
+            raise ValueError(f"unknown level {level!r}; choose from {list(LEVELS)}")
+        trained = trained_evaluator()
+        if trained is None:
+            raise NetworkUnavailable("There is no trained network yet. Train one with scripts/train.py "
+                                     "(it publishes checkpoints/best.pt).")
+        evaluator, self.network = trained
+        self.level = LEVELS[level]
+        super().__init__(seed, self.level.simulations, evaluator, self.level.temperature, self.level.sure,
+                         self.level.contempt)
+
+
+AGENTS = {agent.id: agent for agent in (RandomAgent, GreedyAgent, MCTSAgent, ZeroAgent)}
+
+
+def make_agent(agent_id: str, seed: Optional[int] = None, level: Optional[str] = None):
     if agent_id not in AGENTS:
         raise ValueError(f"unknown agent {agent_id!r}; choose from {sorted(AGENTS)}")
+    if agent_id == ZeroAgent.id:
+        return ZeroAgent(seed, level or DEFAULT_LEVEL)
     return AGENTS[agent_id](seed)

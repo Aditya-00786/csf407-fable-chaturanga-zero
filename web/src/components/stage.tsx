@@ -79,18 +79,21 @@ export function QuickToggle({ open, controls, onClick, describe }: {
   )
 }
 
-/** Toolbar button over the board: always an icon, with a text label on wider screens. */
-export function ToolButton({ label, icon, onClick, disabled }: {
-  label: string; icon: ReactNode; onClick: () => void; disabled?: boolean
+/** Toolbar button over the board: always an icon, with a text label on wider screens. A toggle passes `pressed`. */
+export function ToolButton({ label, icon, onClick, disabled, pressed, title }: {
+  label: string; icon: ReactNode; onClick: () => void; disabled?: boolean; pressed?: boolean; title?: string
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
-      title={label}
+      title={title ?? label}
       aria-label={label}
-      className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg px-2.5 text-sm font-medium whitespace-nowrap text-ink-muted transition-colors duration-150 hover:bg-surface-2 hover:text-ink disabled:pointer-events-none disabled:opacity-45 sm:px-3"
+      aria-pressed={pressed}
+      className={`inline-flex h-10 shrink-0 items-center gap-2 rounded-lg px-2.5 text-sm font-medium whitespace-nowrap transition-colors duration-150 hover:bg-surface-2 hover:text-ink disabled:pointer-events-none disabled:opacity-45 sm:px-3 ${
+        pressed ? 'text-ink' : 'text-ink-muted'
+      }`}
     >
       {icon}
       <span className="hidden md:inline">{label}</span>

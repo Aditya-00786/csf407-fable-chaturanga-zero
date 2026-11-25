@@ -1,8 +1,8 @@
-/** Minimal hash routing: #/play, #/learn/<lesson-id>, #/rules. */
+/** Minimal hash routing: #/play, #/learn/<lesson-id>, #/rules, #/results, #/training. */
 
 import { useEffect, useState } from 'react'
 
-export type Page = 'play' | 'learn' | 'rules'
+export type Page = 'play' | 'learn' | 'rules' | 'results' | 'training'
 
 export interface Route {
   page: Page
@@ -11,7 +11,7 @@ export interface Route {
 
 function parse(hash: string): Route {
   const [, page, param] = hash.replace(/^#/, '').split('/')
-  if (page === 'learn' || page === 'rules') return { page, param: param ?? null }
+  if (page === 'learn' || page === 'rules' || page === 'results' || page === 'training') return { page, param: param ?? null }
   return { page: 'play', param: null }
 }
 

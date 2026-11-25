@@ -9,7 +9,7 @@ import pytest
 
 from chaturanga import BLACK, GameState, move_to_str, parse_move
 from chaturanga.encoding import legal_action_mask
-from chaturanga.mcts import MCTS, MCTSConfig, UniformEvaluator
+from chaturanga.mcts import MCTS, MCTSConfig, UniformEvaluator, loses_at_once, wins_at_once
 
 MATE_IN_ONE = "k7/7p/1K6/8/8/8/8/6R1 w"             # Rg8#
 BARE_KING_IN_ONE = "8/8/1k6/g7/8/8/8/R3K3 w"        # Rxa5 leaves Black a bare Raja
@@ -173,3 +173,106 @@ def test_self_play_game_with_the_search_finishes_legally():
         state = state.apply(move)
     assert np.isfinite(MCTS.root_value(mcts.root))
     assert state.is_terminal() or state.ply == 40
+
+
+# ---------------------------------------------------------------------- the search's rules
+
+ROOK_EN_PRISE = "4k3/8/8/7r/3R4/8/8/4K3 w"          # Rd5 or Rh4 lets the Ratha be taken: a bare Raja
+EVERY_MOVE_LOSES = "2k5/8/8/8/8/8/8/M4K1r w"        # in check; any Raja move lets Rxa1 bare it
+
+
+class Steered(UniformEvaluator):
+    """Nearly all of every prior on one move, and every position valued as won for the side that just
+    moved: a search that trusts it looks at little else."""
+
+    def __init__(self, favourite: str):
+        self.favourite = parse_move(favourite)
+
+    def evaluate(self, state):
+        moves = state.legal_moves()
+        if self.favourite not in moves:
+            return super().evaluate(state)[0], -0.99
+        return {m: 0.99 if m == self.favourite else 0.01 / (len(moves) - 1) for m in moves}, -0.99
+
+
+def chosen(fen: str, favourite: str, simulations: int = 20, **rules) -> str:
+    mcts = MCTS(Steered(favourite), MCTSConfig(simulations=simulations, **rules), seed=0)
+    return move_to_str(mcts.choose_move(mcts.search(GameState.from_fen(fen))))
+
+
+@pytest.mark.parametrize("fen,win,decoy", [
+    (MATE_IN_ONE, "g1g8", "g1g2"),
+    (BARE_KING_IN_ONE, "a1a5", "e1e2"),
+    (STALEMATE_TRAP, "a1a8", "a1a2"),
+])
+@pytest.mark.parametrize("colour", ["white", "black"])
+def test_take_wins_plays_a_win_the_search_passed_over(fen, win, decoy, colour):
+    if colour == "black":
+        fen, win, decoy = colour_flipped(fen), flipped_move(win), flipped_move(decoy)
+    assert chosen(fen, decoy) == decoy
+    assert chosen(fen, decoy, take_wins=True) == win
+
+
+@pytest.mark.parametrize("fen,blunders,decoy", [
+    (ROOK_EN_PRISE, {"d4d5", "d4h4", "d4d7", "d4d8"}, "d4d5"),
+    (STALEMATE_TRAP, {"e6f7", "a1g1"}, "a1g1"),  # stalemating Black loses: the stalemated side wins
+])
+@pytest.mark.parametrize("colour", ["white", "black"])
+def test_avoid_losses_turns_down_a_move_that_loses_at_once(fen, blunders, decoy, colour):
+    if colour == "black":
+        fen, decoy = colour_flipped(fen), flipped_move(decoy)
+        blunders = {flipped_move(m) for m in blunders}
+    assert chosen(fen, decoy) == decoy
+    for temperature in (0.0, 1.0):
+        mcts = MCTS(Steered(decoy), MCTSConfig(simulations=20, avoid_losses=True), seed=0)
+        move = move_to_str(mcts.choose_move(mcts.search(GameState.from_fen(fen)), temperature))
+        assert move not in blunders
+
+
+def test_avoid_losses_keeps_the_search_choice_when_every_move_loses():
+    state = GameState.from_fen(EVERY_MOVE_LOSES)
+    assert all(loses_at_once(state.apply(m), state.side) for m in state.legal_moves())
+    assert chosen(EVERY_MOVE_LOSES, "f1g2", avoid_losses=True) == "f1g2"
+
+
+def test_the_rules_leave_the_visits_alone():
+    """Self-play's policy targets are the visits, whatever move the rules choose."""
+    for rules in ({}, {"take_wins": True, "avoid_losses": True}):
+        mcts = MCTS(Steered("g1g2"), MCTSConfig(simulations=20, **rules), seed=0)
+        root = mcts.search(GameState.from_fen(MATE_IN_ONE))
+        mcts.choose_move(root)
+        assert MCTS.visit_counts(root)[parse_move("g1g2")] >= 19
+
+
+def test_wins_and_losses_at_once():
+    state = GameState.from_fen(STALEMATE_TRAP)
+    assert {move_to_str(m) for m in state.legal_moves() if wins_at_once(state, m)} == {"a1a8"}
+    assert {move_to_str(m) for m in state.legal_moves() if loses_at_once(state.apply(m), state.side)} == {"e6f7", "a1g1"}
+
+
+def _repeated(moves: str) -> GameState:
+    s = GameState.initial()
+    for m in moves.split():
+        s = s.play(m)
+    return s
+
+
+def test_contempt_makes_a_draw_cost_the_player_searching():
+    # Black to move: f6g8 brings the start position round a third time, a draw by repetition.
+    state = _repeated("g1f3 g8f6 f3g1 f6g8 g1f3 g8f6 f3g1")
+    draw = parse_move("f6g8")
+    assert state.apply(draw).outcome().reason == "repetition"
+    plain = MCTS(UniformEvaluator(), MCTSConfig(simulations=400), seed=0).search(state)
+    assert plain.children[draw].mean_value == 0
+    mcts = MCTS(UniformEvaluator(), MCTSConfig(simulations=400, contempt=0.3), seed=0)
+    root = mcts.search(state)
+    assert root.children[draw].mean_value == pytest.approx(-0.3)
+    assert mcts.choose_move(root) != draw
+
+
+def test_contempt_makes_a_draw_the_opponent_can_force_good_for_the_opponent():
+    # White to move; after f3g1, Black's f6g8 repeats the start a third time.
+    state = _repeated("g1f3 g8f6 f3g1 f6g8 g1f3 g8f6")
+    root = MCTS(UniformEvaluator(), MCTSConfig(simulations=800, contempt=0.3), seed=0).search(state)
+    reply = root.children[parse_move("f3g1")].children[parse_move("f6g8")]
+    assert reply.visits and reply.mean_value == pytest.approx(0.3)  # stored for Black, who made the move

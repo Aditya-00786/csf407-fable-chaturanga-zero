@@ -3,7 +3,9 @@ import { useRoute } from './lib/route'
 import { Showcase } from './three/Showcase'
 import { LearnView } from './views/LearnView'
 import { PlayView } from './views/PlayView'
+import { ResultsView } from './views/ResultsView'
 import { RulesView } from './views/RulesView'
+import { TrainingView } from './views/TrainingView'
 
 export default function App() {
   const route = useRoute()
@@ -19,6 +21,8 @@ export default function App() {
         {route.page === 'play' && <PlayView />}
         {route.page === 'learn' && <LearnView lessonId={route.param} />}
         {route.page === 'rules' && <RulesView />}
+        {route.page === 'results' && <ResultsView />}
+        {route.page === 'training' && <TrainingView />}
       </main>
     </div>
   )

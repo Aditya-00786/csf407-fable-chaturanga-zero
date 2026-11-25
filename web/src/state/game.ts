@@ -5,9 +5,10 @@
  */
 
 import { create } from 'zustand'
-import { api, ApiError, type Color, type GameView } from '../lib/api'
+import { api, ApiError, type Color, type GameView, type HumanGameRecord, type TrainedInfo } from '../lib/api'
 import { moveText } from '../lib/board'
 import { playMoveSound } from '../lib/sound'
+import { useSettings } from './settings'
 
 export type Mode = 'hvh' | 'hvc' | 'cvc'
 
@@ -16,6 +17,20 @@ export function runLabel(running: boolean, moves: number) {
   return running ? 'Pause' : moves === 0 ? 'Start' : 'Resume'
 }
 export type Pace = 'slow' | 'normal' | 'fast'
+/** The trained agent's strength (its search budget); see chaturanga/agents.py LEVELS. */
+export type Level = 'easy' | 'medium' | 'hard' | 'impossible'
+export type AgentSlot = 'opponent' | 'white' | 'black'
+
+/**
+ * Recording the game against the computer for the results (Results page): this game is being
+ * recorded, or the last one recorded is being saved, was saved or could not be.
+ */
+export type Recording =
+  | { state: 'off' }
+  | { state: 'on' }
+  | { state: 'saving' }
+  | { state: 'saved'; ended: HumanGameRecord['ended']; games: number }
+  | { state: 'failed'; message: string }
 
 const PACE_MS: Record<Pace, number> = { slow: 1400, normal: 700, fast: 220 }
 const HUMAN_OPPONENT_DELAY = 420
@@ -28,6 +43,9 @@ interface GameStore {
   opponent: string
   whiteAgent: string
   blackAgent: string
+  levels: Record<AgentSlot, Level>
+  /** The trained network the server plays with, null if none is published (undefined: not asked yet). */
+  trained: TrainedInfo | null | undefined
   pace: Pace
   running: boolean // computer vs computer: playing, or waiting for Start / paused
   orientation: Color // side shown at the bottom of the board
@@ -42,15 +60,33 @@ interface GameStore {
   reviewGame: GameView | null
   replaying: boolean // stepping through the review automatically
   replaySpeed: Pace
+  /** Watching a finished game (from training, or a recorded one): the game that was on the board before, to restore. */
+  watching: { moves: string[]; mode: Mode; running: boolean; resigned: boolean; from: 'training' | 'results' } | null
+  /** Against the computer: the person resigned this game, so it is over. */
+  resigned: boolean
+  recording: Recording
 
   init: () => void
   newGame: () => void
   play: (from: number, to: number) => void
   undo: () => void
+  /** Against the computer: give up the game (once you have moved). */
+  resign: () => void
+  /** Try again to save the recorded game that could not be saved. */
+  saveRecording: () => void
+  /** Record games against the computer, or stop (this game too, if it was being recorded). */
+  setRecording: (on: boolean) => void
   setMode: (mode: Mode) => void
   setHumanColor: (c: Color) => void
   setOpponent: (id: string) => void
   setAgent: (color: Color, id: string) => void
+  setLevel: (slot: AgentSlot, level: Level) => void
+  /** Ask the server which trained network it has (it picks up newly published ones). */
+  refreshTrained: () => void
+  /** Load a finished game (a self-play game from training, or a recorded one) and replay it from the start. */
+  watchGame: (moves: string[], from?: 'training' | 'results') => void
+  /** Stop watching: put back the game that was on the board before. */
+  leaveWatch: () => void
   setPace: (p: Pace) => void
   setRunning: (on: boolean) => void
   /** Show the position after `ply` moves (0 to all of them); null returns to the live game. */
@@ -66,6 +102,7 @@ interface GameStore {
 }
 
 let generation = 0
+let loading = false // a load is in flight (init must not replace it with an empty game)
 let timer: ReturnType<typeof setTimeout> | null = null
 let replayTimer: ReturnType<typeof setTimeout> | null = null
 // Positions already fetched for review, by move sequence: stepping back and forth is instant.
@@ -75,6 +112,31 @@ const reviewCache = new Map<string, GameView>()
 let pendingPly: number | null = null
 
 const reviewKey = (moves: string[], ply: number) => moves.slice(0, ply).join(' ')
+
+/**
+ * The game being recorded: against the computer, from its first move, with one opponent and one
+ * colour throughout (the Game panel locks those while it is). Once it is over, the record being
+ * saved (kept until it is, so a failed save can be tried again).
+ */
+interface Draft {
+  id: string
+  human: Color
+  opponent: string
+  level: Level
+  takebacks: number
+  network: TrainedInfo | null // the trained network that played it
+}
+let draft: Draft | null = null
+let unsaved: HumanGameRecord | null = null
+
+function newId() {
+  return Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+/** Whether the person has made a move: until then a game can be left without counting. */
+export function humanMoved(moves: string[], human: Color) {
+  return Math.floor((moves.length + (human === 1 ? 1 : 0)) / 2) > 0
+}
 
 /** Fetch a review position into the cache ahead of need (the neighbours of the one on show). */
 function prefetch(moves: string[], ply: number) {
@@ -101,30 +163,95 @@ export const useGame = create<GameStore>((set, get) => {
 
   const computerToMove = (s: GameStore) => {
     const g = s.game
-    if (!g || g.outcome || s.reviewPly !== null) return null
-    if (s.mode === 'hvc' && g.side !== s.humanColor) return s.opponent
-    if (s.mode === 'cvc' && s.running) return g.side === 1 ? s.whiteAgent : s.blackAgent
+    if (!g || g.outcome || s.resigned || s.reviewPly !== null) return null
+    if (s.mode === 'hvc' && g.side !== s.humanColor) return { agent: s.opponent, level: s.levels.opponent }
+    if (s.mode === 'cvc' && s.running) {
+      return g.side === 1 ? { agent: s.whiteAgent, level: s.levels.white } : { agent: s.blackAgent, level: s.levels.black }
+    }
     return null
+  }
+
+  /** Start recording at the game's first move, if recording is on. */
+  const beginRecording = () => {
+    const s = get()
+    if (draft || s.mode !== 'hvc' || s.moves.length > 0 || s.watching || !useSettings.getState().recordGames) return
+    draft = { id: newId(), human: s.humanColor, opponent: s.opponent, level: s.levels.opponent, takebacks: 0, network: null }
+    set({ recording: { state: 'on' } })
+  }
+
+  /** The recorded game is over: played out, resigned, or left (which counts as resigning). */
+  const finishRecording = (ended: HumanGameRecord['ended']) => {
+    const d = draft
+    if (!d) return
+    draft = null
+    const s = get()
+    const moves = s.watching?.moves ?? s.moves
+    if (!useSettings.getState().recordGames || (ended !== 'over' && !humanMoved(moves, d.human))) {
+      set({ recording: { state: 'off' } })
+      return
+    }
+    unsaved = {
+      id: d.id, human: d.human === 1 ? 'white' : 'black', opponent: d.opponent,
+      level: d.opponent === 'zero' ? d.level : null, network: d.network, moves, ended, takebacks: d.takebacks,
+    }
+    saveRecording()
+  }
+
+  /**
+   * A setting of the recorded game changed (the Game panel locks them once you have moved): the
+   * game counts as left. True if you had not moved yet, so it can start again, recorded.
+   */
+  const changeRecorded = () => {
+    if (!draft) return false
+    const s = get()
+    const fresh = !humanMoved(s.watching?.moves ?? s.moves, draft.human)
+    finishRecording('left')
+    return fresh && !s.watching
+  }
+
+  const saveRecording = () => {
+    const record = unsaved
+    if (!record) return
+    set({ recording: { state: 'saving' } })
+    api.recordGame(record).then(
+      (res) => {
+        if (unsaved !== record) return
+        unsaved = null
+        // A new game being recorded by now shows that instead.
+        if (!draft) {
+          set({ recording: { state: 'saved', ended: record.ended, games: res.total } })
+        }
+      },
+      (err) => {
+        if (unsaved === record && !draft) {
+          set({ recording: { state: 'failed', message: err instanceof Error ? err.message : 'The game could not be saved.' } })
+        }
+      },
+    )
   }
 
   const schedule = () => {
     if (timer) clearTimeout(timer)
     timer = null
     const s = get()
-    const agent = computerToMove(s)
-    if (!agent) {
+    const next = computerToMove(s)
+    if (!next) {
       if (s.status === 'thinking') set({ status: 'ready' })
       return
     }
     const gen = generation
+    if (s.moves.length === 0) beginRecording()
     set({ status: 'thinking' })
     const delay = s.mode === 'cvc' ? PACE_MS[s.pace] : HUMAN_OPPONENT_DELAY
     timer = setTimeout(async () => {
       try {
-        const res = await api.agentMove(get().moves, agent)
+        const res = await api.agentMove(get().moves, next.agent, null, next.agent === 'zero' ? next.level : undefined)
         if (gen !== generation) return
-        set({ moves: [...get().moves, res.move], game: res.game, status: 'ready', error: null })
+        set({ moves: [...get().moves, res.move], game: res.game, status: 'ready', error: null,
+          ...(res.network ? { trained: res.network } : {}) })
+        if (draft && res.network && !draft.network) draft.network = res.network
         soundFor(res.game)
+        if (res.game.outcome) finishRecording('over')
         schedule()
       } catch (err) {
         if (gen === generation) fail(err)
@@ -132,18 +259,24 @@ export const useGame = create<GameStore>((set, get) => {
     }, delay)
   }
 
-  const load = async (moves: string[]) => {
+  const load = async (moves: string[], then?: () => void) => {
     const gen = ++generation
     if (timer) clearTimeout(timer)
+    loading = true
     try {
       const game = await api.game(moves)
       if (gen !== generation) return
+      loading = false
       if (replayTimer) clearTimeout(replayTimer)
       pendingPly = null
-      set({ moves, game, status: 'ready', error: null, reviewPly: null, reviewGame: null, replaying: false })
-      schedule()
+      set({ moves, game, status: 'ready', error: null, reviewPly: null, reviewGame: null, replaying: false, resigned: false })
+      if (then) then()
+      else schedule()
     } catch (err) {
-      if (gen === generation) fail(err)
+      if (gen === generation) {
+        loading = false
+        fail(err)
+      }
     }
   }
 
@@ -174,6 +307,8 @@ export const useGame = create<GameStore>((set, get) => {
       return
     }
     if (timer) clearTimeout(timer)
+    // Opening review starts its controls afresh: Normal speed (the caller says whether to replay).
+    if (s.reviewPly === null && pendingPly === null) set({ replaySpeed: 'normal' })
     const gen = ++generation
     const moves = s.moves
     const show = (reviewGame: GameView) => {
@@ -209,6 +344,8 @@ export const useGame = create<GameStore>((set, get) => {
     opponent: 'greedy',
     whiteAgent: 'greedy',
     blackAgent: 'random',
+    levels: { opponent: 'medium', white: 'medium', black: 'medium' },
+    trained: undefined,
     pace: 'normal',
     running: true,
     orientation: 1,
@@ -221,20 +358,29 @@ export const useGame = create<GameStore>((set, get) => {
     reviewGame: null,
     replaying: false,
     replaySpeed: 'normal',
+    watching: null,
+    resigned: false,
+    recording: { state: 'off' },
 
     init: () => {
-      if (!get().game) void load([])
+      if (!get().game && !loading) void load([])
     },
 
     newGame: () => {
+      // A recorded game left before its end counts as resigned (the Game panel then says it was
+      // saved); the note that the last finished game was saved is done with.
+      const leaving = draft !== null
+      finishRecording('left')
+      if (!leaving && get().recording.state === 'saved') set({ recording: { state: 'off' } })
       // Computer vs computer waits for Start rather than beginning on its own.
-      set({ status: get().game ? 'ready' : 'connecting', running: get().mode !== 'cvc' })
+      set({ status: get().game ? 'ready' : 'connecting', running: get().mode !== 'cvc', watching: null })
       void load([])
     },
 
     play: (from, to) => {
       const s = get()
-      if (!s.game || s.status === 'thinking' || s.reviewPly !== null) return
+      if (!s.game || s.status === 'thinking' || s.reviewPly !== null || s.resigned) return
+      if (s.moves.length === 0) beginRecording()
       const moves = [...s.moves, moveText(from, to)]
       const gen = ++generation
       void api.game(moves).then(
@@ -242,6 +388,7 @@ export const useGame = create<GameStore>((set, get) => {
           if (gen !== generation) return
           set({ moves, game, status: 'ready', error: null })
           soundFor(game)
+          if (game.outcome) finishRecording('over')
           schedule()
         },
         (err) => gen === generation && fail(err),
@@ -261,23 +408,94 @@ export const useGame = create<GameStore>((set, get) => {
         n -= 1
       }
       if (s.mode === 'cvc') set({ running: false })
+      if (draft && !s.watching) draft.takebacks += 1
       void load(s.moves.slice(0, n))
     },
 
+    resign: () => {
+      const s = get()
+      if (s.mode !== 'hvc' || s.watching || !s.game || s.game.outcome || s.resigned || !humanMoved(s.moves, s.humanColor)) return
+      generation++ // a computer move on its way is dropped
+      if (timer) clearTimeout(timer)
+      timer = null
+      set({ resigned: true, status: 'ready' })
+      playMoveSound('end')
+      finishRecording('resigned')
+    },
+    saveRecording,
+    setRecording: (on) => {
+      useSettings.getState().setRecordGames(on)
+      const s = get()
+      if (!on) {
+        draft = null
+        if (s.recording.state === 'on') set({ recording: { state: 'off' } })
+        return
+      }
+      if (s.mode !== 'hvc' || s.watching || draft) return
+      // A game is recorded from its first move. Before yours, it starts now (or again, the
+      // computer's opening move played afresh); once you have moved, with the next game.
+      if (s.moves.length === 0) beginRecording()
+      else if (!s.game?.outcome && !s.resigned && !humanMoved(s.moves, s.humanColor)) get().newGame()
+    },
+
     setMode: (mode) => {
+      if (mode !== get().mode) finishRecording('left')
       // Switching to computer vs computer does not start it: the user presses Start.
       const running = mode !== 'cvc'
-      set(mode === 'hvc' ? { mode, running, orientation: get().humanColor } : { mode, running })
+      set(mode === 'hvc' ? { mode, running, orientation: get().humanColor, watching: null } : { mode, running, watching: null })
       generation++
       schedule()
     },
     setHumanColor: (humanColor) => {
+      if (humanColor === get().humanColor) return
+      const restart = changeRecorded()
       set({ humanColor, orientation: humanColor })
+      if (restart) {
+        get().newGame()
+        return
+      }
       generation++
       schedule()
     },
-    setOpponent: (opponent) => set({ opponent }),
+    setOpponent: (opponent) => {
+      if (opponent === get().opponent) return
+      const restart = changeRecorded()
+      set({ opponent })
+      if (restart) get().newGame()
+    },
     setAgent: (color, id) => set(color === 1 ? { whiteAgent: id } : { blackAgent: id }),
+    setLevel: (slot, level) => {
+      if (level === get().levels[slot]) return
+      const restart = slot === 'opponent' && changeRecorded()
+      set({ levels: { ...get().levels, [slot]: level } })
+      if (restart) get().newGame()
+    },
+    refreshTrained: () => {
+      void api.meta().then((m) => set({ trained: m.trained }), () => {})
+    },
+    watchGame: (moves, from = 'training') => {
+      const s = get()
+      // Keep the game that was on the board (unless already watching one), to put it back after. A
+      // game being recorded waits, untouched, until it is back.
+      const watching = { ...(s.watching ?? { moves: s.moves, mode: s.mode, running: s.running, resigned: s.resigned }), from }
+      // Two players: nobody moves on their own, so the replay has the board to itself.
+      set({ mode: 'hvh', running: true, status: s.game ? 'ready' : 'connecting', watching })
+      void load(moves, () => {
+        reviewAt(0) // opening review resets its controls...
+        set({ replaying: true }) // ...and a watched game plays straight away
+        scheduleReplay() // (if the start was cached and is already on show; otherwise it starts once it is)
+      })
+    },
+    leaveWatch: () => {
+      const before = get().watching
+      if (!before) return
+      // A computer-vs-computer game comes back paused, waiting for Start.
+      set({ watching: null, mode: before.mode, running: before.mode === 'cvc' ? false : before.running, replaying: false })
+      void load(before.moves, () => {
+        set({ resigned: before.resigned })
+        schedule()
+      })
+    },
     setPace: (pace) => set({ pace }),
     setRunning: (running) => {
       set({ running })

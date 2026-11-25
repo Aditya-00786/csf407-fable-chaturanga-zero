@@ -2,12 +2,14 @@
 
 import { useId, type ButtonHTMLAttributes, type ReactNode } from 'react'
 
-type Variant = 'primary' | 'secondary' | 'ghost'
+type Variant = 'primary' | 'secondary' | 'ghost' | 'danger'
 
 const VARIANTS: Record<Variant, string> = {
   primary: 'bg-accent text-accent-ink hover:bg-accent-hover active:translate-y-px shadow-[0_1px_0_0_rgb(0_0_0/0.15)]',
   secondary: 'border border-line-strong text-ink hover:bg-surface-2 hover:border-ink-faint active:translate-y-px',
   ghost: 'text-ink-muted hover:text-ink hover:bg-surface-2',
+  // A destructive action, confirmed: the danger colour with the theme's on-colour ink.
+  danger: 'bg-danger text-accent-ink hover:brightness-110 active:translate-y-px shadow-[0_1px_0_0_rgb(0_0_0/0.15)]',
 }
 
 export function Button({
@@ -27,7 +29,7 @@ export function Button({
 }
 
 export function Segmented<T extends string | number>({
-  label, value, options, onChange, hideLabel = false, size = 'md',
+  label, value, options, onChange, hideLabel = false, size = 'md', disabled = false,
 }: {
   label: string
   value: T
@@ -35,11 +37,13 @@ export function Segmented<T extends string | number>({
   onChange: (v: T) => void
   hideLabel?: boolean
   size?: 'sm' | 'md'
+  /** Shown but not changeable (a fieldset disables every option inside it). */
+  disabled?: boolean
 }) {
   const name = useId()
   const index = Math.max(0, options.findIndex((o) => o.value === value))
   return (
-    <fieldset className="min-w-0">
+    <fieldset className="min-w-0 transition-opacity duration-200 disabled:opacity-55 [&:disabled_label]:cursor-not-allowed" disabled={disabled}>
       <legend className={hideLabel ? 'sr-only' : 'mb-1.5 text-[13px] font-medium text-ink-muted'}>{label}</legend>
       <div className="relative flex rounded-lg border border-line bg-bg p-0.5">
         {/* One thumb slides under the options (transform only, so it stays on the compositor). */}

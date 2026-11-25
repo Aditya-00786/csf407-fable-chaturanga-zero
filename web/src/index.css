@@ -22,6 +22,10 @@
   --success: oklch(0.76 0.12 150);
   --success-soft: oklch(0.76 0.12 150 / 0.14);
   --stage-glow: oklch(0.3 0.05 45 / 0.55);
+  /* Chart series: brass, blue and violet, each clear against the rosewood surfaces. */
+  --chart-1: oklch(0.66 0.13 75);
+  --chart-2: oklch(0.64 0.12 240);
+  --chart-3: oklch(0.7 0.14 305);
 }
 
 [data-theme='light'] {
@@ -43,6 +47,9 @@
   --success: oklch(0.5 0.12 150);
   --success-soft: oklch(0.5 0.12 150 / 0.1);
   --stage-glow: oklch(0.9 0.03 60 / 0.8);
+  --chart-1: oklch(0.55 0.12 68);
+  --chart-2: oklch(0.52 0.12 245);
+  --chart-3: oklch(0.52 0.16 305);
 }
 
 @theme inline {
@@ -141,6 +148,57 @@ p {
 }
 .cz-rise {
   animation: cz-rise 260ms var(--ease-out-quart) both;
+}
+
+/* A panel's content changing state (Training controls, status headline): the new content
+   settles in while the old one is gone. */
+@keyframes cz-swap {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+    filter: blur(2px);
+  }
+}
+.cz-swap {
+  animation: cz-swap 280ms var(--ease-out-quart) both;
+}
+
+/* A menu dropping open below its button. */
+@keyframes cz-menu {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+.cz-menu {
+  animation: cz-menu 160ms var(--ease-out-quart) both;
+  transform-origin: top;
+}
+
+/* Work under way: a soft sheen runs along a progress bar's filled part, and a band sweeps across
+   one with no measure yet. Reduced motion stops both (see above). */
+@keyframes cz-sheen {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+.cz-sheen {
+  background: linear-gradient(90deg, transparent, oklch(1 0 0 / 0.35), transparent);
+  animation: cz-sheen 1.6s var(--ease-in-out-cubic) infinite;
+}
+@keyframes cz-sweep {
+  from {
+    left: -25%;
+  }
+  to {
+    left: 100%;
+  }
+}
+.cz-sweep {
+  animation: cz-sweep 1.4s var(--ease-in-out-cubic) infinite;
 }
 
 /* Quick actions slide out from the toolbar toggle. */

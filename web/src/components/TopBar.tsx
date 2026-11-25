@@ -6,6 +6,8 @@ const NAV: { page: Page; label: string }[] = [
   { page: 'play', label: 'Play' },
   { page: 'learn', label: 'Learn' },
   { page: 'rules', label: 'Rules' },
+  { page: 'results', label: 'Results' },
+  { page: 'training', label: 'Training' },
 ]
 
 function Mark() {
@@ -21,13 +23,13 @@ function Mark() {
 export function TopBar({ page }: { page: Page }) {
   const theme = useSettings((s) => s.theme)
   return (
-    <header className="flex h-14 shrink-0 items-center gap-4 border-b border-line bg-surface px-4 sm:gap-6 sm:px-5">
+    <header className="flex h-14 shrink-0 items-center gap-2.5 border-b border-line bg-surface px-3 min-[400px]:gap-4 min-[400px]:px-4 sm:gap-6 sm:px-5">
       <a href={href('play')} className="flex items-center gap-2.5 rounded-md" aria-label="ChaturangZero home">
         <Mark />
-        <span className="font-serif text-[19px] font-semibold tracking-[-0.01em] text-ink">ChaturangZero</span>
+        <span className="hidden font-serif text-[19px] font-semibold tracking-[-0.01em] text-ink min-[480px]:inline">ChaturangZero</span>
         <span className="hidden font-deva text-[15px] text-ink-faint md:inline" lang="sa">चतुरङ्ग</span>
       </a>
-      <nav aria-label="Main" className="flex items-center gap-1">
+      <nav aria-label="Main" className="flex items-center gap-0.5 min-[400px]:gap-1">
         {NAV.map((n) => {
           const active = n.page === page
           return (
@@ -35,23 +37,15 @@ export function TopBar({ page }: { page: Page }) {
               key={n.page}
               href={href(n.page)}
               aria-current={active ? 'page' : undefined}
-              className={`relative rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors duration-150 sm:px-3 ${
+              className={`relative rounded-md px-1.5 py-1.5 text-[13.5px] font-medium transition-colors duration-150 min-[400px]:px-2.5 min-[400px]:text-sm sm:px-3 ${
                 active ? 'text-ink' : 'text-ink-muted hover:text-ink'
               }`}
             >
               {n.label}
-              {active && <span className="absolute inset-x-2.5 -bottom-[11px] h-0.5 rounded-full bg-accent sm:inset-x-3" />}
+              {active && <span className="absolute inset-x-1.5 -bottom-[11px] h-0.5 rounded-full bg-accent min-[400px]:inset-x-2.5 sm:inset-x-3" />}
             </a>
           )
         })}
-        <span
-          className="ml-1 hidden cursor-not-allowed items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-ink-faint lg:inline-flex"
-          title="Arrives with Milestone 3, once the agent trains by self-play"
-          aria-disabled="true"
-        >
-          Watch training
-          <span className="rounded border border-line px-1.5 py-px text-[11px] font-medium">Soon</span>
-        </span>
       </nav>
       <div className="ml-auto flex items-center gap-2">
         <span className="hidden text-[12.5px] text-ink-faint xl:inline">CS F407 · Team Fable</span>

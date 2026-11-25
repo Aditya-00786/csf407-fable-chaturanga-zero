@@ -1,0 +1,447 @@
+{"event": "selfplay", "time": "2026-10-19T18:18:54+00:00", "generation": 1, "seconds": 49.1, "games": 39, "white_wins": 11, "black_wins": 13, "draws": 15, "reasons": {"max_plies": 15, "bare_king": 15, "checkmate": 8, "stalemate": 1}, "mean_plies": 231.69230769230768, "positions": 9724, "endgames": {"games": 11, "white_wins": 7, "black_wins": 4, "draws": 0, "reasons": {"checkmate": 2, "bare_king": 9}, "mean_plies": 62.54545454545455}, "contributed": {}, "rejected": 0, "buffer_games": 50, "buffer_positions": 9724}
+{"event": "held_out", "time": "2026-10-19T18:18:54+00:00", "generation": 1, "step": 0, "value_loss": 0.51754, "policy_loss": 8.31638, "loss": 8.83393, "value_baseline": 0.50635}
+{"event": "train", "time": "2026-10-19T18:18:54+00:00", "generation": 1, "step": 10, "loss": 8.49556, "value_loss": 0.48836, "policy_loss": 8.0072, "policy_entropy": 2.76658}
+{"event": "train", "time": "2026-10-19T18:18:54+00:00", "generation": 1, "step": 20, "loss": 7.65272, "value_loss": 0.30513, "policy_loss": 7.34758, "policy_entropy": 2.74932}
+{"event": "train", "time": "2026-10-19T18:18:54+00:00", "generation": 1, "step": 30, "loss": 7.05847, "value_loss": 0.16784, "policy_loss": 6.89062, "policy_entropy": 2.74081}
+{"event": "train", "time": "2026-10-19T18:18:54+00:00", "generation": 1, "step": 40, "loss": 6.7096, "value_loss": 0.10981, "policy_loss": 6.59979, "policy_entropy": 2.73246}
+{"event": "train", "time": "2026-10-19T18:18:54+00:00", "generation": 1, "step": 50, "loss": 6.55362, "value_loss": 0.08391, "policy_loss": 6.46971, "policy_entropy": 2.76064}
+{"event": "train", "time": "2026-10-19T18:18:54+00:00", "generation": 1, "step": 60, "loss": 6.44961, "value_loss": 0.07917, "policy_loss": 6.37044, "policy_entropy": 2.76986}
+{"event": "train", "time": "2026-10-19T18:18:54+00:00", "generation": 1, "step": 70, "loss": 6.34971, "value_loss": 0.07189, "policy_loss": 6.27782, "policy_entropy": 2.7487}
+{"event": "train", "time": "2026-10-19T18:18:54+00:00", "generation": 1, "step": 80, "loss": 6.26546, "value_loss": 0.05294, "policy_loss": 6.21253, "policy_entropy": 2.74923}
+{"event": "train", "time": "2026-10-19T18:18:55+00:00", "generation": 1, "step": 90, "loss": 6.15919, "value_loss": 0.04953, "policy_loss": 6.10966, "policy_entropy": 2.75939}
+{"event": "train", "time": "2026-10-19T18:18:55+00:00", "generation": 1, "step": 100, "loss": 6.05548, "value_loss": 0.04066, "policy_loss": 6.01482, "policy_entropy": 2.74689}
+{"event": "train", "time": "2026-10-19T18:18:55+00:00", "generation": 1, "step": 110, "loss": 5.92617, "value_loss": 0.04436, "policy_loss": 5.88181, "policy_entropy": 2.75095}
+{"event": "train", "time": "2026-10-19T18:18:55+00:00", "generation": 1, "step": 120, "loss": 5.84661, "value_loss": 0.03182, "policy_loss": 5.81479, "policy_entropy": 2.77088}
+{"event": "train", "time": "2026-10-19T18:18:55+00:00", "generation": 1, "step": 130, "loss": 5.69116, "value_loss": 0.03928, "policy_loss": 5.65188, "policy_entropy": 2.76653}
+{"event": "train", "time": "2026-10-19T18:18:55+00:00", "generation": 1, "step": 140, "loss": 5.56625, "value_loss": 0.04102, "policy_loss": 5.52524, "policy_entropy": 2.76296}
+{"event": "train", "time": "2026-10-19T18:18:55+00:00", "generation": 1, "step": 150, "loss": 5.44237, "value_loss": 0.03401, "policy_loss": 5.40836, "policy_entropy": 2.7579}
+{"event": "train", "time": "2026-10-19T18:18:55+00:00", "generation": 1, "step": 152, "loss": 5.38912, "value_loss": 0.02361, "policy_loss": 5.36552, "policy_entropy": 2.77118}
+{"event": "eval", "time": "2026-10-19T18:19:32+00:00", "generation": 1, "opponent": "previous", "wins": 0, "draws": 16, "losses": 4, "score": 0.4, "reasons": {"repetition": 2, "checkmate": 3, "max_plies": 14, "bare_king": 1}}
+{"event": "eval", "time": "2026-10-19T18:19:42+00:00", "generation": 1, "opponent": "greedy", "wins": 1, "draws": 0, "losses": 19, "score": 0.05, "reasons": {"checkmate": 5, "bare_king": 15}}
+{"event": "eval", "time": "2026-10-19T18:20:01+00:00", "generation": 1, "opponent": "random", "wins": 2, "draws": 16, "losses": 2, "score": 0.5, "reasons": {"checkmate": 3, "bare_king": 1, "max_plies": 16}}
+{"event": "generation", "time": "2026-10-19T18:20:01+00:00", "generation": 1, "best": 1, "steps": 152, "seconds": 49.9, "loss": 6.4013, "value_loss": 0.10819, "policy_loss": 6.29311, "policy_entropy": 2.75575}
+{"event": "selfplay", "time": "2026-10-19T18:20:53+00:00", "generation": 2, "seconds": 52.1, "games": 36, "white_wins": 11, "black_wins": 11, "draws": 14, "reasons": {"bare_king": 13, "checkmate": 9, "max_plies": 10, "repetition": 4}, "mean_plies": 232.44444444444446, "positions": 9469, "endgames": {"games": 14, "white_wins": 8, "black_wins": 2, "draws": 4, "reasons": {"bare_king": 10, "repetition": 4}, "mean_plies": 78.64285714285714}, "contributed": {}, "rejected": 0, "buffer_games": 100, "buffer_positions": 19193}
+{"event": "held_out", "time": "2026-10-19T18:20:53+00:00", "generation": 2, "step": 152, "value_loss": 0.62383, "policy_loss": 5.02087, "loss": 5.6447, "value_baseline": 0.52588}
+{"event": "train", "time": "2026-10-19T18:20:53+00:00", "generation": 2, "step": 162, "loss": 5.37486, "value_loss": 0.26791, "policy_loss": 5.10695, "policy_entropy": 2.32733}
+{"event": "train", "time": "2026-10-19T18:20:53+00:00", "generation": 2, "step": 172, "loss": 5.18621, "value_loss": 0.2067, "policy_loss": 4.9795, "policy_entropy": 2.30636}
+{"event": "train", "time": "2026-10-19T18:20:53+00:00", "generation": 2, "step": 182, "loss": 5.02235, "value_loss": 0.1716, "policy_loss": 4.85075, "policy_entropy": 2.33163}
+{"event": "train", "time": "2026-10-19T18:20:53+00:00", "generation": 2, "step": 192, "loss": 4.8529, "value_loss": 0.15273, "policy_loss": 4.70016, "policy_entropy": 2.31783}
+{"event": "train", "time": "2026-10-19T18:20:53+00:00", "generation": 2, "step": 202, "loss": 4.69009, "value_loss": 0.14765, "policy_loss": 4.54244, "policy_entropy": 2.32067}
+{"event": "train", "time": "2026-10-19T18:20:53+00:00", "generation": 2, "step": 212, "loss": 4.56461, "value_loss": 0.10877, "policy_loss": 4.45585, "policy_entropy": 2.32222}
+{"event": "train", "time": "2026-10-19T18:20:54+00:00", "generation": 2, "step": 222, "loss": 4.45577, "value_loss": 0.1018, "policy_loss": 4.35397, "policy_entropy": 2.30384}
+{"event": "train", "time": "2026-10-19T18:20:54+00:00", "generation": 2, "step": 232, "loss": 4.35037, "value_loss": 0.09738, "policy_loss": 4.25299, "policy_entropy": 2.30524}
+{"event": "train", "time": "2026-10-19T18:20:54+00:00", "generation": 2, "step": 242, "loss": 4.29506, "value_loss": 0.08746, "policy_loss": 4.2076, "policy_entropy": 2.32939}
+{"event": "train", "time": "2026-10-19T18:20:54+00:00", "generation": 2, "step": 252, "loss": 4.1723, "value_loss": 0.08111, "policy_loss": 4.0912, "policy_entropy": 2.31186}
+{"event": "train", "time": "2026-10-19T18:20:54+00:00", "generation": 2, "step": 262, "loss": 4.11626, "value_loss": 0.07011, "policy_loss": 4.04615, "policy_entropy": 2.34149}
+{"event": "train", "time": "2026-10-19T18:20:54+00:00", "generation": 2, "step": 272, "loss": 3.98733, "value_loss": 0.05693, "policy_loss": 3.9304, "policy_entropy": 2.30062}
+{"event": "train", "time": "2026-10-19T18:20:54+00:00", "generation": 2, "step": 282, "loss": 3.9316, "value_loss": 0.06443, "policy_loss": 3.86716, "policy_entropy": 2.30716}
+{"event": "train", "time": "2026-10-19T18:20:54+00:00", "generation": 2, "step": 292, "loss": 3.89821, "value_loss": 0.05469, "policy_loss": 3.84352, "policy_entropy": 2.33181}
+{"event": "train", "time": "2026-10-19T18:20:54+00:00", "generation": 2, "step": 300, "loss": 3.84203, "value_loss": 0.05256, "policy_loss": 3.78947, "policy_entropy": 2.31343}
+{"event": "eval", "time": "2026-10-19T18:21:27+00:00", "generation": 2, "opponent": "previous", "wins": 0, "draws": 20, "losses": 0, "score": 0.5, "reasons": {"repetition": 13, "max_plies": 7}}
+{"event": "eval", "time": "2026-10-19T18:21:39+00:00", "generation": 2, "opponent": "greedy", "wins": 0, "draws": 0, "losses": 20, "score": 0.0, "reasons": {"bare_king": 10, "checkmate": 10}}
+{"event": "eval", "time": "2026-10-19T18:21:57+00:00", "generation": 2, "opponent": "random", "wins": 1, "draws": 18, "losses": 1, "score": 0.5, "reasons": {"repetition": 1, "max_plies": 17, "checkmate": 2}}
+{"event": "generation", "time": "2026-10-19T18:21:57+00:00", "generation": 2, "best": 1, "steps": 148, "seconds": 52.8, "loss": 4.45754, "value_loss": 0.11563, "policy_loss": 4.34191, "policy_entropy": 2.31812}
+{"event": "selfplay", "time": "2026-10-19T18:22:49+00:00", "generation": 3, "seconds": 51.7, "games": 32, "white_wins": 6, "black_wins": 3, "draws": 23, "reasons": {"bare_king": 5, "max_plies": 21, "checkmate": 4, "repetition": 2}, "mean_plies": 265.21875, "positions": 9410, "endgames": {"games": 18, "white_wins": 7, "black_wins": 9, "draws": 2, "reasons": {"repetition": 2, "bare_king": 16}, "mean_plies": 51.27777777777778}, "contributed": {}, "rejected": 0, "buffer_games": 150, "buffer_positions": 28603}
+{"event": "held_out", "time": "2026-10-19T18:22:49+00:00", "generation": 3, "step": 300, "value_loss": 0.25109, "policy_loss": 3.58476, "loss": 3.83585, "value_baseline": 0.19653}
+{"event": "train", "time": "2026-10-19T18:22:49+00:00", "generation": 3, "step": 310, "loss": 3.81498, "value_loss": 0.13893, "policy_loss": 3.67605, "policy_entropy": 2.20701}
+{"event": "train", "time": "2026-10-19T18:22:49+00:00", "generation": 3, "step": 320, "loss": 3.79995, "value_loss": 0.12295, "policy_loss": 3.677, "policy_entropy": 2.21971}
+{"event": "train", "time": "2026-10-19T18:22:49+00:00", "generation": 3, "step": 330, "loss": 3.73486, "value_loss": 0.11446, "policy_loss": 3.6204, "policy_entropy": 2.19368}
+{"event": "train", "time": "2026-10-19T18:22:49+00:00", "generation": 3, "step": 340, "loss": 3.67558, "value_loss": 0.09779, "policy_loss": 3.57779, "policy_entropy": 2.19851}
+{"event": "train", "time": "2026-10-19T18:22:49+00:00", "generation": 3, "step": 350, "loss": 3.64892, "value_loss": 0.09395, "policy_loss": 3.55497, "policy_entropy": 2.21056}
+{"event": "train", "time": "2026-10-19T18:22:49+00:00", "generation": 3, "step": 360, "loss": 3.59849, "value_loss": 0.08706, "policy_loss": 3.51143, "policy_entropy": 2.19656}
+{"event": "train", "time": "2026-10-19T18:22:49+00:00", "generation": 3, "step": 370, "loss": 3.59003, "value_loss": 0.08087, "policy_loss": 3.50916, "policy_entropy": 2.22739}
+{"event": "train", "time": "2026-10-19T18:22:49+00:00", "generation": 3, "step": 380, "loss": 3.51645, "value_loss": 0.08482, "policy_loss": 3.43164, "policy_entropy": 2.17621}
+{"event": "train", "time": "2026-10-19T18:22:49+00:00", "generation": 3, "step": 390, "loss": 3.49079, "value_loss": 0.06746, "policy_loss": 3.42332, "policy_entropy": 2.20106}
+{"event": "train", "time": "2026-10-19T18:22:49+00:00", "generation": 3, "step": 400, "loss": 3.43945, "value_loss": 0.06751, "policy_loss": 3.37194, "policy_entropy": 2.18665}
+{"event": "train", "time": "2026-10-19T18:22:49+00:00", "generation": 3, "step": 410, "loss": 3.41507, "value_loss": 0.06888, "policy_loss": 3.34619, "policy_entropy": 2.18712}
+{"event": "train", "time": "2026-10-19T18:22:49+00:00", "generation": 3, "step": 420, "loss": 3.44351, "value_loss": 0.07619, "policy_loss": 3.36732, "policy_entropy": 2.22529}
+{"event": "train", "time": "2026-10-19T18:22:49+00:00", "generation": 3, "step": 430, "loss": 3.36554, "value_loss": 0.05306, "policy_loss": 3.31247, "policy_entropy": 2.18326}
+{"event": "train", "time": "2026-10-19T18:22:49+00:00", "generation": 3, "step": 440, "loss": 3.34516, "value_loss": 0.05189, "policy_loss": 3.29327, "policy_entropy": 2.19567}
+{"event": "train", "time": "2026-10-19T18:22:49+00:00", "generation": 3, "step": 448, "loss": 3.34524, "value_loss": 0.04173, "policy_loss": 3.30351, "policy_entropy": 2.19244}
+{"event": "eval", "time": "2026-10-19T18:23:12+00:00", "generation": 3, "opponent": "previous", "wins": 1, "draws": 19, "losses": 0, "score": 0.525, "reasons": {"repetition": 19, "checkmate": 1}}
+{"event": "eval", "time": "2026-10-19T18:23:24+00:00", "generation": 3, "opponent": "greedy", "wins": 0, "draws": 0, "losses": 20, "score": 0.0, "reasons": {"checkmate": 9, "bare_king": 11}}
+{"event": "eval", "time": "2026-10-19T18:23:44+00:00", "generation": 3, "opponent": "random", "wins": 0, "draws": 19, "losses": 1, "score": 0.475, "reasons": {"max_plies": 18, "checkmate": 1, "repetition": 1}}
+{"event": "generation", "time": "2026-10-19T18:23:44+00:00", "generation": 3, "best": 1, "steps": 148, "seconds": 52.4, "loss": 3.55101, "value_loss": 0.08373, "policy_loss": 3.46728, "policy_entropy": 2.20018}
+{"event": "selfplay", "time": "2026-10-19T18:24:34+00:00", "generation": 4, "seconds": 49.9, "games": 31, "white_wins": 7, "black_wins": 7, "draws": 17, "reasons": {"max_plies": 13, "repetition": 4, "bare_king": 9, "checkmate": 5}, "mean_plies": 244.74193548387098, "positions": 9149, "endgames": {"games": 19, "white_wins": 7, "black_wins": 8, "draws": 4, "reasons": {"bare_king": 15, "repetition": 4}, "mean_plies": 82.21052631578948}, "contributed": {}, "rejected": 0, "buffer_games": 200, "buffer_positions": 37752}
+{"event": "held_out", "time": "2026-10-19T18:24:34+00:00", "generation": 4, "step": 448, "value_loss": 0.50779, "policy_loss": 3.11125, "loss": 3.61905, "value_baseline": 0.37378}
+{"event": "train", "time": "2026-10-19T18:24:34+00:00", "generation": 4, "step": 458, "loss": 3.36833, "value_loss": 0.1425, "policy_loss": 3.22583, "policy_entropy": 2.08222}
+{"event": "train", "time": "2026-10-19T18:24:34+00:00", "generation": 4, "step": 468, "loss": 3.34368, "value_loss": 0.12577, "policy_loss": 3.2179, "policy_entropy": 2.07941}
+{"event": "train", "time": "2026-10-19T18:24:34+00:00", "generation": 4, "step": 478, "loss": 3.33638, "value_loss": 0.1308, "policy_loss": 3.20559, "policy_entropy": 2.07642}
+{"event": "train", "time": "2026-10-19T18:24:34+00:00", "generation": 4, "step": 488, "loss": 3.30286, "value_loss": 0.11435, "policy_loss": 3.18852, "policy_entropy": 2.10733}
+{"event": "train", "time": "2026-10-19T18:24:34+00:00", "generation": 4, "step": 498, "loss": 3.27666, "value_loss": 0.11156, "policy_loss": 3.1651, "policy_entropy": 2.08046}
+{"event": "train", "time": "2026-10-19T18:24:34+00:00", "generation": 4, "step": 508, "loss": 3.28859, "value_loss": 0.10702, "policy_loss": 3.18157, "policy_entropy": 2.09461}
+{"event": "train", "time": "2026-10-19T18:24:34+00:00", "generation": 4, "step": 518, "loss": 3.21173, "value_loss": 0.09778, "policy_loss": 3.11395, "policy_entropy": 2.06422}
+{"event": "train", "time": "2026-10-19T18:24:34+00:00", "generation": 4, "step": 528, "loss": 3.21938, "value_loss": 0.08707, "policy_loss": 3.13231, "policy_entropy": 2.07587}
+{"event": "train", "time": "2026-10-19T18:24:34+00:00", "generation": 4, "step": 538, "loss": 3.2069, "value_loss": 0.08422, "policy_loss": 3.12268, "policy_entropy": 2.08975}
+{"event": "train", "time": "2026-10-19T18:24:34+00:00", "generation": 4, "step": 548, "loss": 3.15809, "value_loss": 0.0776, "policy_loss": 3.08049, "policy_entropy": 2.06696}
+{"event": "train", "time": "2026-10-19T18:24:34+00:00", "generation": 4, "step": 558, "loss": 3.20546, "value_loss": 0.07683, "policy_loss": 3.12862, "policy_entropy": 2.10896}
+{"event": "train", "time": "2026-10-19T18:24:34+00:00", "generation": 4, "step": 568, "loss": 3.16665, "value_loss": 0.07361, "policy_loss": 3.09303, "policy_entropy": 2.10729}
+{"event": "train", "time": "2026-10-19T18:24:34+00:00", "generation": 4, "step": 578, "loss": 3.15781, "value_loss": 0.07556, "policy_loss": 3.08224, "policy_entropy": 2.08494}
+{"event": "train", "time": "2026-10-19T18:24:34+00:00", "generation": 4, "step": 588, "loss": 3.13314, "value_loss": 0.06016, "policy_loss": 3.07298, "policy_entropy": 2.10018}
+{"event": "train", "time": "2026-10-19T18:24:34+00:00", "generation": 4, "step": 591, "loss": 3.0947, "value_loss": 0.04856, "policy_loss": 3.04614, "policy_entropy": 2.095}
+{"event": "eval", "time": "2026-10-19T18:24:54+00:00", "generation": 4, "opponent": "previous", "wins": 1, "draws": 19, "losses": 0, "score": 0.525, "reasons": {"repetition": 18, "checkmate": 1, "max_plies": 1}}
+{"event": "eval", "time": "2026-10-19T18:25:04+00:00", "generation": 4, "opponent": "greedy", "wins": 0, "draws": 1, "losses": 19, "score": 0.025, "reasons": {"checkmate": 11, "bare_king": 8, "max_plies": 1}}
+{"event": "eval", "time": "2026-10-19T18:25:23+00:00", "generation": 4, "opponent": "random", "wins": 0, "draws": 20, "losses": 0, "score": 0.5, "reasons": {"max_plies": 18, "repetition": 2}}
+{"event": "generation", "time": "2026-10-19T18:25:23+00:00", "generation": 4, "best": 1, "steps": 143, "seconds": 50.5, "loss": 3.23805, "value_loss": 0.09646, "policy_loss": 3.14159, "policy_entropy": 2.08721}
+{"event": "selfplay", "time": "2026-10-19T18:26:17+00:00", "generation": 5, "seconds": 53.7, "games": 42, "white_wins": 10, "black_wins": 8, "draws": 24, "reasons": {"max_plies": 20, "bare_king": 9, "checkmate": 9, "repetition": 4}, "mean_plies": 246.88095238095238, "positions": 10774, "endgames": {"games": 8, "white_wins": 4, "black_wins": 3, "draws": 1, "reasons": {"bare_king": 7, "repetition": 1}, "mean_plies": 50.625}, "contributed": {}, "rejected": 0, "buffer_games": 250, "buffer_positions": 48526}
+{"event": "held_out", "time": "2026-10-19T18:26:17+00:00", "generation": 5, "step": 591, "value_loss": 0.44221, "policy_loss": 3.04937, "loss": 3.49157, "value_baseline": 0.34766}
+{"event": "train", "time": "2026-10-19T18:26:17+00:00", "generation": 5, "step": 601, "loss": 3.22131, "value_loss": 0.14559, "policy_loss": 3.07572, "policy_entropy": 2.06436}
+{"event": "train", "time": "2026-10-19T18:26:17+00:00", "generation": 5, "step": 611, "loss": 3.14448, "value_loss": 0.12709, "policy_loss": 3.0174, "policy_entropy": 2.0343}
+{"event": "train", "time": "2026-10-19T18:26:17+00:00", "generation": 5, "step": 621, "loss": 3.15607, "value_loss": 0.13443, "policy_loss": 3.02164, "policy_entropy": 2.04129}
+{"event": "train", "time": "2026-10-19T18:26:17+00:00", "generation": 5, "step": 631, "loss": 3.16262, "value_loss": 0.11473, "policy_loss": 3.04789, "policy_entropy": 2.04708}
+{"event": "train", "time": "2026-10-19T18:26:17+00:00", "generation": 5, "step": 641, "loss": 3.15286, "value_loss": 0.11931, "policy_loss": 3.03355, "policy_entropy": 2.04028}
+{"event": "train", "time": "2026-10-19T18:26:17+00:00", "generation": 5, "step": 651, "loss": 3.1427, "value_loss": 0.10569, "policy_loss": 3.03701, "policy_entropy": 2.06715}
+{"event": "train", "time": "2026-10-19T18:26:17+00:00", "generation": 5, "step": 661, "loss": 3.13463, "value_loss": 0.10265, "policy_loss": 3.03198, "policy_entropy": 2.06499}
+{"event": "train", "time": "2026-10-19T18:26:17+00:00", "generation": 5, "step": 671, "loss": 3.12592, "value_loss": 0.11066, "policy_loss": 3.01526, "policy_entropy": 2.04875}
+{"event": "train", "time": "2026-10-19T18:26:17+00:00", "generation": 5, "step": 681, "loss": 3.11047, "value_loss": 0.1122, "policy_loss": 2.99827, "policy_entropy": 2.04683}
+{"event": "train", "time": "2026-10-19T18:26:18+00:00", "generation": 5, "step": 691, "loss": 3.08056, "value_loss": 0.09558, "policy_loss": 2.98498, "policy_entropy": 2.05114}
+{"event": "train", "time": "2026-10-19T18:26:18+00:00", "generation": 5, "step": 701, "loss": 3.04418, "value_loss": 0.09814, "policy_loss": 2.94604, "policy_entropy": 2.03229}
+{"event": "train", "time": "2026-10-19T18:26:18+00:00", "generation": 5, "step": 711, "loss": 3.06168, "value_loss": 0.08357, "policy_loss": 2.9781, "policy_entropy": 2.04617}
+{"event": "train", "time": "2026-10-19T18:26:18+00:00", "generation": 5, "step": 721, "loss": 3.04776, "value_loss": 0.08004, "policy_loss": 2.96771, "policy_entropy": 2.05151}
+{"event": "train", "time": "2026-10-19T18:26:18+00:00", "generation": 5, "step": 731, "loss": 3.03196, "value_loss": 0.07352, "policy_loss": 2.95844, "policy_entropy": 2.05049}
+{"event": "train", "time": "2026-10-19T18:26:18+00:00", "generation": 5, "step": 741, "loss": 3.04516, "value_loss": 0.0803, "policy_loss": 2.96486, "policy_entropy": 2.04633}
+{"event": "train", "time": "2026-10-19T18:26:18+00:00", "generation": 5, "step": 751, "loss": 2.98908, "value_loss": 0.07419, "policy_loss": 2.91489, "policy_entropy": 2.00806}
+{"event": "train", "time": "2026-10-19T18:26:18+00:00", "generation": 5, "step": 760, "loss": 2.99207, "value_loss": 0.0715, "policy_loss": 2.92057, "policy_entropy": 2.02935}
+{"event": "eval", "time": "2026-10-19T18:26:40+00:00", "generation": 5, "opponent": "previous", "wins": 1, "draws": 19, "losses": 0, "score": 0.525, "reasons": {"repetition": 16, "checkmate": 1, "max_plies": 3}}
+{"event": "eval", "time": "2026-10-19T18:26:51+00:00", "generation": 5, "opponent": "greedy", "wins": 0, "draws": 1, "losses": 19, "score": 0.025, "reasons": {"bare_king": 10, "checkmate": 9, "max_plies": 1}}
+{"event": "eval", "time": "2026-10-19T18:27:09+00:00", "generation": 5, "opponent": "random", "wins": 2, "draws": 17, "losses": 1, "score": 0.525, "reasons": {"bare_king": 3, "max_plies": 17}}
+{"event": "generation", "time": "2026-10-19T18:27:09+00:00", "generation": 5, "best": 5, "steps": 169, "seconds": 54.4, "loss": 3.0973, "value_loss": 0.10189, "policy_loss": 2.9954, "policy_entropy": 2.04541}
+{"event": "selfplay", "time": "2026-10-19T18:28:11+00:00", "generation": 6, "seconds": 62.0, "games": 39, "white_wins": 3, "black_wins": 5, "draws": 31, "reasons": {"repetition": 8, "max_plies": 23, "bare_king": 6, "checkmate": 2}, "mean_plies": 267.4102564102564, "positions": 11367, "endgames": {"games": 11, "white_wins": 3, "black_wins": 6, "draws": 2, "reasons": {"bare_king": 9, "repetition": 1, "no_progress": 1}, "mean_plies": 85.27272727272727}, "contributed": {}, "rejected": 0, "buffer_games": 300, "buffer_positions": 59893}
+{"event": "held_out", "time": "2026-10-19T18:28:11+00:00", "generation": 6, "step": 760, "value_loss": 0.36887, "policy_loss": 2.8032, "loss": 3.17208, "value_baseline": 0.17627}
+{"event": "train", "time": "2026-10-19T18:28:11+00:00", "generation": 6, "step": 770, "loss": 3.01735, "value_loss": 0.14064, "policy_loss": 2.87672, "policy_entropy": 1.96596}
+{"event": "train", "time": "2026-10-19T18:28:11+00:00", "generation": 6, "step": 780, "loss": 3.01188, "value_loss": 0.10775, "policy_loss": 2.90413, "policy_entropy": 1.9875}
+{"event": "train", "time": "2026-10-19T18:28:11+00:00", "generation": 6, "step": 790, "loss": 3.00357, "value_loss": 0.10094, "policy_loss": 2.90263, "policy_entropy": 1.97782}
+{"event": "train", "time": "2026-10-19T18:28:11+00:00", "generation": 6, "step": 800, "loss": 2.99822, "value_loss": 0.09224, "policy_loss": 2.90598, "policy_entropy": 1.99777}
+{"event": "train", "time": "2026-10-19T18:28:11+00:00", "generation": 6, "step": 810, "loss": 3.0101, "value_loss": 0.09204, "policy_loss": 2.91806, "policy_entropy": 1.99375}
+{"event": "train", "time": "2026-10-19T18:28:11+00:00", "generation": 6, "step": 820, "loss": 3.013, "value_loss": 0.09865, "policy_loss": 2.91434, "policy_entropy": 1.99504}
+{"event": "train", "time": "2026-10-19T18:28:11+00:00", "generation": 6, "step": 830, "loss": 2.97844, "value_loss": 0.0979, "policy_loss": 2.88054, "policy_entropy": 1.9785}
+{"event": "train", "time": "2026-10-19T18:28:11+00:00", "generation": 6, "step": 840, "loss": 2.96232, "value_loss": 0.08576, "policy_loss": 2.87655, "policy_entropy": 1.98479}
+{"event": "train", "time": "2026-10-19T18:28:11+00:00", "generation": 6, "step": 850, "loss": 2.92599, "value_loss": 0.08636, "policy_loss": 2.83963, "policy_entropy": 1.97912}
+{"event": "train", "time": "2026-10-19T18:28:11+00:00", "generation": 6, "step": 860, "loss": 2.96654, "value_loss": 0.08525, "policy_loss": 2.88128, "policy_entropy": 1.99013}
+{"event": "train", "time": "2026-10-19T18:28:11+00:00", "generation": 6, "step": 870, "loss": 2.92444, "value_loss": 0.08465, "policy_loss": 2.83979, "policy_entropy": 1.96286}
+{"event": "train", "time": "2026-10-19T18:28:12+00:00", "generation": 6, "step": 880, "loss": 2.95816, "value_loss": 0.07989, "policy_loss": 2.87828, "policy_entropy": 1.99784}
+{"event": "train", "time": "2026-10-19T18:28:12+00:00", "generation": 6, "step": 890, "loss": 2.93182, "value_loss": 0.08349, "policy_loss": 2.84834, "policy_entropy": 1.98801}
+{"event": "train", "time": "2026-10-19T18:28:12+00:00", "generation": 6, "step": 900, "loss": 2.93089, "value_loss": 0.08005, "policy_loss": 2.85085, "policy_entropy": 1.96004}
+{"event": "train", "time": "2026-10-19T18:28:12+00:00", "generation": 6, "step": 910, "loss": 2.91002, "value_loss": 0.07405, "policy_loss": 2.83597, "policy_entropy": 1.9801}
+{"event": "train", "time": "2026-10-19T18:28:12+00:00", "generation": 6, "step": 920, "loss": 2.94247, "value_loss": 0.07037, "policy_loss": 2.8721, "policy_entropy": 2.00617}
+{"event": "train", "time": "2026-10-19T18:28:12+00:00", "generation": 6, "step": 930, "loss": 2.91901, "value_loss": 0.07505, "policy_loss": 2.84396, "policy_entropy": 1.98991}
+{"event": "train", "time": "2026-10-19T18:28:12+00:00", "generation": 6, "step": 938, "loss": 2.89099, "value_loss": 0.06637, "policy_loss": 2.82462, "policy_entropy": 1.97976}
+{"event": "eval", "time": "2026-10-19T18:28:34+00:00", "generation": 6, "opponent": "previous", "wins": 2, "draws": 17, "losses": 1, "score": 0.525, "reasons": {"repetition": 15, "checkmate": 3, "max_plies": 2}}
+{"event": "eval", "time": "2026-10-19T18:28:44+00:00", "generation": 6, "opponent": "greedy", "wins": 0, "draws": 2, "losses": 18, "score": 0.05, "reasons": {"repetition": 1, "bare_king": 14, "checkmate": 4, "max_plies": 1}}
+{"event": "eval", "time": "2026-10-19T18:29:00+00:00", "generation": 6, "opponent": "random", "wins": 2, "draws": 15, "losses": 3, "score": 0.475, "reasons": {"checkmate": 3, "bare_king": 2, "max_plies": 15}}
+{"event": "generation", "time": "2026-10-19T18:29:00+00:00", "generation": 6, "best": 5, "steps": 178, "seconds": 62.8, "loss": 2.96163, "value_loss": 0.08922, "policy_loss": 2.87241, "policy_entropy": 1.98422}
+{"event": "selfplay", "time": "2026-10-19T18:29:56+00:00", "generation": 7, "seconds": 55.1, "games": 35, "white_wins": 4, "black_wins": 10, "draws": 21, "reasons": {"max_plies": 15, "bare_king": 11, "repetition": 6, "checkmate": 3}, "mean_plies": 249.45714285714286, "positions": 9817, "endgames": {"games": 15, "white_wins": 3, "black_wins": 8, "draws": 4, "reasons": {"bare_king": 10, "repetition": 4, "checkmate": 1}, "mean_plies": 72.4}, "contributed": {}, "rejected": 0, "buffer_games": 300, "buffer_positions": 59986}
+{"event": "held_out", "time": "2026-10-19T18:29:56+00:00", "generation": 7, "step": 938, "value_loss": 0.45863, "policy_loss": 2.73704, "loss": 3.19567, "value_baseline": 0.34106}
+{"event": "train", "time": "2026-10-19T18:29:56+00:00", "generation": 7, "step": 948, "loss": 2.82995, "value_loss": 0.13313, "policy_loss": 2.69683, "policy_entropy": 1.82139}
+{"event": "train", "time": "2026-10-19T18:29:56+00:00", "generation": 7, "step": 958, "loss": 2.79854, "value_loss": 0.12589, "policy_loss": 2.67265, "policy_entropy": 1.79629}
+{"event": "train", "time": "2026-10-19T18:29:56+00:00", "generation": 7, "step": 968, "loss": 2.84047, "value_loss": 0.13109, "policy_loss": 2.70938, "policy_entropy": 1.82456}
+{"event": "train", "time": "2026-10-19T18:29:56+00:00", "generation": 7, "step": 978, "loss": 2.83253, "value_loss": 0.13098, "policy_loss": 2.70155, "policy_entropy": 1.80119}
+{"event": "train", "time": "2026-10-19T18:29:56+00:00", "generation": 7, "step": 988, "loss": 2.78733, "value_loss": 0.10558, "policy_loss": 2.68175, "policy_entropy": 1.80075}
+{"event": "train", "time": "2026-10-19T18:29:56+00:00", "generation": 7, "step": 998, "loss": 2.7827, "value_loss": 0.09854, "policy_loss": 2.68416, "policy_entropy": 1.79787}
+{"event": "train", "time": "2026-10-19T18:29:56+00:00", "generation": 7, "step": 1008, "loss": 2.79014, "value_loss": 0.1063, "policy_loss": 2.68384, "policy_entropy": 1.80993}
+{"event": "train", "time": "2026-10-19T18:29:56+00:00", "generation": 7, "step": 1018, "loss": 2.79831, "value_loss": 0.10347, "policy_loss": 2.69485, "policy_entropy": 1.80725}
+{"event": "train", "time": "2026-10-19T18:29:56+00:00", "generation": 7, "step": 1028, "loss": 2.76418, "value_loss": 0.08858, "policy_loss": 2.6756, "policy_entropy": 1.81245}
+{"event": "train", "time": "2026-10-19T18:29:56+00:00", "generation": 7, "step": 1038, "loss": 2.76418, "value_loss": 0.09057, "policy_loss": 2.67361, "policy_entropy": 1.79851}
+{"event": "train", "time": "2026-10-19T18:29:56+00:00", "generation": 7, "step": 1048, "loss": 2.75961, "value_loss": 0.08986, "policy_loss": 2.66974, "policy_entropy": 1.81093}
+{"event": "train", "time": "2026-10-19T18:29:56+00:00", "generation": 7, "step": 1058, "loss": 2.73583, "value_loss": 0.07823, "policy_loss": 2.65761, "policy_entropy": 1.80665}
+{"event": "train", "time": "2026-10-19T18:29:56+00:00", "generation": 7, "step": 1068, "loss": 2.75748, "value_loss": 0.08437, "policy_loss": 2.67311, "policy_entropy": 1.82167}
+{"event": "train", "time": "2026-10-19T18:29:56+00:00", "generation": 7, "step": 1078, "loss": 2.73303, "value_loss": 0.0886, "policy_loss": 2.64443, "policy_entropy": 1.80677}
+{"event": "train", "time": "2026-10-19T18:29:56+00:00", "generation": 7, "step": 1088, "loss": 2.72881, "value_loss": 0.07527, "policy_loss": 2.65354, "policy_entropy": 1.81159}
+{"event": "train", "time": "2026-10-19T18:29:56+00:00", "generation": 7, "step": 1092, "loss": 2.72367, "value_loss": 0.06784, "policy_loss": 2.65583, "policy_entropy": 1.82393}
+{"event": "eval", "time": "2026-10-19T18:30:16+00:00", "generation": 7, "opponent": "previous", "wins": 0, "draws": 20, "losses": 0, "score": 0.5, "reasons": {"repetition": 19, "max_plies": 1}}
+{"event": "eval", "time": "2026-10-19T18:30:28+00:00", "generation": 7, "opponent": "greedy", "wins": 0, "draws": 1, "losses": 19, "score": 0.025, "reasons": {"checkmate": 6, "bare_king": 13, "max_plies": 1}}
+{"event": "eval", "time": "2026-10-19T18:30:45+00:00", "generation": 7, "opponent": "random", "wins": 1, "draws": 18, "losses": 1, "score": 0.5, "reasons": {"checkmate": 2, "max_plies": 15, "repetition": 3}}
+{"event": "generation", "time": "2026-10-19T18:30:45+00:00", "generation": 7, "best": 5, "steps": 154, "seconds": 55.8, "loss": 2.77874, "value_loss": 0.10114, "policy_loss": 2.6776, "policy_entropy": 1.80892}
+{"event": "selfplay", "time": "2026-10-19T18:31:37+00:00", "generation": 8, "seconds": 51.8, "games": 39, "white_wins": 6, "black_wins": 9, "draws": 24, "reasons": {"bare_king": 11, "repetition": 10, "max_plies": 14, "checkmate": 4}, "mean_plies": 247.28205128205127, "positions": 10629, "endgames": {"games": 11, "white_wins": 3, "black_wins": 2, "draws": 6, "reasons": {"repetition": 6, "bare_king": 4, "checkmate": 1}, "mean_plies": 89.54545454545455}, "contributed": {}, "rejected": 0, "buffer_games": 293, "buffer_positions": 59915}
+{"event": "held_out", "time": "2026-10-19T18:31:37+00:00", "generation": 8, "step": 1092, "value_loss": 0.39878, "policy_loss": 2.80674, "loss": 3.20552, "value_baseline": 0.34375}
+{"event": "train", "time": "2026-10-19T18:31:37+00:00", "generation": 8, "step": 1102, "loss": 2.8221, "value_loss": 0.14106, "policy_loss": 2.68104, "policy_entropy": 1.82385}
+{"event": "train", "time": "2026-10-19T18:31:37+00:00", "generation": 8, "step": 1112, "loss": 2.75691, "value_loss": 0.12282, "policy_loss": 2.63409, "policy_entropy": 1.79494}
+{"event": "train", "time": "2026-10-19T18:31:37+00:00", "generation": 8, "step": 1122, "loss": 2.8019, "value_loss": 0.13446, "policy_loss": 2.66743, "policy_entropy": 1.80184}
+{"event": "train", "time": "2026-10-19T18:31:37+00:00", "generation": 8, "step": 1132, "loss": 2.76868, "value_loss": 0.12471, "policy_loss": 2.64398, "policy_entropy": 1.78853}
+{"event": "train", "time": "2026-10-19T18:31:37+00:00", "generation": 8, "step": 1142, "loss": 2.77166, "value_loss": 0.11182, "policy_loss": 2.65983, "policy_entropy": 1.81292}
+{"event": "train", "time": "2026-10-19T18:31:37+00:00", "generation": 8, "step": 1152, "loss": 2.75702, "value_loss": 0.10688, "policy_loss": 2.65015, "policy_entropy": 1.80848}
+{"event": "train", "time": "2026-10-19T18:31:37+00:00", "generation": 8, "step": 1162, "loss": 2.75438, "value_loss": 0.10609, "policy_loss": 2.64829, "policy_entropy": 1.80402}
+{"event": "train", "time": "2026-10-19T18:31:38+00:00", "generation": 8, "step": 1172, "loss": 2.71906, "value_loss": 0.09683, "policy_loss": 2.62223, "policy_entropy": 1.79238}
+{"event": "train", "time": "2026-10-19T18:31:38+00:00", "generation": 8, "step": 1182, "loss": 2.70785, "value_loss": 0.09459, "policy_loss": 2.61326, "policy_entropy": 1.78955}
+{"event": "train", "time": "2026-10-19T18:31:38+00:00", "generation": 8, "step": 1192, "loss": 2.67395, "value_loss": 0.09437, "policy_loss": 2.57958, "policy_entropy": 1.79074}
+{"event": "train", "time": "2026-10-19T18:31:38+00:00", "generation": 8, "step": 1202, "loss": 2.70113, "value_loss": 0.0862, "policy_loss": 2.61493, "policy_entropy": 1.80547}
+{"event": "train", "time": "2026-10-19T18:31:38+00:00", "generation": 8, "step": 1212, "loss": 2.68303, "value_loss": 0.07734, "policy_loss": 2.60569, "policy_entropy": 1.79794}
+{"event": "train", "time": "2026-10-19T18:31:38+00:00", "generation": 8, "step": 1222, "loss": 2.68797, "value_loss": 0.0777, "policy_loss": 2.61026, "policy_entropy": 1.80982}
+{"event": "train", "time": "2026-10-19T18:31:38+00:00", "generation": 8, "step": 1232, "loss": 2.68381, "value_loss": 0.07459, "policy_loss": 2.60922, "policy_entropy": 1.80028}
+{"event": "train", "time": "2026-10-19T18:31:38+00:00", "generation": 8, "step": 1242, "loss": 2.67847, "value_loss": 0.07798, "policy_loss": 2.60048, "policy_entropy": 1.81471}
+{"event": "train", "time": "2026-10-19T18:31:38+00:00", "generation": 8, "step": 1252, "loss": 2.66877, "value_loss": 0.07467, "policy_loss": 2.5941, "policy_entropy": 1.8017}
+{"event": "train", "time": "2026-10-19T18:31:38+00:00", "generation": 8, "step": 1259, "loss": 2.68429, "value_loss": 0.07499, "policy_loss": 2.60929, "policy_entropy": 1.81322}
+{"event": "eval", "time": "2026-10-19T18:31:56+00:00", "generation": 8, "opponent": "previous", "wins": 0, "draws": 19, "losses": 1, "score": 0.475, "reasons": {"repetition": 19, "checkmate": 1}}
+{"event": "eval", "time": "2026-10-19T18:32:08+00:00", "generation": 8, "opponent": "greedy", "wins": 0, "draws": 1, "losses": 19, "score": 0.025, "reasons": {"checkmate": 8, "bare_king": 11, "max_plies": 1}}
+{"event": "eval", "time": "2026-10-19T18:32:27+00:00", "generation": 8, "opponent": "random", "wins": 0, "draws": 18, "losses": 2, "score": 0.45, "reasons": {"repetition": 1, "max_plies": 17, "checkmate": 2}}
+{"event": "generation", "time": "2026-10-19T18:32:27+00:00", "generation": 8, "best": 5, "steps": 167, "seconds": 52.5, "loss": 2.72549, "value_loss": 0.09908, "policy_loss": 2.62641, "policy_entropy": 1.80278}
+{"event": "selfplay", "time": "2026-10-19T18:33:29+00:00", "generation": 9, "seconds": 61.4, "games": 41, "white_wins": 6, "black_wins": 7, "draws": 28, "reasons": {"repetition": 4, "max_plies": 24, "checkmate": 10, "bare_king": 3}, "mean_plies": 241.1951219512195, "positions": 10744, "endgames": {"games": 9, "white_wins": 3, "black_wins": 0, "draws": 6, "reasons": {"repetition": 6, "bare_king": 3}, "mean_plies": 95.0}, "contributed": {}, "rejected": 0, "buffer_games": 286, "buffer_positions": 59834}
+{"event": "held_out", "time": "2026-10-19T18:33:29+00:00", "generation": 9, "step": 1259, "value_loss": 0.23798, "policy_loss": 2.6683, "loss": 2.90627, "value_baseline": 0.18604}
+{"event": "train", "time": "2026-10-19T18:33:29+00:00", "generation": 9, "step": 1269, "loss": 2.71719, "value_loss": 0.11882, "policy_loss": 2.59837, "policy_entropy": 1.80238}
+{"event": "train", "time": "2026-10-19T18:33:29+00:00", "generation": 9, "step": 1279, "loss": 2.68846, "value_loss": 0.10554, "policy_loss": 2.58291, "policy_entropy": 1.7745}
+{"event": "train", "time": "2026-10-19T18:33:29+00:00", "generation": 9, "step": 1289, "loss": 2.70787, "value_loss": 0.09741, "policy_loss": 2.61046, "policy_entropy": 1.79061}
+{"event": "train", "time": "2026-10-19T18:33:29+00:00", "generation": 9, "step": 1299, "loss": 2.70617, "value_loss": 0.09911, "policy_loss": 2.60706, "policy_entropy": 1.7982}
+{"event": "train", "time": "2026-10-19T18:33:29+00:00", "generation": 9, "step": 1309, "loss": 2.69166, "value_loss": 0.09741, "policy_loss": 2.59426, "policy_entropy": 1.80844}
+{"event": "train", "time": "2026-10-19T18:33:29+00:00", "generation": 9, "step": 1319, "loss": 2.68051, "value_loss": 0.08496, "policy_loss": 2.59555, "policy_entropy": 1.80404}
+{"event": "train", "time": "2026-10-19T18:33:29+00:00", "generation": 9, "step": 1329, "loss": 2.67121, "value_loss": 0.10221, "policy_loss": 2.569, "policy_entropy": 1.78933}
+{"event": "train", "time": "2026-10-19T18:33:29+00:00", "generation": 9, "step": 1339, "loss": 2.66173, "value_loss": 0.09171, "policy_loss": 2.57002, "policy_entropy": 1.78218}
+{"event": "train", "time": "2026-10-19T18:33:29+00:00", "generation": 9, "step": 1349, "loss": 2.64354, "value_loss": 0.08515, "policy_loss": 2.55839, "policy_entropy": 1.79558}
+{"event": "train", "time": "2026-10-19T18:33:29+00:00", "generation": 9, "step": 1359, "loss": 2.63207, "value_loss": 0.07974, "policy_loss": 2.55233, "policy_entropy": 1.77838}
+{"event": "train", "time": "2026-10-19T18:33:29+00:00", "generation": 9, "step": 1369, "loss": 2.6434, "value_loss": 0.07611, "policy_loss": 2.56729, "policy_entropy": 1.80502}
+{"event": "train", "time": "2026-10-19T18:33:29+00:00", "generation": 9, "step": 1379, "loss": 2.63629, "value_loss": 0.0738, "policy_loss": 2.56248, "policy_entropy": 1.80353}
+{"event": "train", "time": "2026-10-19T18:33:29+00:00", "generation": 9, "step": 1389, "loss": 2.63319, "value_loss": 0.08102, "policy_loss": 2.55217, "policy_entropy": 1.79453}
+{"event": "train", "time": "2026-10-19T18:33:29+00:00", "generation": 9, "step": 1399, "loss": 2.62214, "value_loss": 0.07296, "policy_loss": 2.54918, "policy_entropy": 1.78982}
+{"event": "train", "time": "2026-10-19T18:33:29+00:00", "generation": 9, "step": 1409, "loss": 2.60395, "value_loss": 0.08113, "policy_loss": 2.52281, "policy_entropy": 1.79223}
+{"event": "train", "time": "2026-10-19T18:33:29+00:00", "generation": 9, "step": 1419, "loss": 2.6133, "value_loss": 0.07445, "policy_loss": 2.53885, "policy_entropy": 1.80059}
+{"event": "train", "time": "2026-10-19T18:33:29+00:00", "generation": 9, "step": 1427, "loss": 2.59842, "value_loss": 0.06958, "policy_loss": 2.52883, "policy_entropy": 1.78051}
+{"event": "eval", "time": "2026-10-19T18:33:43+00:00", "generation": 9, "opponent": "previous", "wins": 0, "draws": 20, "losses": 0, "score": 0.5, "reasons": {"repetition": 20}}
+{"event": "eval", "time": "2026-10-19T18:33:58+00:00", "generation": 9, "opponent": "greedy", "wins": 0, "draws": 3, "losses": 17, "score": 0.075, "reasons": {"bare_king": 11, "checkmate": 6, "max_plies": 3}}
+{"event": "eval", "time": "2026-10-19T18:34:16+00:00", "generation": 9, "opponent": "random", "wins": 1, "draws": 15, "losses": 4, "score": 0.425, "reasons": {"checkmate": 3, "stalemate": 1, "max_plies": 13, "repetition": 2, "bare_king": 1}}
+{"event": "generation", "time": "2026-10-19T18:34:16+00:00", "generation": 9, "best": 5, "steps": 168, "seconds": 62.2, "loss": 2.65663, "value_loss": 0.08793, "policy_loss": 2.5687, "policy_entropy": 1.79368}
+{"event": "selfplay", "time": "2026-10-19T18:35:18+00:00", "generation": 10, "seconds": 62.1, "games": 39, "white_wins": 4, "black_wins": 5, "draws": 30, "reasons": {"max_plies": 25, "checkmate": 6, "repetition": 5, "bare_king": 3}, "mean_plies": 269.71794871794873, "positions": 11384, "endgames": {"games": 11, "white_wins": 5, "black_wins": 4, "draws": 2, "reasons": {"bare_king": 9, "repetition": 2}, "mean_plies": 78.63636363636364}, "contributed": {}, "rejected": 0, "buffer_games": 276, "buffer_positions": 59938}
+{"event": "held_out", "time": "2026-10-19T18:35:18+00:00", "generation": 10, "step": 1427, "value_loss": 0.21714, "policy_loss": 2.71355, "loss": 2.93069, "value_baseline": 0.17383}
+{"event": "train", "time": "2026-10-19T18:35:18+00:00", "generation": 10, "step": 1437, "loss": 2.69042, "value_loss": 0.1196, "policy_loss": 2.57082, "policy_entropy": 1.80621}
+{"event": "train", "time": "2026-10-19T18:35:18+00:00", "generation": 10, "step": 1447, "loss": 2.68644, "value_loss": 0.10605, "policy_loss": 2.58039, "policy_entropy": 1.80851}
+{"event": "train", "time": "2026-10-19T18:35:18+00:00", "generation": 10, "step": 1457, "loss": 2.65339, "value_loss": 0.09934, "policy_loss": 2.55405, "policy_entropy": 1.79585}
+{"event": "train", "time": "2026-10-19T18:35:18+00:00", "generation": 10, "step": 1467, "loss": 2.63094, "value_loss": 0.09666, "policy_loss": 2.53428, "policy_entropy": 1.80806}
+{"event": "train", "time": "2026-10-19T18:35:18+00:00", "generation": 10, "step": 1477, "loss": 2.65711, "value_loss": 0.08773, "policy_loss": 2.56939, "policy_entropy": 1.83157}
+{"event": "train", "time": "2026-10-19T18:35:18+00:00", "generation": 10, "step": 1487, "loss": 2.64864, "value_loss": 0.08508, "policy_loss": 2.56355, "policy_entropy": 1.80483}
+{"event": "train", "time": "2026-10-19T18:35:18+00:00", "generation": 10, "step": 1497, "loss": 2.64081, "value_loss": 0.08305, "policy_loss": 2.55775, "policy_entropy": 1.82853}
+{"event": "train", "time": "2026-10-19T18:35:18+00:00", "generation": 10, "step": 1507, "loss": 2.60811, "value_loss": 0.07655, "policy_loss": 2.53156, "policy_entropy": 1.82095}
+{"event": "train", "time": "2026-10-19T18:35:18+00:00", "generation": 10, "step": 1517, "loss": 2.64281, "value_loss": 0.08342, "policy_loss": 2.55938, "policy_entropy": 1.82239}
+{"event": "train", "time": "2026-10-19T18:35:18+00:00", "generation": 10, "step": 1527, "loss": 2.61905, "value_loss": 0.08122, "policy_loss": 2.53783, "policy_entropy": 1.81365}
+{"event": "train", "time": "2026-10-19T18:35:18+00:00", "generation": 10, "step": 1537, "loss": 2.61113, "value_loss": 0.08389, "policy_loss": 2.52724, "policy_entropy": 1.80744}
+{"event": "train", "time": "2026-10-19T18:35:18+00:00", "generation": 10, "step": 1547, "loss": 2.60159, "value_loss": 0.07303, "policy_loss": 2.52856, "policy_entropy": 1.80471}
+{"event": "train", "time": "2026-10-19T18:35:18+00:00", "generation": 10, "step": 1557, "loss": 2.62014, "value_loss": 0.06755, "policy_loss": 2.55259, "policy_entropy": 1.82438}
+{"event": "train", "time": "2026-10-19T18:35:18+00:00", "generation": 10, "step": 1567, "loss": 2.5784, "value_loss": 0.05859, "policy_loss": 2.51981, "policy_entropy": 1.81642}
+{"event": "train", "time": "2026-10-19T18:35:18+00:00", "generation": 10, "step": 1577, "loss": 2.60856, "value_loss": 0.06703, "policy_loss": 2.54153, "policy_entropy": 1.82032}
+{"event": "train", "time": "2026-10-19T18:35:18+00:00", "generation": 10, "step": 1587, "loss": 2.59175, "value_loss": 0.06897, "policy_loss": 2.52278, "policy_entropy": 1.81153}
+{"event": "train", "time": "2026-10-19T18:35:19+00:00", "generation": 10, "step": 1597, "loss": 2.58248, "value_loss": 0.06254, "policy_loss": 2.51993, "policy_entropy": 1.81659}
+{"event": "train", "time": "2026-10-19T18:35:19+00:00", "generation": 10, "step": 1605, "loss": 2.58692, "value_loss": 0.05425, "policy_loss": 2.53268, "policy_entropy": 1.83183}
+{"event": "eval", "time": "2026-10-19T18:35:34+00:00", "generation": 10, "opponent": "previous", "wins": 0, "draws": 20, "losses": 0, "score": 0.5, "reasons": {"repetition": 20}}
+{"event": "eval", "time": "2026-10-19T18:35:48+00:00", "generation": 10, "opponent": "greedy", "wins": 0, "draws": 1, "losses": 19, "score": 0.025, "reasons": {"checkmate": 8, "bare_king": 11, "max_plies": 1}}
+{"event": "eval", "time": "2026-10-19T18:36:06+00:00", "generation": 10, "opponent": "random", "wins": 0, "draws": 19, "losses": 1, "score": 0.475, "reasons": {"repetition": 5, "max_plies": 14, "bare_king": 1}}
+{"event": "generation", "time": "2026-10-19T18:36:06+00:00", "generation": 10, "best": 5, "steps": 178, "seconds": 62.9, "loss": 2.62592, "value_loss": 0.08111, "policy_loss": 2.54481, "policy_entropy": 1.81502}
+{"event": "selfplay", "time": "2026-10-19T18:37:06+00:00", "generation": 11, "seconds": 59.3, "games": 40, "white_wins": 4, "black_wins": 7, "draws": 29, "reasons": {"max_plies": 25, "bare_king": 8, "repetition": 4, "checkmate": 3}, "mean_plies": 277.05, "positions": 11839, "endgames": {"games": 10, "white_wins": 3, "black_wins": 4, "draws": 3, "reasons": {"bare_king": 7, "repetition": 3}, "mean_plies": 75.7}, "contributed": {}, "rejected": 0, "buffer_games": 273, "buffer_positions": 59996}
+{"event": "held_out", "time": "2026-10-19T18:37:06+00:00", "generation": 11, "step": 1605, "value_loss": 0.29714, "policy_loss": 2.66699, "loss": 2.96413, "value_baseline": 0.25439}
+{"event": "train", "time": "2026-10-19T18:37:06+00:00", "generation": 11, "step": 1615, "loss": 2.64439, "value_loss": 0.10641, "policy_loss": 2.53798, "policy_entropy": 1.8375}
+{"event": "train", "time": "2026-10-19T18:37:06+00:00", "generation": 11, "step": 1625, "loss": 2.65048, "value_loss": 0.10526, "policy_loss": 2.54522, "policy_entropy": 1.82432}
+{"event": "train", "time": "2026-10-19T18:37:06+00:00", "generation": 11, "step": 1635, "loss": 2.63056, "value_loss": 0.09833, "policy_loss": 2.53224, "policy_entropy": 1.8227}
+{"event": "train", "time": "2026-10-19T18:37:06+00:00", "generation": 11, "step": 1645, "loss": 2.65109, "value_loss": 0.10578, "policy_loss": 2.54531, "policy_entropy": 1.82228}
+{"event": "train", "time": "2026-10-19T18:37:06+00:00", "generation": 11, "step": 1655, "loss": 2.64608, "value_loss": 0.09823, "policy_loss": 2.54785, "policy_entropy": 1.84275}
+{"event": "train", "time": "2026-10-19T18:37:06+00:00", "generation": 11, "step": 1665, "loss": 2.62905, "value_loss": 0.10353, "policy_loss": 2.52553, "policy_entropy": 1.81457}
+{"event": "train", "time": "2026-10-19T18:37:06+00:00", "generation": 11, "step": 1675, "loss": 2.59791, "value_loss": 0.07268, "policy_loss": 2.52523, "policy_entropy": 1.83068}
+{"event": "train", "time": "2026-10-19T18:37:06+00:00", "generation": 11, "step": 1685, "loss": 2.62229, "value_loss": 0.09112, "policy_loss": 2.53117, "policy_entropy": 1.83214}
+{"event": "train", "time": "2026-10-19T18:37:06+00:00", "generation": 11, "step": 1695, "loss": 2.58644, "value_loss": 0.07358, "policy_loss": 2.51286, "policy_entropy": 1.83395}
+{"event": "train", "time": "2026-10-19T18:37:06+00:00", "generation": 11, "step": 1705, "loss": 2.5953, "value_loss": 0.07413, "policy_loss": 2.52117, "policy_entropy": 1.82624}
+{"event": "train", "time": "2026-10-19T18:37:06+00:00", "generation": 11, "step": 1715, "loss": 2.60423, "value_loss": 0.07036, "policy_loss": 2.53386, "policy_entropy": 1.83244}
+{"event": "train", "time": "2026-10-19T18:37:06+00:00", "generation": 11, "step": 1725, "loss": 2.58943, "value_loss": 0.07382, "policy_loss": 2.51561, "policy_entropy": 1.82246}
+{"event": "train", "time": "2026-10-19T18:37:06+00:00", "generation": 11, "step": 1735, "loss": 2.59153, "value_loss": 0.07222, "policy_loss": 2.51932, "policy_entropy": 1.84044}
+{"event": "train", "time": "2026-10-19T18:37:06+00:00", "generation": 11, "step": 1745, "loss": 2.55317, "value_loss": 0.06824, "policy_loss": 2.48493, "policy_entropy": 1.8169}
+{"event": "train", "time": "2026-10-19T18:37:06+00:00", "generation": 11, "step": 1755, "loss": 2.5522, "value_loss": 0.06226, "policy_loss": 2.48994, "policy_entropy": 1.82833}
+{"event": "train", "time": "2026-10-19T18:37:06+00:00", "generation": 11, "step": 1765, "loss": 2.56094, "value_loss": 0.06165, "policy_loss": 2.49929, "policy_entropy": 1.84489}
+{"event": "train", "time": "2026-10-19T18:37:06+00:00", "generation": 11, "step": 1775, "loss": 2.56408, "value_loss": 0.05882, "policy_loss": 2.50526, "policy_entropy": 1.82646}
+{"event": "train", "time": "2026-10-19T18:37:06+00:00", "generation": 11, "step": 1785, "loss": 2.55243, "value_loss": 0.06252, "policy_loss": 2.48991, "policy_entropy": 1.81567}
+{"event": "train", "time": "2026-10-19T18:37:06+00:00", "generation": 11, "step": 1790, "loss": 2.57376, "value_loss": 0.05982, "policy_loss": 2.51394, "policy_entropy": 1.83655}
+{"event": "eval", "time": "2026-10-19T18:37:20+00:00", "generation": 11, "opponent": "previous", "wins": 0, "draws": 20, "losses": 0, "score": 0.5, "reasons": {"repetition": 20}}
+{"event": "eval", "time": "2026-10-19T18:37:32+00:00", "generation": 11, "opponent": "greedy", "wins": 0, "draws": 3, "losses": 17, "score": 0.075, "reasons": {"checkmate": 10, "bare_king": 7, "max_plies": 3}}
+{"event": "eval", "time": "2026-10-19T18:37:50+00:00", "generation": 11, "opponent": "random", "wins": 3, "draws": 17, "losses": 0, "score": 0.575, "reasons": {"max_plies": 14, "checkmate": 1, "repetition": 3, "bare_king": 2}}
+{"event": "generation", "time": "2026-10-19T18:37:50+00:00", "generation": 11, "best": 11, "steps": 185, "seconds": 60.2, "loss": 2.60046, "value_loss": 0.08048, "policy_loss": 2.51998, "policy_entropy": 1.82881}
+{"event": "selfplay", "time": "2026-10-19T18:38:44+00:00", "generation": 12, "seconds": 53.7, "games": 35, "white_wins": 6, "black_wins": 7, "draws": 22, "reasons": {"max_plies": 18, "repetition": 4, "bare_king": 7, "checkmate": 6}, "mean_plies": 252.77142857142857, "positions": 9961, "endgames": {"games": 15, "white_wins": 7, "black_wins": 7, "draws": 1, "reasons": {"bare_king": 14, "repetition": 1}, "mean_plies": 74.26666666666667}, "contributed": {}, "rejected": 0, "buffer_games": 280, "buffer_positions": 59931}
+{"event": "held_out", "time": "2026-10-19T18:38:44+00:00", "generation": 12, "step": 1790, "value_loss": 0.32591, "policy_loss": 2.5938, "loss": 2.91971, "value_baseline": 0.28882}
+{"event": "train", "time": "2026-10-19T18:38:44+00:00", "generation": 12, "step": 1800, "loss": 2.6606, "value_loss": 0.13099, "policy_loss": 2.5296, "policy_entropy": 1.8469}
+{"event": "train", "time": "2026-10-19T18:38:44+00:00", "generation": 12, "step": 1810, "loss": 2.6624, "value_loss": 0.12186, "policy_loss": 2.54054, "policy_entropy": 1.86918}
+{"event": "train", "time": "2026-10-19T18:38:44+00:00", "generation": 12, "step": 1820, "loss": 2.64013, "value_loss": 0.1141, "policy_loss": 2.52602, "policy_entropy": 1.86194}
+{"event": "train", "time": "2026-10-19T18:38:44+00:00", "generation": 12, "step": 1830, "loss": 2.62912, "value_loss": 0.10298, "policy_loss": 2.52614, "policy_entropy": 1.85338}
+{"event": "train", "time": "2026-10-19T18:38:44+00:00", "generation": 12, "step": 1840, "loss": 2.64983, "value_loss": 0.10472, "policy_loss": 2.54511, "policy_entropy": 1.871}
+{"event": "train", "time": "2026-10-19T18:38:44+00:00", "generation": 12, "step": 1850, "loss": 2.63023, "value_loss": 0.1049, "policy_loss": 2.52533, "policy_entropy": 1.86275}
+{"event": "train", "time": "2026-10-19T18:38:44+00:00", "generation": 12, "step": 1860, "loss": 2.61871, "value_loss": 0.09693, "policy_loss": 2.52178, "policy_entropy": 1.86456}
+{"event": "train", "time": "2026-10-19T18:38:44+00:00", "generation": 12, "step": 1870, "loss": 2.60908, "value_loss": 0.08965, "policy_loss": 2.51943, "policy_entropy": 1.85987}
+{"event": "train", "time": "2026-10-19T18:38:44+00:00", "generation": 12, "step": 1880, "loss": 2.61849, "value_loss": 0.09305, "policy_loss": 2.52544, "policy_entropy": 1.87006}
+{"event": "train", "time": "2026-10-19T18:38:44+00:00", "generation": 12, "step": 1890, "loss": 2.58104, "value_loss": 0.08767, "policy_loss": 2.49337, "policy_entropy": 1.85468}
+{"event": "train", "time": "2026-10-19T18:38:44+00:00", "generation": 12, "step": 1900, "loss": 2.57591, "value_loss": 0.07732, "policy_loss": 2.49859, "policy_entropy": 1.84649}
+{"event": "train", "time": "2026-10-19T18:38:44+00:00", "generation": 12, "step": 1910, "loss": 2.57759, "value_loss": 0.08145, "policy_loss": 2.49614, "policy_entropy": 1.8584}
+{"event": "train", "time": "2026-10-19T18:38:44+00:00", "generation": 12, "step": 1920, "loss": 2.57958, "value_loss": 0.07413, "policy_loss": 2.50544, "policy_entropy": 1.86363}
+{"event": "train", "time": "2026-10-19T18:38:44+00:00", "generation": 12, "step": 1930, "loss": 2.60995, "value_loss": 0.08628, "policy_loss": 2.52367, "policy_entropy": 1.87496}
+{"event": "train", "time": "2026-10-19T18:38:45+00:00", "generation": 12, "step": 1940, "loss": 2.57191, "value_loss": 0.07481, "policy_loss": 2.4971, "policy_entropy": 1.85201}
+{"event": "train", "time": "2026-10-19T18:38:45+00:00", "generation": 12, "step": 1946, "loss": 2.54809, "value_loss": 0.06542, "policy_loss": 2.48267, "policy_entropy": 1.84603}
+{"event": "eval", "time": "2026-10-19T18:39:01+00:00", "generation": 12, "opponent": "previous", "wins": 0, "draws": 20, "losses": 0, "score": 0.5, "reasons": {"repetition": 20}}
+{"event": "eval", "time": "2026-10-19T18:39:13+00:00", "generation": 12, "opponent": "greedy", "wins": 0, "draws": 2, "losses": 18, "score": 0.05, "reasons": {"bare_king": 13, "checkmate": 5, "max_plies": 2}}
+{"event": "eval", "time": "2026-10-19T18:39:33+00:00", "generation": 12, "opponent": "random", "wins": 1, "draws": 17, "losses": 2, "score": 0.475, "reasons": {"checkmate": 1, "max_plies": 16, "bare_king": 2, "repetition": 1}}
+{"event": "generation", "time": "2026-10-19T18:39:33+00:00", "generation": 12, "best": 11, "steps": 156, "seconds": 54.5, "loss": 2.61176, "value_loss": 0.09488, "policy_loss": 2.51688, "policy_entropy": 1.86009}
+{"event": "selfplay", "time": "2026-10-19T18:40:28+00:00", "generation": 13, "seconds": 55.5, "games": 29, "white_wins": 5, "black_wins": 7, "draws": 17, "reasons": {"max_plies": 17, "checkmate": 4, "bare_king": 8}, "mean_plies": 269.2068965517241, "positions": 9667, "endgames": {"games": 21, "white_wins": 9, "black_wins": 10, "draws": 2, "reasons": {"bare_king": 19, "no_progress": 1, "repetition": 1}, "mean_plies": 88.57142857142857}, "contributed": {}, "rejected": 0, "buffer_games": 280, "buffer_positions": 59935}
+{"event": "held_out", "time": "2026-10-19T18:40:28+00:00", "generation": 13, "step": 1946, "value_loss": 0.39646, "policy_loss": 2.68653, "loss": 3.083, "value_baseline": 0.35767}
+{"event": "train", "time": "2026-10-19T18:40:28+00:00", "generation": 13, "step": 1956, "loss": 2.6286, "value_loss": 0.1249, "policy_loss": 2.5037, "policy_entropy": 1.87621}
+{"event": "train", "time": "2026-10-19T18:40:28+00:00", "generation": 13, "step": 1966, "loss": 2.68995, "value_loss": 0.14831, "policy_loss": 2.54164, "policy_entropy": 1.88997}
+{"event": "train", "time": "2026-10-19T18:40:29+00:00", "generation": 13, "step": 1976, "loss": 2.65741, "value_loss": 0.1324, "policy_loss": 2.525, "policy_entropy": 1.88396}
+{"event": "train", "time": "2026-10-19T18:40:29+00:00", "generation": 13, "step": 1986, "loss": 2.66469, "value_loss": 0.12975, "policy_loss": 2.53494, "policy_entropy": 1.89208}
+{"event": "train", "time": "2026-10-19T18:40:29+00:00", "generation": 13, "step": 1996, "loss": 2.64118, "value_loss": 0.1293, "policy_loss": 2.51189, "policy_entropy": 1.87941}
+{"event": "train", "time": "2026-10-19T18:40:29+00:00", "generation": 13, "step": 2006, "loss": 2.62116, "value_loss": 0.10851, "policy_loss": 2.51265, "policy_entropy": 1.90048}
+{"event": "train", "time": "2026-10-19T18:40:29+00:00", "generation": 13, "step": 2016, "loss": 2.62239, "value_loss": 0.11099, "policy_loss": 2.5114, "policy_entropy": 1.89123}
+{"event": "train", "time": "2026-10-19T18:40:29+00:00", "generation": 13, "step": 2026, "loss": 2.58356, "value_loss": 0.09497, "policy_loss": 2.48859, "policy_entropy": 1.87743}
+{"event": "train", "time": "2026-10-19T18:40:29+00:00", "generation": 13, "step": 2036, "loss": 2.59332, "value_loss": 0.09512, "policy_loss": 2.4982, "policy_entropy": 1.86648}
+{"event": "train", "time": "2026-10-19T18:40:29+00:00", "generation": 13, "step": 2046, "loss": 2.5982, "value_loss": 0.09922, "policy_loss": 2.49898, "policy_entropy": 1.87399}
+{"event": "train", "time": "2026-10-19T18:40:29+00:00", "generation": 13, "step": 2056, "loss": 2.60273, "value_loss": 0.10163, "policy_loss": 2.5011, "policy_entropy": 1.88769}
+{"event": "train", "time": "2026-10-19T18:40:29+00:00", "generation": 13, "step": 2066, "loss": 2.59686, "value_loss": 0.08708, "policy_loss": 2.50978, "policy_entropy": 1.89982}
+{"event": "train", "time": "2026-10-19T18:40:29+00:00", "generation": 13, "step": 2076, "loss": 2.56125, "value_loss": 0.08357, "policy_loss": 2.47768, "policy_entropy": 1.8725}
+{"event": "train", "time": "2026-10-19T18:40:29+00:00", "generation": 13, "step": 2086, "loss": 2.55341, "value_loss": 0.0807, "policy_loss": 2.47271, "policy_entropy": 1.87578}
+{"event": "train", "time": "2026-10-19T18:40:29+00:00", "generation": 13, "step": 2096, "loss": 2.57877, "value_loss": 0.08759, "policy_loss": 2.49118, "policy_entropy": 1.89114}
+{"event": "train", "time": "2026-10-19T18:40:29+00:00", "generation": 13, "step": 2098, "loss": 2.58472, "value_loss": 0.09015, "policy_loss": 2.49457, "policy_entropy": 1.87646}
+{"event": "eval", "time": "2026-10-19T18:40:45+00:00", "generation": 13, "opponent": "previous", "wins": 0, "draws": 20, "losses": 0, "score": 0.5, "reasons": {"repetition": 20}}
+{"event": "eval", "time": "2026-10-19T18:40:57+00:00", "generation": 13, "opponent": "greedy", "wins": 0, "draws": 0, "losses": 20, "score": 0.0, "reasons": {"checkmate": 6, "bare_king": 14}}
+{"event": "eval", "time": "2026-10-19T18:41:15+00:00", "generation": 13, "opponent": "random", "wins": 1, "draws": 16, "losses": 3, "score": 0.45, "reasons": {"repetition": 3, "checkmate": 3, "max_plies": 13, "bare_king": 1}}
+{"event": "generation", "time": "2026-10-19T18:41:15+00:00", "generation": 13, "best": 11, "steps": 152, "seconds": 56.2, "loss": 2.61253, "value_loss": 0.10737, "policy_loss": 2.50516, "policy_entropy": 1.88378}
+{"event": "selfplay", "time": "2026-10-19T18:42:09+00:00", "generation": 14, "seconds": 54.7, "games": 37, "white_wins": 6, "black_wins": 6, "draws": 25, "reasons": {"max_plies": 21, "checkmate": 4, "bare_king": 8, "repetition": 4}, "mean_plies": 271.1081081081081, "positions": 10747, "endgames": {"games": 13, "white_wins": 5, "black_wins": 7, "draws": 1, "reasons": {"bare_king": 12, "repetition": 1}, "mean_plies": 55.07692307692308}, "contributed": {}, "rejected": 0, "buffer_games": 277, "buffer_positions": 59952}
+{"event": "held_out", "time": "2026-10-19T18:42:09+00:00", "generation": 14, "step": 2098, "value_loss": 0.27532, "policy_loss": 2.61484, "loss": 2.89017, "value_baseline": 0.2771}
+{"event": "train", "time": "2026-10-19T18:42:09+00:00", "generation": 14, "step": 2108, "loss": 2.65609, "value_loss": 0.12625, "policy_loss": 2.52985, "policy_entropy": 1.92895}
+{"event": "train", "time": "2026-10-19T18:42:09+00:00", "generation": 14, "step": 2118, "loss": 2.62883, "value_loss": 0.13276, "policy_loss": 2.49606, "policy_entropy": 1.89677}
+{"event": "train", "time": "2026-10-19T18:42:09+00:00", "generation": 14, "step": 2128, "loss": 2.65241, "value_loss": 0.12183, "policy_loss": 2.53058, "policy_entropy": 1.91949}
+{"event": "train", "time": "2026-10-19T18:42:09+00:00", "generation": 14, "step": 2138, "loss": 2.62011, "value_loss": 0.10805, "policy_loss": 2.51206, "policy_entropy": 1.91624}
+{"event": "train", "time": "2026-10-19T18:42:09+00:00", "generation": 14, "step": 2148, "loss": 2.63883, "value_loss": 0.10646, "policy_loss": 2.53237, "policy_entropy": 1.91703}
+{"event": "train", "time": "2026-10-19T18:42:09+00:00", "generation": 14, "step": 2158, "loss": 2.63792, "value_loss": 0.10649, "policy_loss": 2.53143, "policy_entropy": 1.9305}
+{"event": "train", "time": "2026-10-19T18:42:10+00:00", "generation": 14, "step": 2168, "loss": 2.61723, "value_loss": 0.09822, "policy_loss": 2.51901, "policy_entropy": 1.92113}
+{"event": "train", "time": "2026-10-19T18:42:10+00:00", "generation": 14, "step": 2178, "loss": 2.61426, "value_loss": 0.09019, "policy_loss": 2.52407, "policy_entropy": 1.92024}
+{"event": "train", "time": "2026-10-19T18:42:10+00:00", "generation": 14, "step": 2188, "loss": 2.60193, "value_loss": 0.08443, "policy_loss": 2.51749, "policy_entropy": 1.91853}
+{"event": "train", "time": "2026-10-19T18:42:10+00:00", "generation": 14, "step": 2198, "loss": 2.59817, "value_loss": 0.08872, "policy_loss": 2.50945, "policy_entropy": 1.92134}
+{"event": "train", "time": "2026-10-19T18:42:10+00:00", "generation": 14, "step": 2208, "loss": 2.59293, "value_loss": 0.08848, "policy_loss": 2.50445, "policy_entropy": 1.90599}
+{"event": "train", "time": "2026-10-19T18:42:10+00:00", "generation": 14, "step": 2218, "loss": 2.5923, "value_loss": 0.07832, "policy_loss": 2.51398, "policy_entropy": 1.91346}
+{"event": "train", "time": "2026-10-19T18:42:10+00:00", "generation": 14, "step": 2228, "loss": 2.56698, "value_loss": 0.06954, "policy_loss": 2.49745, "policy_entropy": 1.92759}
+{"event": "train", "time": "2026-10-19T18:42:10+00:00", "generation": 14, "step": 2238, "loss": 2.57265, "value_loss": 0.07832, "policy_loss": 2.49433, "policy_entropy": 1.9177}
+{"event": "train", "time": "2026-10-19T18:42:10+00:00", "generation": 14, "step": 2248, "loss": 2.5539, "value_loss": 0.06808, "policy_loss": 2.48582, "policy_entropy": 1.92906}
+{"event": "train", "time": "2026-10-19T18:42:10+00:00", "generation": 14, "step": 2258, "loss": 2.568, "value_loss": 0.07149, "policy_loss": 2.49651, "policy_entropy": 1.92143}
+{"event": "train", "time": "2026-10-19T18:42:10+00:00", "generation": 14, "step": 2266, "loss": 2.58106, "value_loss": 0.08254, "policy_loss": 2.49852, "policy_entropy": 1.9171}
+{"event": "eval", "time": "2026-10-19T18:42:28+00:00", "generation": 14, "opponent": "previous", "wins": 0, "draws": 20, "losses": 0, "score": 0.5, "reasons": {"repetition": 19, "max_plies": 1}}
+{"event": "eval", "time": "2026-10-19T18:42:40+00:00", "generation": 14, "opponent": "greedy", "wins": 0, "draws": 0, "losses": 20, "score": 0.0, "reasons": {"bare_king": 9, "checkmate": 11}}
+{"event": "eval", "time": "2026-10-19T18:42:57+00:00", "generation": 14, "opponent": "random", "wins": 1, "draws": 16, "losses": 3, "score": 0.45, "reasons": {"repetition": 2, "max_plies": 14, "checkmate": 3, "bare_king": 1}}
+{"event": "generation", "time": "2026-10-19T18:42:57+00:00", "generation": 14, "best": 11, "steps": 168, "seconds": 55.4, "loss": 2.6058, "value_loss": 0.09427, "policy_loss": 2.51153, "policy_entropy": 1.919}
+{"event": "selfplay", "time": "2026-10-19T18:43:49+00:00", "generation": 15, "seconds": 52.5, "games": 33, "white_wins": 6, "black_wins": 8, "draws": 19, "reasons": {"bare_king": 9, "max_plies": 17, "checkmate": 5, "repetition": 2}, "mean_plies": 252.06060606060606, "positions": 10313, "endgames": {"games": 17, "white_wins": 2, "black_wins": 10, "draws": 5, "reasons": {"bare_king": 12, "repetition": 5}, "mean_plies": 117.3529411764706}, "contributed": {}, "rejected": 0, "buffer_games": 283, "buffer_positions": 59813}
+{"event": "held_out", "time": "2026-10-19T18:43:49+00:00", "generation": 15, "step": 2266, "value_loss": 0.38943, "policy_loss": 2.58707, "loss": 2.9765, "value_baseline": 0.32861}
+{"event": "train", "time": "2026-10-19T18:43:49+00:00", "generation": 15, "step": 2276, "loss": 2.63824, "value_loss": 0.1386, "policy_loss": 2.49964, "policy_entropy": 1.90399}
+{"event": "train", "time": "2026-10-19T18:43:49+00:00", "generation": 15, "step": 2286, "loss": 2.64941, "value_loss": 0.12911, "policy_loss": 2.5203, "policy_entropy": 1.90541}
+{"event": "train", "time": "2026-10-19T18:43:50+00:00", "generation": 15, "step": 2296, "loss": 2.62262, "value_loss": 0.12718, "policy_loss": 2.49543, "policy_entropy": 1.88332}
+{"event": "train", "time": "2026-10-19T18:43:50+00:00", "generation": 15, "step": 2306, "loss": 2.62841, "value_loss": 0.12434, "policy_loss": 2.50407, "policy_entropy": 1.89846}
+{"event": "train", "time": "2026-10-19T18:43:50+00:00", "generation": 15, "step": 2316, "loss": 2.61781, "value_loss": 0.11698, "policy_loss": 2.50084, "policy_entropy": 1.90285}
+{"event": "train", "time": "2026-10-19T18:43:50+00:00", "generation": 15, "step": 2326, "loss": 2.62236, "value_loss": 0.12185, "policy_loss": 2.50051, "policy_entropy": 1.89452}
+{"event": "train", "time": "2026-10-19T18:43:50+00:00", "generation": 15, "step": 2336, "loss": 2.60667, "value_loss": 0.11033, "policy_loss": 2.49634, "policy_entropy": 1.88597}
+{"event": "train", "time": "2026-10-19T18:43:50+00:00", "generation": 15, "step": 2346, "loss": 2.58669, "value_loss": 0.1034, "policy_loss": 2.4833, "policy_entropy": 1.88943}
+{"event": "train", "time": "2026-10-19T18:43:50+00:00", "generation": 15, "step": 2356, "loss": 2.60459, "value_loss": 0.1003, "policy_loss": 2.50429, "policy_entropy": 1.901}
+{"event": "train", "time": "2026-10-19T18:43:50+00:00", "generation": 15, "step": 2366, "loss": 2.58783, "value_loss": 0.09594, "policy_loss": 2.49189, "policy_entropy": 1.90204}
+{"event": "train", "time": "2026-10-19T18:43:50+00:00", "generation": 15, "step": 2376, "loss": 2.60161, "value_loss": 0.10025, "policy_loss": 2.50135, "policy_entropy": 1.90157}
+{"event": "train", "time": "2026-10-19T18:43:50+00:00", "generation": 15, "step": 2386, "loss": 2.56759, "value_loss": 0.08565, "policy_loss": 2.48194, "policy_entropy": 1.89345}
+{"event": "train", "time": "2026-10-19T18:43:50+00:00", "generation": 15, "step": 2396, "loss": 2.59838, "value_loss": 0.09519, "policy_loss": 2.5032, "policy_entropy": 1.90672}
+{"event": "train", "time": "2026-10-19T18:43:50+00:00", "generation": 15, "step": 2406, "loss": 2.54882, "value_loss": 0.08111, "policy_loss": 2.46772, "policy_entropy": 1.88668}
+{"event": "train", "time": "2026-10-19T18:43:50+00:00", "generation": 15, "step": 2416, "loss": 2.58635, "value_loss": 0.09116, "policy_loss": 2.49519, "policy_entropy": 1.90346}
+{"event": "train", "time": "2026-10-19T18:43:50+00:00", "generation": 15, "step": 2426, "loss": 2.56917, "value_loss": 0.08512, "policy_loss": 2.48405, "policy_entropy": 1.89742}
+{"event": "train", "time": "2026-10-19T18:43:50+00:00", "generation": 15, "step": 2428, "loss": 2.56182, "value_loss": 0.05802, "policy_loss": 2.5038, "policy_entropy": 1.93292}
+{"event": "eval", "time": "2026-10-19T18:44:08+00:00", "generation": 15, "opponent": "previous", "wins": 0, "draws": 20, "losses": 0, "score": 0.5, "reasons": {"repetition": 19, "max_plies": 1}}
+{"event": "eval", "time": "2026-10-19T18:44:18+00:00", "generation": 15, "opponent": "greedy", "wins": 0, "draws": 0, "losses": 20, "score": 0.0, "reasons": {"checkmate": 10, "bare_king": 10}}
+{"event": "eval", "time": "2026-10-19T18:44:37+00:00", "generation": 15, "opponent": "random", "wins": 2, "draws": 17, "losses": 1, "score": 0.525, "reasons": {"checkmate": 1, "bare_king": 1, "repetition": 3, "max_plies": 14, "stalemate": 1}}
+{"event": "generation", "time": "2026-10-19T18:44:37+00:00", "generation": 15, "best": 11, "steps": 162, "seconds": 53.3, "loss": 2.60179, "value_loss": 0.10606, "policy_loss": 2.49573, "policy_entropy": 1.89771}
+{"event": "selfplay", "time": "2026-10-19T18:45:25+00:00", "generation": 16, "seconds": 48.5, "games": 34, "white_wins": 7, "black_wins": 5, "draws": 22, "reasons": {"max_plies": 18, "repetition": 4, "checkmate": 6, "bare_king": 6}, "mean_plies": 263.7647058823529, "positions": 10048, "endgames": {"games": 16, "white_wins": 7, "black_wins": 3, "draws": 6, "reasons": {"repetition": 6, "bare_king": 9, "checkmate": 1}, "mean_plies": 67.5}, "contributed": {}, "rejected": 0, "buffer_games": 290, "buffer_positions": 59912}
+{"event": "held_out", "time": "2026-10-19T18:45:25+00:00", "generation": 16, "step": 2428, "value_loss": 0.41133, "policy_loss": 2.56131, "loss": 2.97264, "value_baseline": 0.31934}
+{"event": "train", "time": "2026-10-19T18:45:25+00:00", "generation": 16, "step": 2438, "loss": 2.63156, "value_loss": 0.13783, "policy_loss": 2.49373, "policy_entropy": 1.88308}
+{"event": "train", "time": "2026-10-19T18:45:25+00:00", "generation": 16, "step": 2448, "loss": 2.62791, "value_loss": 0.14033, "policy_loss": 2.48757, "policy_entropy": 1.88421}
+{"event": "train", "time": "2026-10-19T18:45:25+00:00", "generation": 16, "step": 2458, "loss": 2.61876, "value_loss": 0.12807, "policy_loss": 2.49069, "policy_entropy": 1.87652}
+{"event": "train", "time": "2026-10-19T18:45:26+00:00", "generation": 16, "step": 2468, "loss": 2.62653, "value_loss": 0.1326, "policy_loss": 2.49393, "policy_entropy": 1.86395}
+{"event": "train", "time": "2026-10-19T18:45:26+00:00", "generation": 16, "step": 2478, "loss": 2.59637, "value_loss": 0.11439, "policy_loss": 2.48199, "policy_entropy": 1.86139}
+{"event": "train", "time": "2026-10-19T18:45:26+00:00", "generation": 16, "step": 2488, "loss": 2.58161, "value_loss": 0.10078, "policy_loss": 2.48083, "policy_entropy": 1.88447}
+{"event": "train", "time": "2026-10-19T18:45:26+00:00", "generation": 16, "step": 2498, "loss": 2.59578, "value_loss": 0.11485, "policy_loss": 2.48093, "policy_entropy": 1.897}
+{"event": "train", "time": "2026-10-19T18:45:26+00:00", "generation": 16, "step": 2508, "loss": 2.563, "value_loss": 0.0874, "policy_loss": 2.4756, "policy_entropy": 1.87376}
+{"event": "train", "time": "2026-10-19T18:45:26+00:00", "generation": 16, "step": 2518, "loss": 2.55436, "value_loss": 0.09154, "policy_loss": 2.46283, "policy_entropy": 1.87446}
+{"event": "train", "time": "2026-10-19T18:45:26+00:00", "generation": 16, "step": 2528, "loss": 2.6127, "value_loss": 0.10142, "policy_loss": 2.51128, "policy_entropy": 1.89198}
+{"event": "train", "time": "2026-10-19T18:45:26+00:00", "generation": 16, "step": 2538, "loss": 2.5741, "value_loss": 0.11037, "policy_loss": 2.46373, "policy_entropy": 1.87764}
+{"event": "train", "time": "2026-10-19T18:45:26+00:00", "generation": 16, "step": 2548, "loss": 2.5706, "value_loss": 0.08819, "policy_loss": 2.48242, "policy_entropy": 1.89072}
+{"event": "train", "time": "2026-10-19T18:45:26+00:00", "generation": 16, "step": 2558, "loss": 2.55728, "value_loss": 0.08304, "policy_loss": 2.47424, "policy_entropy": 1.87973}
+{"event": "train", "time": "2026-10-19T18:45:26+00:00", "generation": 16, "step": 2568, "loss": 2.55854, "value_loss": 0.09112, "policy_loss": 2.46741, "policy_entropy": 1.8785}
+{"event": "train", "time": "2026-10-19T18:45:26+00:00", "generation": 16, "step": 2578, "loss": 2.55366, "value_loss": 0.09473, "policy_loss": 2.45893, "policy_entropy": 1.89436}
+{"event": "train", "time": "2026-10-19T18:45:26+00:00", "generation": 16, "step": 2585, "loss": 2.57541, "value_loss": 0.09966, "policy_loss": 2.47574, "policy_entropy": 1.88413}
+{"event": "eval", "time": "2026-10-19T18:45:44+00:00", "generation": 16, "opponent": "previous", "wins": 1, "draws": 19, "losses": 0, "score": 0.525, "reasons": {"repetition": 19, "bare_king": 1}}
+{"event": "eval", "time": "2026-10-19T18:45:53+00:00", "generation": 16, "opponent": "greedy", "wins": 0, "draws": 1, "losses": 19, "score": 0.025, "reasons": {"bare_king": 12, "checkmate": 7, "max_plies": 1}}
+{"event": "eval", "time": "2026-10-19T18:46:08+00:00", "generation": 16, "opponent": "random", "wins": 2, "draws": 15, "losses": 3, "score": 0.475, "reasons": {"repetition": 3, "max_plies": 12, "bare_king": 2, "checkmate": 3}}
+{"event": "generation", "time": "2026-10-19T18:46:08+00:00", "generation": 16, "best": 11, "steps": 157, "seconds": 49.3, "loss": 2.58761, "value_loss": 0.10742, "policy_loss": 2.4802, "policy_entropy": 1.88093}
+{"event": "selfplay", "time": "2026-10-19T18:47:05+00:00", "generation": 17, "seconds": 56.8, "games": 37, "white_wins": 9, "black_wins": 6, "draws": 22, "reasons": {"repetition": 4, "checkmate": 8, "bare_king": 7, "max_plies": 18}, "mean_plies": 245.59459459459458, "positions": 10145, "endgames": {"games": 13, "white_wins": 5, "black_wins": 4, "draws": 4, "reasons": {"bare_king": 9, "repetition": 3, "max_plies": 1}, "mean_plies": 81.38461538461539}, "contributed": {}, "rejected": 0, "buffer_games": 296, "buffer_positions": 59772}
+{"event": "held_out", "time": "2026-10-19T18:47:05+00:00", "generation": 17, "step": 2585, "value_loss": 0.38308, "policy_loss": 2.63903, "loss": 3.02211, "value_baseline": 0.33325}
+{"event": "train", "time": "2026-10-19T18:47:05+00:00", "generation": 17, "step": 2595, "loss": 2.62657, "value_loss": 0.13671, "policy_loss": 2.48986, "policy_entropy": 1.89113}
+{"event": "train", "time": "2026-10-19T18:47:05+00:00", "generation": 17, "step": 2605, "loss": 2.62196, "value_loss": 0.14169, "policy_loss": 2.48027, "policy_entropy": 1.87862}
+{"event": "train", "time": "2026-10-19T18:47:05+00:00", "generation": 17, "step": 2615, "loss": 2.62487, "value_loss": 0.12823, "policy_loss": 2.49664, "policy_entropy": 1.88833}
+{"event": "train", "time": "2026-10-19T18:47:05+00:00", "generation": 17, "step": 2625, "loss": 2.59725, "value_loss": 0.13659, "policy_loss": 2.46066, "policy_entropy": 1.88153}
+{"event": "train", "time": "2026-10-19T18:47:05+00:00", "generation": 17, "step": 2635, "loss": 2.60701, "value_loss": 0.11642, "policy_loss": 2.49059, "policy_entropy": 1.88368}
+{"event": "train", "time": "2026-10-19T18:47:05+00:00", "generation": 17, "step": 2645, "loss": 2.60485, "value_loss": 0.12, "policy_loss": 2.48485, "policy_entropy": 1.89236}
+{"event": "train", "time": "2026-10-19T18:47:05+00:00", "generation": 17, "step": 2655, "loss": 2.59145, "value_loss": 0.11547, "policy_loss": 2.47597, "policy_entropy": 1.86766}
+{"event": "train", "time": "2026-10-19T18:47:05+00:00", "generation": 17, "step": 2665, "loss": 2.56934, "value_loss": 0.10379, "policy_loss": 2.46556, "policy_entropy": 1.87357}
+{"event": "train", "time": "2026-10-19T18:47:05+00:00", "generation": 17, "step": 2675, "loss": 2.58681, "value_loss": 0.10981, "policy_loss": 2.477, "policy_entropy": 1.89235}
+{"event": "train", "time": "2026-10-19T18:47:05+00:00", "generation": 17, "step": 2685, "loss": 2.56925, "value_loss": 0.09755, "policy_loss": 2.4717, "policy_entropy": 1.87685}
+{"event": "train", "time": "2026-10-19T18:47:05+00:00", "generation": 17, "step": 2695, "loss": 2.58304, "value_loss": 0.10804, "policy_loss": 2.475, "policy_entropy": 1.88949}
+{"event": "train", "time": "2026-10-19T18:47:05+00:00", "generation": 17, "step": 2705, "loss": 2.55017, "value_loss": 0.09529, "policy_loss": 2.45488, "policy_entropy": 1.86753}
+{"event": "train", "time": "2026-10-19T18:47:06+00:00", "generation": 17, "step": 2715, "loss": 2.55674, "value_loss": 0.08798, "policy_loss": 2.46876, "policy_entropy": 1.89172}
+{"event": "train", "time": "2026-10-19T18:47:06+00:00", "generation": 17, "step": 2725, "loss": 2.56021, "value_loss": 0.09654, "policy_loss": 2.46366, "policy_entropy": 1.888}
+{"event": "train", "time": "2026-10-19T18:47:06+00:00", "generation": 17, "step": 2735, "loss": 2.55268, "value_loss": 0.08313, "policy_loss": 2.46955, "policy_entropy": 1.89591}
+{"event": "train", "time": "2026-10-19T18:47:06+00:00", "generation": 17, "step": 2744, "loss": 2.53054, "value_loss": 0.08617, "policy_loss": 2.44437, "policy_entropy": 1.8714}
+{"event": "eval", "time": "2026-10-19T18:47:20+00:00", "generation": 17, "opponent": "previous", "wins": 0, "draws": 20, "losses": 0, "score": 0.5, "reasons": {"repetition": 20}}
+{"event": "eval", "time": "2026-10-19T18:47:35+00:00", "generation": 17, "opponent": "greedy", "wins": 0, "draws": 3, "losses": 17, "score": 0.075, "reasons": {"checkmate": 10, "bare_king": 7, "max_plies": 3}}
+{"event": "eval", "time": "2026-10-19T18:47:52+00:00", "generation": 17, "opponent": "random", "wins": 1, "draws": 17, "losses": 2, "score": 0.475, "reasons": {"repetition": 4, "checkmate": 3, "max_plies": 13}}
+{"event": "generation", "time": "2026-10-19T18:47:52+00:00", "generation": 17, "best": 11, "steps": 159, "seconds": 57.5, "loss": 2.58363, "value_loss": 0.11036, "policy_loss": 2.47326, "policy_entropy": 1.88321}
+{"event": "selfplay", "time": "2026-10-19T18:48:43+00:00", "generation": 18, "seconds": 51.3, "games": 36, "white_wins": 10, "black_wins": 5, "draws": 21, "reasons": {"checkmate": 8, "bare_king": 7, "max_plies": 17, "repetition": 4}, "mean_plies": 253.22222222222223, "positions": 10075, "endgames": {"games": 14, "white_wins": 2, "black_wins": 10, "draws": 2, "reasons": {"repetition": 2, "bare_king": 12}, "mean_plies": 68.5}, "contributed": {}, "rejected": 0, "buffer_games": 294, "buffer_positions": 59899}
+{"event": "held_out", "time": "2026-10-19T18:48:43+00:00", "generation": 18, "step": 2744, "value_loss": 0.39581, "policy_loss": 2.60331, "loss": 2.99912, "value_baseline": 0.32788}
+{"event": "train", "time": "2026-10-19T18:48:43+00:00", "generation": 18, "step": 2754, "loss": 2.63588, "value_loss": 0.15031, "policy_loss": 2.48557, "policy_entropy": 1.89451}
+{"event": "train", "time": "2026-10-19T18:48:43+00:00", "generation": 18, "step": 2764, "loss": 2.63036, "value_loss": 0.14393, "policy_loss": 2.48642, "policy_entropy": 1.88512}
+{"event": "train", "time": "2026-10-19T18:48:43+00:00", "generation": 18, "step": 2774, "loss": 2.62986, "value_loss": 0.13253, "policy_loss": 2.49733, "policy_entropy": 1.9066}
+{"event": "train", "time": "2026-10-19T18:48:43+00:00", "generation": 18, "step": 2784, "loss": 2.61575, "value_loss": 0.1189, "policy_loss": 2.49686, "policy_entropy": 1.90273}
+{"event": "train", "time": "2026-10-19T18:48:43+00:00", "generation": 18, "step": 2794, "loss": 2.59505, "value_loss": 0.11732, "policy_loss": 2.47773, "policy_entropy": 1.8806}
+{"event": "train", "time": "2026-10-19T18:48:43+00:00", "generation": 18, "step": 2804, "loss": 2.61178, "value_loss": 0.11445, "policy_loss": 2.49733, "policy_entropy": 1.89732}
+{"event": "train", "time": "2026-10-19T18:48:43+00:00", "generation": 18, "step": 2814, "loss": 2.57612, "value_loss": 0.10454, "policy_loss": 2.47159, "policy_entropy": 1.89375}
+{"event": "train", "time": "2026-10-19T18:48:43+00:00", "generation": 18, "step": 2824, "loss": 2.58142, "value_loss": 0.10793, "policy_loss": 2.47349, "policy_entropy": 1.87903}
+{"event": "train", "time": "2026-10-19T18:48:43+00:00", "generation": 18, "step": 2834, "loss": 2.5813, "value_loss": 0.09669, "policy_loss": 2.48461, "policy_entropy": 1.89052}
+{"event": "train", "time": "2026-10-19T18:48:44+00:00", "generation": 18, "step": 2844, "loss": 2.57283, "value_loss": 0.09226, "policy_loss": 2.48058, "policy_entropy": 1.90245}
+{"event": "train", "time": "2026-10-19T18:48:44+00:00", "generation": 18, "step": 2854, "loss": 2.58196, "value_loss": 0.08619, "policy_loss": 2.49577, "policy_entropy": 1.9152}
+{"event": "train", "time": "2026-10-19T18:48:44+00:00", "generation": 18, "step": 2864, "loss": 2.55742, "value_loss": 0.09173, "policy_loss": 2.46569, "policy_entropy": 1.88934}
+{"event": "train", "time": "2026-10-19T18:48:44+00:00", "generation": 18, "step": 2874, "loss": 2.55766, "value_loss": 0.07855, "policy_loss": 2.47911, "policy_entropy": 1.90631}
+{"event": "train", "time": "2026-10-19T18:48:44+00:00", "generation": 18, "step": 2884, "loss": 2.58509, "value_loss": 0.09203, "policy_loss": 2.49306, "policy_entropy": 1.90777}
+{"event": "train", "time": "2026-10-19T18:48:44+00:00", "generation": 18, "step": 2894, "loss": 2.56089, "value_loss": 0.08514, "policy_loss": 2.47574, "policy_entropy": 1.90828}
+{"event": "train", "time": "2026-10-19T18:48:44+00:00", "generation": 18, "step": 2902, "loss": 2.55882, "value_loss": 0.07799, "policy_loss": 2.48083, "policy_entropy": 1.89648}
+{"event": "eval", "time": "2026-10-19T18:49:06+00:00", "generation": 18, "opponent": "previous", "wins": 0, "draws": 18, "losses": 2, "score": 0.45, "reasons": {"checkmate": 2, "repetition": 14, "max_plies": 4}}
+{"event": "eval", "time": "2026-10-19T18:49:17+00:00", "generation": 18, "opponent": "greedy", "wins": 0, "draws": 2, "losses": 18, "score": 0.05, "reasons": {"checkmate": 7, "bare_king": 11, "max_plies": 2}}
+{"event": "eval", "time": "2026-10-19T18:49:35+00:00", "generation": 18, "opponent": "random", "wins": 4, "draws": 16, "losses": 0, "score": 0.6, "reasons": {"repetition": 3, "bare_king": 4, "max_plies": 13}}
+{"event": "generation", "time": "2026-10-19T18:49:35+00:00", "generation": 18, "best": 18, "steps": 158, "seconds": 52.1, "loss": 2.5899, "value_loss": 0.10601, "policy_loss": 2.48389, "policy_entropy": 1.89726}
+{"event": "selfplay", "time": "2026-10-19T18:50:26+00:00", "generation": 19, "seconds": 50.9, "games": 33, "white_wins": 3, "black_wins": 8, "draws": 22, "reasons": {"max_plies": 16, "bare_king": 7, "checkmate": 4, "repetition": 6}, "mean_plies": 246.36363636363637, "positions": 9303, "endgames": {"games": 17, "white_wins": 6, "black_wins": 9, "draws": 2, "reasons": {"bare_king": 15, "repetition": 2}, "mean_plies": 69.0}, "contributed": {}, "rejected": 0, "buffer_games": 295, "buffer_positions": 59992}
+{"event": "held_out", "time": "2026-10-19T18:50:26+00:00", "generation": 19, "step": 2902, "value_loss": 0.44642, "policy_loss": 2.63191, "loss": 3.07833, "value_baseline": 0.2627}
+{"event": "train", "time": "2026-10-19T18:50:26+00:00", "generation": 19, "step": 2912, "loss": 2.61974, "value_loss": 0.14718, "policy_loss": 2.47256, "policy_entropy": 1.85904}
+{"event": "train", "time": "2026-10-19T18:50:26+00:00", "generation": 19, "step": 2922, "loss": 2.63166, "value_loss": 0.13151, "policy_loss": 2.50015, "policy_entropy": 1.86928}
+{"event": "train", "time": "2026-10-19T18:50:26+00:00", "generation": 19, "step": 2932, "loss": 2.60544, "value_loss": 0.13614, "policy_loss": 2.4693, "policy_entropy": 1.85733}
+{"event": "train", "time": "2026-10-19T18:50:26+00:00", "generation": 19, "step": 2942, "loss": 2.58168, "value_loss": 0.10958, "policy_loss": 2.47209, "policy_entropy": 1.85837}
+{"event": "train", "time": "2026-10-19T18:50:26+00:00", "generation": 19, "step": 2952, "loss": 2.61243, "value_loss": 0.11762, "policy_loss": 2.49481, "policy_entropy": 1.90286}
+{"event": "train", "time": "2026-10-19T18:50:26+00:00", "generation": 19, "step": 2962, "loss": 2.57162, "value_loss": 0.10242, "policy_loss": 2.46921, "policy_entropy": 1.86751}
+{"event": "train", "time": "2026-10-19T18:50:26+00:00", "generation": 19, "step": 2972, "loss": 2.5621, "value_loss": 0.10372, "policy_loss": 2.45838, "policy_entropy": 1.84632}
+{"event": "train", "time": "2026-10-19T18:50:27+00:00", "generation": 19, "step": 2982, "loss": 2.56249, "value_loss": 0.09785, "policy_loss": 2.46463, "policy_entropy": 1.88398}
+{"event": "train", "time": "2026-10-19T18:50:27+00:00", "generation": 19, "step": 2992, "loss": 2.57204, "value_loss": 0.10849, "policy_loss": 2.46355, "policy_entropy": 1.87719}
+{"event": "train", "time": "2026-10-19T18:50:27+00:00", "generation": 19, "step": 3002, "loss": 2.5585, "value_loss": 0.0923, "policy_loss": 2.4662, "policy_entropy": 1.8678}
+{"event": "train", "time": "2026-10-19T18:50:27+00:00", "generation": 19, "step": 3012, "loss": 2.52766, "value_loss": 0.08568, "policy_loss": 2.44197, "policy_entropy": 1.85628}
+{"event": "train", "time": "2026-10-19T18:50:27+00:00", "generation": 19, "step": 3022, "loss": 2.55358, "value_loss": 0.0872, "policy_loss": 2.46639, "policy_entropy": 1.87314}
+{"event": "train", "time": "2026-10-19T18:50:27+00:00", "generation": 19, "step": 3032, "loss": 2.53963, "value_loss": 0.09099, "policy_loss": 2.44864, "policy_entropy": 1.86071}
+{"event": "train", "time": "2026-10-19T18:50:27+00:00", "generation": 19, "step": 3042, "loss": 2.52933, "value_loss": 0.08349, "policy_loss": 2.44584, "policy_entropy": 1.86344}
+{"event": "train", "time": "2026-10-19T18:50:27+00:00", "generation": 19, "step": 3048, "loss": 2.52177, "value_loss": 0.07854, "policy_loss": 2.44323, "policy_entropy": 1.86129}
+{"event": "eval", "time": "2026-10-19T18:50:48+00:00", "generation": 19, "opponent": "previous", "wins": 0, "draws": 20, "losses": 0, "score": 0.5, "reasons": {"repetition": 18, "max_plies": 2}}
+{"event": "eval", "time": "2026-10-19T18:50:58+00:00", "generation": 19, "opponent": "greedy", "wins": 0, "draws": 0, "losses": 20, "score": 0.0, "reasons": {"checkmate": 7, "bare_king": 13}}
+{"event": "eval", "time": "2026-10-19T18:51:15+00:00", "generation": 19, "opponent": "random", "wins": 4, "draws": 16, "losses": 0, "score": 0.6, "reasons": {"checkmate": 1, "stalemate": 1, "repetition": 5, "max_plies": 11, "bare_king": 2}}
+{"event": "generation", "time": "2026-10-19T18:51:15+00:00", "generation": 19, "best": 18, "steps": 146, "seconds": 51.5, "loss": 2.5713, "value_loss": 0.10557, "policy_loss": 2.46573, "policy_entropy": 1.86712}
+{"event": "selfplay", "time": "2026-10-19T18:52:10+00:00", "generation": 20, "seconds": 54.7, "games": 31, "white_wins": 8, "black_wins": 4, "draws": 19, "reasons": {"bare_king": 10, "max_plies": 15, "checkmate": 2, "repetition": 4}, "mean_plies": 263.51612903225805, "positions": 9561, "endgames": {"games": 19, "white_wins": 8, "black_wins": 5, "draws": 6, "reasons": {"bare_king": 13, "repetition": 6}, "mean_plies": 73.26315789473684}, "contributed": {}, "rejected": 0, "buffer_games": 302, "buffer_positions": 59941}
+{"event": "held_out", "time": "2026-10-19T18:52:10+00:00", "generation": 20, "step": 3048, "value_loss": 0.42313, "policy_loss": 2.57412, "loss": 2.99725, "value_baseline": 0.3418}
+{"event": "train", "time": "2026-10-19T18:52:10+00:00", "generation": 20, "step": 3058, "loss": 2.61364, "value_loss": 0.14234, "policy_loss": 2.4713, "policy_entropy": 1.84892}
+{"event": "train", "time": "2026-10-19T18:52:10+00:00", "generation": 20, "step": 3068, "loss": 2.60618, "value_loss": 0.14332, "policy_loss": 2.46286, "policy_entropy": 1.85058}
+{"event": "train", "time": "2026-10-19T18:52:10+00:00", "generation": 20, "step": 3078, "loss": 2.59243, "value_loss": 0.12598, "policy_loss": 2.46645, "policy_entropy": 1.83999}
+{"event": "train", "time": "2026-10-19T18:52:10+00:00", "generation": 20, "step": 3088, "loss": 2.60992, "value_loss": 0.13349, "policy_loss": 2.47644, "policy_entropy": 1.82882}
+{"event": "train", "time": "2026-10-19T18:52:10+00:00", "generation": 20, "step": 3098, "loss": 2.57733, "value_loss": 0.1128, "policy_loss": 2.46453, "policy_entropy": 1.85042}
+{"event": "train", "time": "2026-10-19T18:52:10+00:00", "generation": 20, "step": 3108, "loss": 2.57747, "value_loss": 0.11817, "policy_loss": 2.45929, "policy_entropy": 1.84668}
+{"event": "train", "time": "2026-10-19T18:52:10+00:00", "generation": 20, "step": 3118, "loss": 2.55538, "value_loss": 0.10551, "policy_loss": 2.44987, "policy_entropy": 1.82333}
+{"event": "train", "time": "2026-10-19T18:52:10+00:00", "generation": 20, "step": 3128, "loss": 2.55846, "value_loss": 0.10218, "policy_loss": 2.45628, "policy_entropy": 1.86279}
+{"event": "train", "time": "2026-10-19T18:52:10+00:00", "generation": 20, "step": 3138, "loss": 2.54968, "value_loss": 0.10196, "policy_loss": 2.44772, "policy_entropy": 1.83313}
+{"event": "train", "time": "2026-10-19T18:52:10+00:00", "generation": 20, "step": 3148, "loss": 2.53489, "value_loss": 0.09694, "policy_loss": 2.43795, "policy_entropy": 1.84086}
+{"event": "train", "time": "2026-10-19T18:52:10+00:00", "generation": 20, "step": 3158, "loss": 2.55682, "value_loss": 0.10984, "policy_loss": 2.44698, "policy_entropy": 1.83646}
+{"event": "train", "time": "2026-10-19T18:52:10+00:00", "generation": 20, "step": 3168, "loss": 2.53229, "value_loss": 0.10049, "policy_loss": 2.4318, "policy_entropy": 1.83039}
+{"event": "train", "time": "2026-10-19T18:52:10+00:00", "generation": 20, "step": 3178, "loss": 2.53466, "value_loss": 0.08798, "policy_loss": 2.44669, "policy_entropy": 1.84999}
+{"event": "train", "time": "2026-10-19T18:52:10+00:00", "generation": 20, "step": 3188, "loss": 2.51091, "value_loss": 0.08583, "policy_loss": 2.42508, "policy_entropy": 1.84001}
+{"event": "train", "time": "2026-10-19T18:52:10+00:00", "generation": 20, "step": 3198, "loss": 2.50019, "value_loss": 0.07571, "policy_loss": 2.42448, "policy_entropy": 1.83688}
+{"event": "eval", "time": "2026-10-19T18:52:30+00:00", "generation": 20, "opponent": "previous", "wins": 1, "draws": 19, "losses": 0, "score": 0.525, "reasons": {"repetition": 18, "bare_king": 1, "max_plies": 1}}
+{"event": "eval", "time": "2026-10-19T18:52:40+00:00", "generation": 20, "opponent": "greedy", "wins": 0, "draws": 1, "losses": 19, "score": 0.025, "reasons": {"checkmate": 11, "bare_king": 8, "max_plies": 1}}
+{"event": "eval", "time": "2026-10-19T18:52:59+00:00", "generation": 20, "opponent": "random", "wins": 0, "draws": 20, "losses": 0, "score": 0.5, "reasons": {"repetition": 2, "max_plies": 18}}
+{"event": "generation", "time": "2026-10-19T18:52:59+00:00", "generation": 20, "best": 18, "steps": 150, "seconds": 55.4, "loss": 2.56068, "value_loss": 0.1095, "policy_loss": 2.45118, "policy_entropy": 1.84128}

@@ -11,8 +11,22 @@ scored exactly by the engine instead. The value is then backed up the path, chan
 every level because the players alternate.
 
 The evaluator is any object with `evaluate(state) -> (priors, value)`, where priors maps each
-legal move to a probability and value is the expected result for the side to move, in [-1, 1].
+legal move to a probability and value is the expected result for the side to move, in [-1, 1],
+and `evaluate_many(states)`, the same for a batch.
 `net.NetworkEvaluator` is the real one; `UniformEvaluator` knows only the rules.
+
+Two rules can be laid over the visit counts when a move is chosen, as Leela Chess Zero lays proven
+wins and losses over its search (`MCTSConfig.take_wins` and `avoid_losses`): play a move that wins
+at once whenever there is one, and do not play a move after which the opponent can win at once when
+another move leaves them no such reply. Searches score finished games exactly, but a winning move
+whose prior is near 0 is seldom tried, and among moves that all look won (0.997 against 1.0) the
+visits follow the priors, so main-v4's generation 60 took a win in one only about half the time.
+
+Contempt (`MCTSConfig.contempt`), Leela Chess Zero's draw score: a finished game that is drawn
+(repetition, the 70-move rule, the ply cap) is worth -contempt to the player searching (the root's
+side to move) instead of 0, and +contempt to the other, so the search steers away from draws it can
+avoid at no greater cost. It applies to draws the search reaches; the network's own values are left
+as they are.
 """
 
 import math
@@ -29,6 +43,8 @@ from .game import GameState
 class Evaluator(Protocol):
     def evaluate(self, state: GameState) -> tuple[dict[int, float], float]: ...
 
+    def evaluate_many(self, states: list[GameState]) -> list[tuple[dict[int, float], float]]: ...
+
 
 class UniformEvaluator:
     """Equal priors for every legal move and a neutral value. With it, the search is guided by
@@ -38,6 +54,9 @@ class UniformEvaluator:
         moves = state.legal_moves()
         return {m: 1.0 / len(moves) for m in moves}, 0.0
 
+    def evaluate_many(self, states: list[GameState]) -> list[tuple[dict[int, float], float]]:
+        return [self.evaluate(s) for s in states]
+
 
 @dataclass(frozen=True)
 class MCTSConfig:
@@ -46,6 +65,9 @@ class MCTSConfig:
     dirichlet_alpha: float = 0.3   # root noise for self-play (AlphaZero used 0.3 for chess)
     dirichlet_fraction: float = 0.25  # share of the root prior replaced by noise when enabled
     fpu: float = 0.0               # value assumed for a move that has not been tried yet
+    contempt: float = 0.0          # what a draw costs the player searching (0: a draw is worth 0)
+    take_wins: bool = False        # choose a move that wins at once whenever there is one
+    avoid_losses: bool = False     # choose no move after which the opponent can win at once, if another avoids it
 
 
 class Node:
@@ -91,6 +113,14 @@ class MCTS:
 
     def search(self, state: GameState, add_noise: bool = False, simulations: Optional[int] = None) -> Node:
         """Run the simulations from `state` and return the root, whose children hold the results."""
+        root = self.prepare(state, add_noise)
+        for _ in range(self.config.simulations if simulations is None else simulations):
+            self._simulate(root)
+        return root
+
+    def prepare(self, state: GameState, add_noise: bool = False) -> Node:
+        """The root for `state`, expanded and (if asked) with noise on its priors, ready for
+        simulations. `search` runs them one at a time; `selfplay` batches them across games."""
         if state.is_terminal():
             raise ValueError("cannot search a finished game")
         root = self._root_for(state)
@@ -100,11 +130,18 @@ class MCTS:
             root.value_sum -= value  # root is seen from the player who moved into it
         if add_noise and self.config.dirichlet_fraction > 0:
             self._add_noise(root)
-        for _ in range(self.config.simulations if simulations is None else simulations):
-            self._simulate(root)
         return root
 
     def _simulate(self, root: Node) -> None:
+        path = self.descend(root)
+        if path is not None:
+            priors, value = self.evaluator.evaluate(path[-1].state)
+            self.expand_and_backup(path, priors, value)
+
+    def descend(self, root: Node) -> Optional[list[Node]]:
+        """First half of a simulation: walk down to a leaf. A finished game is scored exactly and
+        backed up at once (returns None); otherwise returns the path, whose last node awaits
+        evaluation by `expand_and_backup`."""
         node, path = root, [root]
         while node.children:  # expanded and not finished
             move, child = self._select(node)
@@ -113,11 +150,23 @@ class MCTS:
             node = child
             path.append(node)
         outcome = node.state.outcome()
-        if outcome is not None:
-            node.children = {}
-            value = float(outcome.value_for(node.state.side))
-        else:
-            value = self._expand(node)
+        if outcome is None:
+            return path
+        node.children = {}
+        value = float(outcome.value_for(node.state.side))
+        if outcome.winner is None and self.config.contempt:
+            # For the side to move there: a loss of `contempt` if it is the player searching, a gain if not.
+            value = -self.config.contempt if node.state.side == path[0].state.side else self.config.contempt
+        self._backup(path, value)
+        return None
+
+    def expand_and_backup(self, path: list[Node], priors: dict[int, float], value: float) -> None:
+        """Second half: give the leaf its children and back up its value."""
+        path[-1].children = {m: Node(p) for m, p in priors.items()}
+        self._backup(path, value)
+
+    @staticmethod
+    def _backup(path: list[Node], value: float) -> None:
         # `value` is for the side to move at the leaf; each node stores it for the player who
         # moved into it, which alternates on the way up.
         for n in reversed(path):
@@ -169,7 +218,24 @@ class MCTS:
 
     def choose_move(self, root: Node, temperature: float = 0.0) -> int:
         """Pick a move from the visit counts: the most visited one at temperature 0 (ties broken
-        at random), otherwise with probability proportional to visits^(1/temperature)."""
+        at random), otherwise with probability proportional to visits^(1/temperature).
+
+        With `take_wins`, a move that wins at once comes first (the most visited of them). With
+        `avoid_losses`, a move after which the opponent can win at once gives way to the most
+        visited move after which they cannot, if there is one. The visit counts, and so self-play's
+        policy targets, stay as the search left them."""
+        state = root.state
+        if self.config.take_wins:
+            wins = [m for m in root.children if wins_at_once(state, m)]
+            if wins:
+                return max(wins, key=lambda m: root.children[m].visits)
+        move = self._from_visits(root, temperature)
+        if self.config.avoid_losses and loses_at_once(state.apply(move), state.side):
+            ranked = sorted(root.children, key=lambda m: (root.children[m].visits, root.children[m].prior), reverse=True)
+            move = next((m for m in ranked if m != move and not loses_at_once(state.apply(m), state.side)), move)
+        return move
+
+    def _from_visits(self, root: Node, temperature: float) -> int:
         counts = self.visit_counts(root)
         moves = list(counts)
         if temperature <= 0:
@@ -194,6 +260,21 @@ class MCTS:
     def root_value(root: Node) -> float:
         """The search's estimate of the result for the side to move at the root."""
         return -root.mean_value
+
+
+def wins_at_once(state: GameState, move: int) -> bool:
+    """Whether `move` ends the game in a win for the side playing it (checkmate, bare Raja, or a
+    stalemate that wins under the rules)."""
+    outcome = state.apply(move).outcome()
+    return outcome is not None and outcome.winner == state.side
+
+
+def loses_at_once(after: GameState, me: int) -> bool:
+    """Whether `me`, whose move led to `after`, has lost by it or can lose to the opponent's reply."""
+    outcome = after.outcome()
+    if outcome is not None:
+        return outcome.winner == -me
+    return any(wins_at_once(after, reply) for reply in after.legal_moves())
 
 
 def _same_position(a: GameState, b: GameState) -> bool:

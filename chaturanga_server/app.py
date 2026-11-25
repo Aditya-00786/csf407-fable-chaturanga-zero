@@ -17,9 +17,12 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from chaturanga import DEFAULT_RULES, GameState, move_to_str, parse_move
-from chaturanga.agents import AGENTS, NetworkUnavailable, make_agent, warm_up
+from chaturanga.agents import AGENTS, LEVELS, NetworkUnavailable, ZeroAgent, make_agent, trained_evaluator, warm_up
 from chaturanga.constants import PADATI
 from chaturanga.tables import LAST_RANK
+
+from .human_games import router as human_games_router
+from .training_api import router as training_router
 
 MAX_MOVES = 1000
 WEB_DIST = Path(__file__).resolve().parent.parent / "web" / "dist"
@@ -33,6 +36,7 @@ class GameRequest(BaseModel):
 class AgentRequest(GameRequest):
     agent: str = "greedy"
     seed: Optional[int] = None
+    level: Optional[str] = Field(None, description="For the trained agent: easy, medium, hard or impossible")
 
 
 def replay(req: GameRequest):
@@ -106,7 +110,9 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="ChaturangZero", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="ChaturangZero", version="0.2.0", lifespan=lifespan)
+app.include_router(training_router)
+app.include_router(human_games_router)
 
 
 @app.get("/api/health")
@@ -124,7 +130,20 @@ def meta():
             "max_plies": rules.max_plies,
         },
         "agents": [{"id": a.id, "name": a.name, "description": a.description} for a in AGENTS.values()],
+        "levels": [{"id": lv.id, "name": lv.name, "simulations": lv.simulations, "description": lv.description}
+                   for lv in LEVELS.values()],
+        "trained": _trained_info(),
     }
+
+
+def _trained_info():
+    """The published trained network ({run, generation, fingerprint, milestone}), or None if there is
+    none (yet)."""
+    try:
+        trained = trained_evaluator()
+    except NetworkUnavailable:
+        return None
+    return trained[1] if trained else None
 
 
 @app.post("/api/game")
@@ -139,7 +158,7 @@ def agent_move(req: AgentRequest):
     if state.is_terminal():
         raise HTTPException(400, "the game is already over")
     try:
-        agent = make_agent(req.agent, req.seed)
+        agent = make_agent(req.agent, req.seed, req.level)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     except NetworkUnavailable as exc:
@@ -150,7 +169,10 @@ def agent_move(req: AgentRequest):
     history.append(_history_entry(state, move))
     state = state.apply(move)
     history[-1]["check"] = state.in_check()
-    return {"move": move_to_str(move), "game": game_view(state, history)}
+    out = {"move": move_to_str(move), "game": game_view(state, history)}
+    if isinstance(agent, ZeroAgent):
+        out["network"] = agent.network
+    return out
 
 
 # Serve the built web app (npm run build in web/) from the same server when it exists.
